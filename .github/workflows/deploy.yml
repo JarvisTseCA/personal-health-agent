@@ -1,9 +1,12 @@
-# Publishes the demo to GitHub Pages so teammates can open it without installing anything.
-# Run it from the Actions tab ("Deploy demo" → Run workflow). Requires Pages to be enabled
-# with Source = "GitHub Actions" in Settings → Pages.
+# Publishes the demo to GitHub Pages on every push to main, so teammates can open it
+# without installing anything: https://jarvistseca.github.io/personal-health-agent/
+# Pages is enabled with Source = "GitHub Actions" in Settings → Pages.
+# You can also run it by hand from the Actions tab ("Deploy demo" → Run workflow).
 name: Deploy demo
 
 on:
+  push:
+    branches: [main]
   workflow_dispatch:
 
 permissions:

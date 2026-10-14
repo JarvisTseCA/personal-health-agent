@@ -4,6 +4,8 @@ A mobile-style web app that helps a busy adult meet the weekly physical activity
 (150 min moderate, 75 min vigorous, or an equivalent mix) using only activities they enjoy,
 in the time they actually have.
 
+**Live demo:** https://jarvistseca.github.io/personal-health-agent/ (redeploys on every push to `main`)
+
 This is the **demo build**: every screen is interactive, Fitbit data is simulated, and the coach
 answers from pre-written scripts. The code is organized so a real LLM and a database can be
 plugged in later without rewriting the screens.

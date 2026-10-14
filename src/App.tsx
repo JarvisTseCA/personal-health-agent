@@ -18,7 +18,7 @@ const TABS: Array<{ id: Screen; label: string; Icon: ComponentType<{ className?:
 
 const SCREENS: Screen[] = ["onboarding", "week", "plan", "coach", "showcase"];
 
-/** Screen lives in the URL hash (#/plan) so links and refreshes keep your place. */
+/** Screen lives in the URL hash (#plan) so links and refreshes keep your place. */
 function readHash(): Screen | null {
   const h = window.location.hash.replace(/^#\/?/, "") as Screen;
   return SCREENS.includes(h) ? h : null;
@@ -39,7 +39,11 @@ export default function App() {
 
   const go = useCallback((s: Screen) => {
     setScreen(s);
-    if (window.location.hash !== `#/${s}`) window.history.pushState(null, "", `#/${s}`);
+    try {
+      if (window.location.hash !== `#${s}`) window.history.pushState(null, "", `#${s}`);
+    } catch {
+      /* some embedded viewers block history changes; navigation still works in memory */
+    }
   }, []);
 
   useEffect(() => {

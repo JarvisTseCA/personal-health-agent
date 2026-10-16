@@ -1,94 +1,156 @@
 /**
- * Builds the structured context that the agent sees.
+ * Builds the structured context every screen and the agent see.
  *
- * This is the bridge between "data in the database" and "text in the LLM
- * prompt". The mock agent reads it to fill in its scripted answers; a real
- * LLM gets it serialized into the system prompt (see prompts.ts).
+ * All numbers come from src/lib (calculator), never from the agent. A real
+ * LLM gets this serialized into its system prompt (see prompts.ts).
  */
-import { getFamily, getVariant } from "../lib/activities";
-import { DAY_NAMES_LONG, summarizeWeek, WEEKLY_GOAL_MINUTES, type WeekSummary } from "../lib/guideline";
-import { buildPlanOptions, type PlanOption } from "../lib/planner";
+import { getFamily } from "../lib/activities";
+import { goalOffer, type GoalOffer } from "../lib/goal";
+import { streakOf, weekMedals, type Medal, type Streak } from "../lib/medals";
+import { DAY_NAMES, DAY_NAMES_LONG, totalsFor, type WeekTotals } from "../lib/met";
+import { dailyTargets, unplannedLeft } from "../lib/plan";
+import type { SuggestInput } from "../lib/suggest";
 import type { AppState } from "../state/types";
 
+export interface PastWeek {
+  label: string;
+  goal: number;
+  totals: WeekTotals;
+  medals: Medal[];
+  gold: boolean;
+}
+
 export interface AgentContext {
-  profile: AppState["profile"];
-  goalMinutes: number;
+  goal: number;
+  goalBy: "default" | "recap" | "clinician";
+  steppingStone: boolean;
   today: string;
   todayIndex: number;
-  week: WeekSummary;
-  timeLeftMinutes: number;
-  openDays: number[];
-  options: PlanOption[];
-  chosenPlan: PlanOption | null;
+  week: WeekTotals;
+  targets: number[];
+  todayTarget: number;
+  todayDone: number;
+  todayNeeded: number;
+  left: number;
+  unplanned: number;
+  medals: Medal[];
+  streak: Streak;
+  past: PastWeek[];
+  offer: GoalOffer;
+  noVigorous: boolean;
   enjoyedNames: string[];
+  state: AppState;
+}
+
+/** Monday of the current week, shifted by `weeksAgo`, as "Oct 12". */
+export function weekLabel(weeksAgo: number): string {
+  const now = new Date();
+  const monday = new Date(now);
+  monday.setDate(now.getDate() - ((now.getDay() + 6) % 7) - 7 * weeksAgo);
+  return monday.toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
 
 export function buildAgentContext(state: AppState): AgentContext {
-  const week = summarizeWeek(state.sessions);
-  const timeLeftMinutes = Math.max(0, state.profile.weeklyTimeMin - week.clockMinutesUsed);
-  // Plan from today onward; if they already worked out today, start tomorrow (when there is one).
-  const workedOutToday = state.sessions.some((s) => s.dayIndex === state.todayIndex);
-  const firstDay = workedOutToday && state.todayIndex < 6 ? state.todayIndex + 1 : state.todayIndex;
-  const openDays = Array.from({ length: 7 - firstDay }, (_, i) => firstDay + i);
-  const options = buildPlanOptions({
-    remainingMinutes: week.remainingMinutes,
-    timeLeftMinutes,
-    familyIds: state.profile.enjoyedFamilyIds,
-    openDays,
-    cautious: state.profile.hasHealthCondition,
+  const goal = state.clinician.goal ?? state.goal;
+  const t = state.todayIndex;
+  const week = totalsFor(state.sessions.filter((s) => s.dayIndex <= t));
+  const targets = dailyTargets(goal, state.plan, week.doneByDay, t);
+  const medals = weekMedals(week.activeByDay, week.doneByDay, targets, week.done, goal, t);
+
+  const past: PastWeek[] = state.history.map((w, i) => {
+    const totals = totalsFor(w.sessions);
+    const tg = dailyTargets(w.goal, w.plan, totals.doneByDay, 6);
+    return {
+      label: weekLabel(state.history.length - i),
+      goal: w.goal,
+      totals,
+      medals: weekMedals(totals.activeByDay, totals.doneByDay, tg, totals.done, w.goal),
+      gold: totals.done + 1e-9 >= w.goal,
+    };
   });
+
+  const streak = streakOf([...past.flatMap((w) => w.medals), ...medals.slice(0, t + 1)]);
+  const todayTarget = targets[t];
+  const todayDone = week.doneByDay[t];
+
   return {
-    profile: state.profile,
-    goalMinutes: WEEKLY_GOAL_MINUTES,
-    today: DAY_NAMES_LONG[state.todayIndex],
-    todayIndex: state.todayIndex,
+    goal,
+    goalBy: state.clinician.goal !== null ? "clinician" : state.goalSource,
+    steppingStone: goal < 7.5 - 1e-9,
+    today: DAY_NAMES_LONG[t],
+    todayIndex: t,
     week,
-    timeLeftMinutes,
-    openDays,
-    options,
-    chosenPlan: options.find((o) => o.kind === state.chosenPlan) ?? null,
-    enjoyedNames: state.profile.enjoyedFamilyIds.map((id) => getFamily(id).noun),
+    targets,
+    todayTarget,
+    todayDone,
+    todayNeeded: Math.max(0, todayTarget - todayDone),
+    left: Math.max(0, goal - week.done),
+    unplanned: unplannedLeft(goal, state.plan, week.doneByDay, t),
+    medals,
+    streak,
+    past,
+    offer: goalOffer(goal, past.map((w) => w.totals.done), state.clinician.goal !== null),
+    noVigorous: state.profile.hasHealthCondition || state.clinician.noVigorous,
+    enjoyedNames: state.profile.enjoyed.map((id) => getFamily(id).noun),
+    state,
   };
 }
 
-/** Compact, LLM-friendly JSON of the context (no colors, ids resolved to names). */
+/** Inputs for the suggestion ranker, from state + today's check-in. */
+export function buildSuggestInput(state: AppState, ctx = buildAgentContext(state)): SuggestInput {
+  const t = state.todayIndex;
+  const c = state.today.checkIn;
+  const lastWeek = ctx.past.at(-1)?.totals.sessions ?? [];
+  const recent = [
+    ...ctx.week.sessions.map((s) => ({ familyId: s.familyId, daysAgo: t - s.dayIndex, dayName: DAY_NAMES[s.dayIndex] })),
+    ...lastWeek.map((s) => ({ familyId: s.familyId, daysAgo: t + 7 - s.dayIndex, dayName: `last ${DAY_NAMES[s.dayIndex]}` })),
+  ].filter((r) => r.daysAgo >= 0);
+  return {
+    enjoyed: state.profile.enjoyed,
+    access: state.profile.access,
+    noVigorous: ctx.noVigorous,
+    maxSessionMin: state.clinician.maxSessionMin,
+    minutes: c.minutes ?? 30,
+    place: c.place ?? "home",
+    energy: c.energy ?? "normal",
+    mood: c.mood ?? "surprise",
+    needed: ctx.todayNeeded,
+    boost: state.today.boost,
+    recent,
+    declines: state.declines.map((d) => ({ familyId: d.familyId, reason: d.reason, daysAgo: t - d.day })),
+    exclude: state.today.exclude,
+    constraint: state.today.constraint,
+  };
+}
+
+/** Compact, LLM-friendly JSON of the context (ids resolved to names). */
 export function serializeContext(ctx: AgentContext) {
+  const s = ctx.state;
+  const cur = s.today.current?.lead;
   return {
     user: {
-      name: ctx.profile.name,
-      free_time_this_week_min: ctx.profile.weeklyTimeMin,
-      enjoys: ctx.enjoyedNames,
-      reported_health_condition: ctx.profile.hasHealthCondition,
+      name: s.profile.name,
+      enjoys_in_order: ctx.enjoyedNames,
+      access: Object.fromEntries(Object.entries(s.profile.access).map(([k, v]) => [getFamily(k).noun, v])),
+      health_flag: s.profile.hasHealthCondition,
     },
-    goal: { guideline_minutes: ctx.goalMinutes, rule: "moderate counts 1x, vigorous (>=6 MET) counts 2x" },
+    clinician_limits: { goal: s.clinician.goal, no_vigorous: s.clinician.noVigorous, max_session_min: s.clinician.maxSessionMin, note: s.clinician.note || null },
+    goal: { weekly_met_hours: ctx.goal, set_by: ctx.goalBy, stepping_stone: ctx.steppingStone },
     today: ctx.today,
+    check_in: s.today.checkIn,
     progress: {
-      done_guideline_min: ctx.week.doneMinutes,
-      remaining_guideline_min: ctx.week.remainingMinutes,
-      percent: ctx.week.percent,
-      time_used_min: ctx.week.clockMinutesUsed,
-      time_left_min: ctx.timeLeftMinutes,
+      week_done_met_hours: +ctx.week.done.toFixed(2),
+      week_left_met_hours: +ctx.left.toFixed(2),
+      today_target_met_hours: +ctx.todayTarget.toFixed(2),
+      today_done_met_hours: +ctx.todayDone.toFixed(2),
+      daily_targets: ctx.targets.map((x, i) => `${DAY_NAMES[i]} ${s.plan[i]} ${x.toFixed(2)}`),
+      streak_days: ctx.streak.current,
+      medals_this_week: ctx.medals.slice(0, ctx.todayIndex + 1),
     },
-    sessions: ctx.week.sessions.map((s) => {
-      const { family, variant } = getVariant(s.variantId);
-      return {
-        day: DAY_NAMES_LONG[s.dayIndex],
-        activity: `${family.name} (${variant.label})`,
-        compendium_code: variant.code,
-        met: variant.met,
-        minutes: s.durationMin,
-        intensity: s.intensity,
-        guideline_min: s.credit,
-      };
-    }),
-    plan_options: ctx.options.map((o) => ({
-      kind: o.kind,
-      title: o.title,
-      fits_time: o.fits,
-      total_min: o.clockMinutes,
-      guideline_min: o.creditMinutes,
-      sessions: o.sessions.map((s) => `${DAY_NAMES_LONG[s.dayIndex]}: ${s.durationMin} min ${getVariant(s.variantId).family.noun} (${getVariant(s.variantId).variant.label})`),
+    sessions_this_week: ctx.week.sessions.map((x) => ({
+      day: DAY_NAMES[x.dayIndex], activity: getFamily(x.familyId).name, minutes: x.durationMin, met: x.met, met_hours: +x.credit.toFixed(2), confirmed: x.confirmed,
     })),
-    chosen_plan: ctx.chosenPlan?.kind ?? null,
+    decline_log: s.declines.map((d) => ({ activity: getFamily(d.familyId).noun, reason: d.reason, days_ago: ctx.todayIndex - d.day, note: d.note })),
+    current_suggestion: cur ? { activity: getFamily(cur.familyId).noun, variant: cur.variantId, minutes: cur.durationMin, met_hours: +cur.credit.toFixed(2), reasons: cur.reasons } : null,
   };
 }

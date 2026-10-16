@@ -1,54 +1,54 @@
 import { getFamily, getVariant } from "../lib/activities";
-import { WEEKLY_GOAL_MINUTES, type SessionWithCredit } from "../lib/guideline";
-import type { PlannedSession } from "../lib/planner";
+import { fmt, fmtGoal, type SessionWithCredit } from "../lib/met";
+
+export interface StripPlanned {
+  familyId: string;
+  credit: number;
+}
 
 interface Props {
   done: SessionWithCredit[];
-  planned?: PlannedSession[];
-  goal?: number;
+  planned?: StripPlanned[];
+  goal: number;
   compact?: boolean;
   highlightId?: string | null;
   showScale?: boolean;
 }
 
 /**
- * The week as one strip, measured in guideline minutes. Each workout is a
- * segment in its activity's color; vigorous segments are textured (they
- * count double, so they are twice as wide as their clock time). Planned
- * workouts appear hatched.
+ * The week as one strip, measured in MET-hours. Each workout is a segment in
+ * its activity's color, as wide as the MET-hours it earned, so a vigorous
+ * half hour is visibly bigger than an easy one. Unconfirmed Fitbit bouts are
+ * hatched until the user confirms them; planned work is outlined.
  */
-export function GoalStrip({ done, planned = [], goal = WEEKLY_GOAL_MINUTES, compact, highlightId, showScale = true }: Props) {
-  const doneTotal = done.reduce((a, s) => a + s.credit, 0);
+export function GoalStrip({ done, planned = [], goal, compact, highlightId, showScale = true }: Props) {
+  const counted = done.filter((s) => s.credit > 0);
+  const doneTotal = counted.reduce((a, s) => a + s.credit, 0);
   const plannedTotal = planned.reduce((a, s) => a + s.credit, 0);
   const scale = Math.max(goal, doneTotal + plannedTotal);
   const pct = (n: number) => `${(n / scale) * 100}%`;
-
-  const label = `${doneTotal} of ${goal} guideline minutes done${plannedTotal ? `, ${plannedTotal} more planned` : ""}`;
+  const label = `${fmt(doneTotal)} of ${fmtGoal(goal)} MET-hours done${plannedTotal ? `, ${fmt(plannedTotal)} planned` : ""}`;
 
   return (
     <div className="strip-wrap">
       <div className={`strip${compact ? " compact" : ""}`} role="img" aria-label={label}>
-        {done.map((s) => (
+        {counted.map((s) => (
           <div
             key={s.id}
-            className={`seg ${s.intensity}${s.id === highlightId ? " new" : ""}`}
-            style={{ flex: `0 0 ${pct(s.credit)}`, background: getFamily(s.familyId).color }}
-            title={`${getVariant(s.variantId).family.name}: ${s.durationMin} min = ${s.credit} guideline min`}
+            className={`seg ${s.intensity}${s.confirmed ? "" : " unconfirmed"}${s.id === highlightId ? " new" : ""}`}
+            style={{ flex: `0 0 ${pct(s.credit)}`, background: s.confirmed ? getFamily(s.familyId).color : undefined, ["--seg-color" as string]: getFamily(s.familyId).color }}
+            title={`${getVariant(s.variantId).family.name}: ${s.durationMin} min = ${fmt(s.credit)} MET-hours${s.confirmed ? "" : " (unconfirmed)"}`}
           />
         ))}
         {planned.map((s, i) => (
-          <div
-            key={`p-${i}`}
-            className="seg planned"
-            style={{ flex: `0 0 ${pct(s.credit)}`, ["--seg-color" as string]: getFamily(s.familyId).color }}
-          />
+          <div key={`p-${i}`} className="seg planned" style={{ flex: `0 0 ${pct(s.credit)}`, ["--seg-color" as string]: getFamily(s.familyId).color }} />
         ))}
       </div>
       {scale > goal && <div className="strip-over" style={{ left: pct(goal) }} aria-hidden />}
       {showScale && (
         <div className="strip-scale" aria-hidden>
           <span style={{ position: "absolute", left: 0 }}>0</span>
-          <span style={{ position: "absolute", right: `${100 - (goal / scale) * 100}%`, whiteSpace: "nowrap" }}>{goal} min goal</span>
+          <span style={{ position: "absolute", right: `${100 - (goal / scale) * 100}%`, whiteSpace: "nowrap" }}>{fmtGoal(goal)} MET-hour goal</span>
         </div>
       )}
     </div>

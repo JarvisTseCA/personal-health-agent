@@ -21,12 +21,14 @@ npm run dev
 
 | I want to… | Edit |
 |---|---|
-| Change what the coach says | `src/services/mockResponses.ts` |
+| Change what the coach says on Today | `src/state/today.ts` (flow) and `src/services/answers.ts` (questions) |
+| Change Coach-tab replies | `src/services/mockResponses.ts` |
+| Change the goal, medal or target rules | `src/lib/goal.ts`, `src/lib/medals.ts`, `src/lib/plan.ts` (add a test) |
 | Add an activity or fix a MET value | `src/lib/activities.ts` (cite the Compendium code) |
-| Change the demo Fitbit data | `src/data/mockFitbit.ts` |
+| Change the demo scenarios or Fitbit data | `src/data/mockFitbit.ts` |
 | Change colors, type, spacing | Tokens at the top of `src/styles.css` |
 | Change a screen | `src/screens/` |
-| Change how plans are built | `src/lib/planner.ts`, then add a test in `src/lib/lib.test.ts` |
+| Change how suggestions are picked | `src/lib/suggest.ts`, then add a test in `src/lib/lib.test.ts` |
 
 ## Conventions
 

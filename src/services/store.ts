@@ -18,7 +18,7 @@ export interface UserRepository {
   clear(): Promise<void>;
 }
 
-const KEY = "pha-demo-state-v1";
+const KEY = "pha-demo-state-v2";
 
 export class LocalStorageRepository implements UserRepository {
   async load(): Promise<AppState | null> {

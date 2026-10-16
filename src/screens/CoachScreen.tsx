@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { SendIcon } from "../components/Icons";
+import { fmt, fmtGoal } from "../lib/met";
 import { agent } from "../services/agent";
 import { STARTER_SUGGESTIONS } from "../services/mockResponses";
 import { newId, useStore } from "../state/store";
@@ -14,7 +15,7 @@ export function CoachScreen() {
   const greeting: ChatMessage = {
     id: "greeting",
     role: "agent",
-    text: `Hi ${state.profile.name}. You're at ${ctx.week.doneMinutes} of 150 guideline minutes this week. Ask me what to do next, or whether something counts.`,
+    text: `Hi ${state.profile.name}. You're at ${fmt(ctx.week.done)} of ${fmtGoal(ctx.goal)} MET-hours this week. Ask me anything: what counts, what a MET is, or how medals work.`,
     suggestions: STARTER_SUGGESTIONS,
   };
   const messages = [greeting, ...state.chat];
@@ -55,7 +56,7 @@ export function CoachScreen() {
         <div className="screen-head">
           <div>
             <h1>Coach</h1>
-            <p className="sub">Answers use your Fitbit data and the activities you enjoy</p>
+            <p className="sub">The same coach as Today, for questions in your own words</p>
           </div>
         </div>
         <p className="disclaimer">Demo responses are pre-written. Not medical advice.</p>
@@ -78,7 +79,7 @@ export function CoachScreen() {
       </div>
       <form className="composer" onSubmit={(e) => { e.preventDefault(); send(input); }}>
         <label className="sr-only" htmlFor="chat-input">Message the coach</label>
-        <input id="chat-input" placeholder="Ask about your week" value={input} onChange={(e) => setInput(e.target.value)} autoComplete="off" />
+        <input id="chat-input" placeholder="Ask about your week or an activity" value={input} onChange={(e) => setInput(e.target.value)} autoComplete="off" />
         <button type="submit" aria-label="Send" disabled={!input.trim() || busy}><SendIcon /></button>
       </form>
     </>

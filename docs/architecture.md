@@ -8,12 +8,20 @@ Screens ──► useStore() ──► AppState (React reducer)
    │                          └─► repository (localStorage)        services/store.ts
    │
    ├─► ctx = buildAgentContext(state)                             services/context.ts
-   │      week summary, time left, plan options (rule-based)      lib/guideline.ts, lib/planner.ts
+   │      MET-hours, daily targets, medals, goal offer            lib/met.ts, plan.ts, medals.ts, goal.ts
+   │
+   ├─► Today flow (check-in → pick → decline/questions → sync)    state/today.ts
+   │      suggest() ranks options, verifySuggestion() checks them lib/suggest.ts, lib/verify.ts
    │
    └─► agent.reply(history, ctx) ──► MockAgent                     services/agent.ts
                                        picks a scripted reply      services/mockResponses.ts
                                        and streams it word by word
 ```
+
+The workflow doc's backend is **two agents and a calculator**: the coach (user-facing) drafts a plan
+and message, the calculator (plain code in `src/lib`) fills in every number, and a verifier agent
+checks the draft against the guardrails before the user sees it. In this demo the coach is
+scripted and the verifier's checks run in code (`verifySuggestion`); the demo panel shows them.
 
 Key idea: **the LLM explains, the code calculates.** Guideline minutes and plan options are computed
 deterministically from Fitbit data and MET values. The agent's job is to talk about them in a
@@ -35,9 +43,9 @@ correct and testable no matter which model we use.
    button renders the exact prompt for the current state.
 4. Keep `MockAgent` around for offline demos and tests (e.g. pick it with an env flag).
 
-Ideas once a model is connected: generate the per-option explanations (`explainOption`), parse
-free-text setup ("About 2 hours, and I like cycling and dancing") into a profile, and let the
-model call the planner as a tool instead of receiving all options up front.
+Ideas once a model is connected: let the coach call `suggest()` as a tool and write the card text,
+run `VERIFIER_BRIEF` (prompts.ts) as the second agent, and parse free-text "Other" decline notes
+into structured preferences.
 
 ## Step 2: Store user data in a database
 
@@ -47,10 +55,14 @@ Implement `UserRepository` in `src/services/store.ts` against your backend and s
 | Table | Columns |
 |---|---|
 | `users` | id, name, created_at |
-| `profiles` | user_id, weekly_time_min, has_health_condition, fitbit_connected, updated_at |
-| `enjoyed_activities` | user_id, family_id, rank |
-| `sessions` | id, user_id, date, variant_id, compendium_code, met, duration_min, avg_hr, source (`fitbit` / `manual`) |
-| `weekly_plans` | id, user_id, week_start, kind, chosen_at |
+| `profiles` | user_id, usual_time, has_health_condition, fitbit_connected, clinician_view_enabled, updated_at |
+| `enjoyed_activities` | user_id, family_id, rank, access (`have` / `sometimes` / `no`) |
+| `goals` | user_id, week_start, met_hours, set_by (`default` / `recap` / `clinician`) |
+| `week_plans` | user_id, week_start, mon … sun (`off` / `short` / `medium` / `long`) |
+| `sessions` | id, user_id, date, variant_id, compendium_code, met, duration_min, avg_hr, source, confirmed, band |
+| `declines` | id, user_id, date, family_id, reason, note |
+| `clinician_settings` | user_id, goal, no_vigorous, max_session_min, note, updated_at |
+| `check_ins` | user_id, date, minutes, place, energy, mood |
 | `chat_messages` | id, user_id, role, text, created_at |
 
 `buildAgentContext` then reads from these rows instead of in-memory state, and `serializeContext`
@@ -67,7 +79,7 @@ turns them into the JSON block injected into the prompt. Move to per-week `date`
 
 ## Guardrails to keep
 
-- Only suggest activities from the user's enjoyed list (planner enforces this; the prompt repeats it).
-- With a reported health condition: moderate only, and suggest checking with a clinician before vigorous activity.
+- Only suggest activities from the user's enjoyed list and marked accessible (ranker enforces this; the verifier re-checks it; desk moves are the one exception).
+- With a health flag or clinician limit: nothing at 6 MET or more, and suggest checking with a clinician first.
 - Symptoms like chest pain or dizziness: stop and contact a clinician (see the `safety` script).
-- Never let the model invent minutes; it must use the provided numbers.
+- Never let the model invent numbers; MET-hours come from the calculator and the verifier compares them.

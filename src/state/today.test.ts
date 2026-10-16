@@ -87,4 +87,50 @@ describe("today flow", () => {
       expect(s.today.step).toBe("wrap");
     }
   });
+
+  it("accepts typed answers at every check-in step", () => {
+    let s = onboarded();
+    s = T.freeText(s, "about 25 minutes");
+    expect(s.today.checkIn.minutes).toBe(25);
+    s = T.freeText(s, "at the gym");
+    expect(s.today.checkIn.place).toBe("other");
+    s = T.freeText(s, "kind of tired");
+    expect(s.today.checkIn.energy).toBe("low");
+    s = T.freeText(s, "pickleball");
+    expect(s.today.step).toBe("suggested");
+    expect(s.notes.at(-1)?.text).toContain("pickleball");
+  });
+
+  it("a typed mood that names a known activity adds it to the list", () => {
+    let s = onboarded();
+    s = T.freeText(T.freeText(T.freeText(s, "30"), "home"), "ok");
+    s = T.freeText(s, "swimming");
+    expect(s.profile.enjoyed).toContain("swimming");
+  });
+
+  it("a typed decline reason that mentions pain takes the safety path", () => {
+    let s = checkIn(onboarded());
+    s = T.decline(s);
+    s = T.freeText(s, "my back is killing me");
+    expect(s.profile.hasHealthCondition).toBe(true);
+    expect(s.declines.at(-1)).toMatchObject({ reason: "hurts", note: "my back is killing me" });
+  });
+
+  it("a typed question on the suggestion card gets an answer and keeps the card", () => {
+    let s = checkIn(onboarded());
+    s = T.freeText(s, "what's a MET?");
+    expect(s.today.step).toBe("suggested");
+    expect(s.today.entries.at(-1)?.text).toMatch(/MET measures/);
+  });
+
+  it("a typed activity that isn't in the list is kept by name and counted conservatively", () => {
+    let s = checkIn(onboarded());
+    s = T.sync(s);
+    const pending = s.today.pendingSessionId!;
+    s = T.freeText(s, "pickleball");
+    const sess = s.sessions.find((x) => x.id === pending)!;
+    expect(sess.customName).toBe("Pickleball");
+    expect(sess.confirmed).toBe(true);
+    expect(["other-fairly", "other-very"]).toContain(sess.variantId);
+  });
 });

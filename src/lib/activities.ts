@@ -208,6 +208,22 @@ export const ACTIVITIES: ActivityFamily[] = [
     ],
   },
   {
+    // Anything typed that isn't in this list. Counted at the bottom of the
+    // effort band Fitbit measured (3.0 or 6.0 MET) until the team maps it to
+    // a Compendium code; the user's own name for it is kept on the session.
+    id: "other",
+    name: "Other activity",
+    noun: "activity",
+    color: "#8A7FA8",
+    kind: "cardio",
+    setting: "indoor",
+    fallbackOnly: true,
+    variants: [
+      { id: "other-fairly", label: "Moderate effort", code: "none", met: 3.0, description: "Not in the activity list yet; counted at the moderate threshold", estimated: true },
+      { id: "other-very", label: "Vigorous effort", code: "none", met: 6.0, description: "Not in the activity list yet; counted at the vigorous threshold", estimated: true },
+    ],
+  },
+  {
     // Offered only when the user has 0 minutes (e.g. at the office). Mostly
     // light activity: it earns a bronze medal; whether it should count toward
     // the goal is an open clinical question (see the workflow doc).

@@ -9,7 +9,7 @@ import { getFamily, settingOf, type ActivityFamily, type ActivityKind, type Acti
 import { creditFor, metHours, VIGOROUS_MET } from "./met";
 
 export type Access = "have" | "sometimes" | "no";
-export type Place = "home" | "office" | "outside" | "traveling";
+export type Place = "home" | "office" | "outside" | "traveling" | "other";
 export type Energy = "challenge" | "normal" | "low";
 
 export type DeclineReason = "no-time" | "tired" | "not-mood" | "recent" | "no-access" | "weather" | "hurts" | "other";

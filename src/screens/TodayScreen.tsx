@@ -3,9 +3,9 @@
  * Past turns read as a conversation; the live question or card sits at the
  * bottom, so there's always exactly one decision in front of the user.
  */
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import { GoalStrip } from "../components/GoalStrip";
-import { SettingsIcon, SendIcon } from "../components/Icons";
+import { SettingsIcon } from "../components/Icons";
 import { MedalCoin, WeekCoins } from "../components/Medal";
 import { getFamily, getVariant } from "../lib/activities";
 import { countsTowardGoal, fmt, fmtGoal, intensityOf } from "../lib/met";
@@ -13,9 +13,25 @@ import { DECLINE_LABEL, type DeclineReason, type Suggestion } from "../lib/sugge
 import { QUESTIONS, type QuestionId } from "../services/answers";
 import { useStore } from "../state/store";
 import { CONFIRM_CHOICES, ENERGY_OPTIONS, PLACE_OPTIONS, TIME_OPTIONS } from "../state/today";
-import type { Screen } from "../state/types";
+import type { Screen, TodayStep } from "../state/types";
+import { OtherInput } from "../components/OtherInput";
 
-const REASONS: DeclineReason[] = ["no-time", "tired", "not-mood", "recent", "no-access", "weather", "hurts", "other"];
+/** What the Other box says at each step. Every step that asks something gets one. */
+const OTHER_PLACEHOLDER: Partial<Record<TodayStep, string>> = {
+  time: "Other: e.g. 25 min, or an hour",
+  place: "Other: e.g. at the gym",
+  energy: "Other: tell me how you feel",
+  mood: "Other: any activity you have in mind",
+  suggested: "Other: ask or say anything",
+  reason: "Other: e.g. my knee is sore",
+  accepted: "Other: ask or change plans",
+  confirm: "Other: what was it?",
+  "confirm-other": "Other: type the activity",
+  nudge: "Other: type your answer",
+  wrap: "Other: ask the coach anything",
+};
+
+const REASONS: DeclineReason[] = ["no-time", "tired", "not-mood", "recent", "no-access", "weather", "hurts"];
 
 function dateLabel(todayIndex: number): string {
   const now = new Date();
@@ -91,7 +107,6 @@ export function TodayScreen({ go, openPrefs }: { go: (s: Screen) => void; openPr
   const { state, ctx, dispatch } = useStore();
   const t = state.today;
   const end = useRef<HTMLDivElement>(null);
-  const [note, setNote] = useState("");
 
   useEffect(() => {
     end.current?.scrollIntoView({ behavior: "smooth", block: "end" });
@@ -199,14 +214,6 @@ export function TodayScreen({ go, openPrefs }: { go: (s: Screen) => void; openPr
             {REASONS.map((r) => <button key={r} className={`chip${r === "hurts" ? " chip-care" : ""}`} onClick={() => dispatch({ type: "reason", reason: r })}>{DECLINE_LABEL[r]}</button>)}
           </Bubbles>
         )}
-        {t.step === "reason-other" && (
-          <form className="inline-composer" onSubmit={(e) => { e.preventDefault(); if (note.trim()) { dispatch({ type: "otherNote", text: note.trim() }); setNote(""); } }}>
-            <label className="sr-only" htmlFor="other-note">Tell the coach more</label>
-            <input id="other-note" placeholder="e.g. My knee is sore after soccer" value={note} onChange={(e) => setNote(e.target.value)} autoComplete="off" />
-            <button type="submit" aria-label="Send" disabled={!note.trim()}><SendIcon /></button>
-          </form>
-        )}
-
         {t.step === "accepted" && t.accepted && (
           <div className="live">
             <div className="plan-ticket" style={{ ["--accent" as string]: getFamily(t.accepted.familyId).color }}>
@@ -257,6 +264,9 @@ export function TodayScreen({ go, openPrefs }: { go: (s: Screen) => void; openPr
             </Bubbles>
             <Questions ids={["medals", "goal"]} />
           </div>
+        )}
+        {OTHER_PLACEHOLDER[t.step] && (t.step !== "confirm" || pending) && (
+          <OtherInput key={t.step} placeholder={OTHER_PLACEHOLDER[t.step]} label="Type your own answer" onSubmit={(text) => dispatch({ type: "freeText", text })} />
         )}
         <div ref={end} />
       </div>

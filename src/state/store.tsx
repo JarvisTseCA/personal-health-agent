@@ -23,13 +23,14 @@ export const DEFAULT_PROFILE: UserProfile = {
 
 export const DEFAULT_CLINICIAN: ClinicianSettings = { goal: null, noVigorous: false, maxSessionMin: null, note: "" };
 
-function personaState(personaId: string): Pick<AppState, "personaId" | "sessions" | "history" | "declines" | "plan" | "goal"> {
+function personaState(personaId: string): Pick<AppState, "personaId" | "sessions" | "history" | "declines" | "notes" | "plan" | "goal"> {
   const p = PERSONAS.find((x) => x.id === personaId) ?? PERSONAS[0];
   return {
     personaId: p.id,
     sessions: p.thisWeek,
     history: p.history,
     declines: p.declines.map((d, i) => ({ id: `pd-${i}`, ...d })),
+    notes: [],
     plan: p.plan,
     goal: p.goal,
   };
@@ -81,11 +82,13 @@ export type Action =
   | { type: "accept"; suggestion: Suggestion }
   | { type: "decline" }
   | { type: "reason"; reason: DeclineReason }
-  | { type: "otherNote"; text: string }
+  | { type: "freeText"; text: string }
+  | { type: "addNote"; text: string; where: string }
+  | { type: "forgetNote"; id: string }
   | { type: "wantMore" }
   | { type: "ask"; q: QuestionId }
   | { type: "sync" }
-  | { type: "confirm"; answer: "yes" | "not-exercise" | "other" | { familyId: string } }
+  | { type: "confirm"; answer: Today.ConfirmAnswer }
   | { type: "keepGoing"; yes: boolean }
   | { type: "restartDay" }
   | { type: "acceptGoal"; to: number }
@@ -152,7 +155,9 @@ function reducer(state: AppState, action: Action): AppState {
     case "accept": return Today.accept(state, action.suggestion);
     case "decline": return Today.decline(state);
     case "reason": return Today.chooseReason(state, action.reason);
-    case "otherNote": return Today.otherNote(state, action.text);
+    case "freeText": return Today.freeText(state, action.text);
+    case "addNote": return { ...state, notes: [...state.notes, { id: Today.newId("n"), text: action.text, where: action.where, day: state.todayIndex }] };
+    case "forgetNote": return { ...state, notes: state.notes.filter((n) => n.id !== action.id) };
     case "wantMore": return Today.wantMore(state);
     case "ask": return Today.ask(state, action.q);
     case "sync": return Today.sync(state);

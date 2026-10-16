@@ -1,3 +1,5 @@
+import { useState } from "react";
+import { OtherInput } from "../components/OtherInput";
 import { Sheet } from "../components/Sheet";
 import { WeekCoins } from "../components/Medal";
 import { getFamily } from "../lib/activities";
@@ -9,6 +11,20 @@ export function RecapSheet({ onClose, onPlan }: { onClose: () => void; onPlan: (
   const { state, ctx, dispatch } = useStore();
   const last = ctx.past.at(-1);
   const offer = ctx.offer;
+  const [hint, setHint] = useState<string | null>(null);
+
+  /** A typed goal: a number sets it; "keep" keeps it; anything else is noted. */
+  const typedGoal = (text: string) => {
+    const n = text.match(/(\d+(?:\.\d+)?)/);
+    if (n) {
+      const to = Math.min(30, Math.max(1, parseFloat(n[1])));
+      dispatch({ type: "acceptGoal", to });
+      return;
+    }
+    if (/\b(keep|same|stay|no change)\b/i.test(text)) { dispatch({ type: "keepGoal" }); return; }
+    dispatch({ type: "addNote", text, where: "Recap: goal" });
+    setHint("Noted. Type a number of MET-hours to set your own goal, like 6.");
+  };
 
   if (!last) {
     return (
@@ -67,6 +83,7 @@ export function RecapSheet({ onClose, onPlan }: { onClose: () => void; onPlan: (
               <button className="btn btn-primary" onClick={() => dispatch({ type: "acceptGoal", to: offer.to })}>Change to {fmtGoal(offer.to)}</button>
               <button className="btn btn-quiet" onClick={() => dispatch({ type: "keepGoal" })}>Keep {fmtGoal(offer.from)}</button>
             </div>
+            <OtherInput placeholder="Other: e.g. make it 6" onSubmit={typedGoal} hint={hint} />
           </>
         )}
       </div>

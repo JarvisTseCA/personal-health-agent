@@ -48,6 +48,12 @@ To try it on your phone, connect to the same Wi-Fi and open the "Network" URL Vi
 | Preferences (sheet) | Ranked activities with access, what the coach remembers (declines), health flag, clinician view switch |
 | Clinician view | Opened on the user's phone at a visit: weekly chart, activity mix, skip reasons, flags; sets goal, no-vigorous limit, max session, a note. Hand-back shows the user what changed |
 
+**Typing is always an option.** Every question that offers buttons or bubbles also has an *Other* text box
+below them. Typed answers are read into the same choices (`src/lib/freeText.ts`): "25 min", "at the gym",
+"my knee is sore" (takes the safety path), "pickleball". Anything the app can't place is kept as a note the
+coach remembers (shown in Preferences), and an activity outside the list keeps the user's name for it and counts
+at the bottom of the effort band Fitbit measured.
+
 **Demo controls** (right side on desktop): switch scenario (*Alex*, *On a roll* → goal raise, *Tough month*
 → goal cut, *Fresh start*), pretend it's a different day, restart today's check-in, simulate a Fitbit
 sync, open the recap or clinician view, reset, and show the backend: the **verifier's checks** on the

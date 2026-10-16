@@ -1,109 +1,232 @@
-import { useState } from "react";
-import { GoalStrip } from "../components/GoalStrip";
+/**
+ * Onboarding, observe-first (workflow doc):
+ *   Day 1: connect Fitbit, one health question.
+ *   Days 1–7: observe a week; no suggestions yet, but medals already count.
+ *   Day 8: confirm what the coach detected, then likes, access, usual time,
+ *          and the first weekly plan.
+ * "Don't want to wait?" skips the observing week and asks the day-8 questions now.
+ */
+import { useMemo, useState } from "react";
 import { WatchIcon } from "../components/Icons";
-import { ACTIVITIES, searchFamilies } from "../lib/activities";
-import { formatDuration, withCredit } from "../lib/guideline";
+import { MedalCoin } from "../components/Medal";
+import { PERSONAS } from "../data/mockFitbit";
+import { getFamily, getVariant, PICKABLE, searchFamilies } from "../lib/activities";
+import { DAY_NAMES_LONG } from "../lib/met";
+import { SLOT_HINT, SLOT_LABEL, SLOTS, type WeekPlan } from "../lib/plan";
+import type { Access } from "../lib/suggest";
 import { DEFAULT_PROFILE, useStore } from "../state/store";
-import type { UserProfile } from "../state/types";
+import type { UsualTime } from "../state/types";
 
-const STEPS = 5;
+type Step = "welcome" | "fitbit" | "health" | "path" | "observing" | "confirm" | "enjoy" | "access" | "time" | "plan";
+const ORDER: Step[] = ["fitbit", "health", "path", "observing", "confirm", "enjoy", "access", "time", "plan"];
 
-const SAMPLE = [
-  withCredit({ id: "a", variantId: "cycling-commute", durationMin: 25, dayIndex: 0, source: "fitbit" }),
-  withCredit({ id: "b", variantId: "dancing-salsa", durationMin: 40, dayIndex: 2, source: "fitbit" }),
-  withCredit({ id: "c", variantId: "walking-brisk", durationMin: 30, dayIndex: 4, source: "fitbit" }),
+const TIME: Array<[UsualTime, string, WeekPlan]> = [
+  ["under1", "Under 1 hr", ["short", "off", "short", "off", "short", "off", "short"]],
+  ["1to2", "1 to 2 hrs", ["short", "off", "medium", "off", "medium", "long", "off"]],
+  ["2to3", "2 to 3 hrs", ["medium", "medium", "off", "medium", "medium", "long", "off"]],
+  ["3plus", "3+ hrs", ["medium", "long", "medium", "off", "medium", "long", "medium"]],
 ];
+
+const ACCESS: Array<[Access, string]> = [["have", "Have what I need"], ["sometimes", "Sometimes"], ["no", "Not right now"]];
 
 export function Onboarding({ onDone }: { onDone: () => void }) {
   const { state, dispatch } = useStore();
-  const [step, setStep] = useState(0);
-  const [draft, setDraft] = useState<UserProfile>({ ...DEFAULT_PROFILE, ...state.profile });
-  const [query, setQuery] = useState("");
-  const [health, setHealth] = useState<boolean | null>(null);
+  const [step, setStep] = useState<Step>("welcome");
+  const [observed, setObserved] = useState(false);
+  const [health, setHealth] = useState<null | "none" | "yes" | "skip">(null);
+  const [connected, setConnected] = useState(false);
   const [connecting, setConnecting] = useState(false);
+  const [enjoyed, setEnjoyed] = useState<string[]>([]);
+  const [access, setAccess] = useState<Record<string, Access>>({});
+  const [usual, setUsual] = useState<UsualTime | null>(null);
+  const [plan, setPlan] = useState<WeekPlan>(TIME[1][2]);
+  const [query, setQuery] = useState("");
+  const [bout, setBout] = useState(0);
+  const [fixing, setFixing] = useState(false);
 
-  const next = () => setStep((s) => Math.min(STEPS - 1, s + 1));
-  const back = () => setStep((s) => Math.max(0, s - 1));
+  // The "observed" week: the persona's most recent week, or Alex's for new users.
+  const bouts = useMemo(() => {
+    const p = PERSONAS.find((x) => x.id === state.personaId);
+    const wk = (p?.history.length ? p : PERSONAS[0]).history.at(-1)!.sessions.filter((s) => !getVariant(s.variantId).family.fallbackOnly);
+    const seen = new Set<string>();
+    return wk.filter((s) => {
+      const f = getVariant(s.variantId).family.id;
+      if (seen.has(f)) return false;
+      seen.add(f);
+      return true;
+    }).slice(0, 3);
+  }, [state.personaId]);
+
+  const go = (s: Step) => setStep(s);
+  const idx = ORDER.indexOf(step as Step);
+
+  const confirmBout = (familyId: string | null) => {
+    if (familyId && !enjoyed.includes(familyId)) {
+      setEnjoyed((e) => [...e, familyId]);
+      setAccess((a) => ({ ...a, [familyId]: "have" }));
+    }
+    setFixing(false);
+    if (bout + 1 >= bouts.length) go("enjoy");
+    else setBout((b) => b + 1);
+  };
+
+  const toggle = (id: string) => {
+    setEnjoyed((e) => (e.includes(id) ? e.filter((x) => x !== id) : [...e, id]));
+    setAccess((a) => ({ ...a, [id]: a[id] ?? "have" }));
+  };
+
   const finish = () => {
-    dispatch({ type: "completeOnboarding", profile: { ...draft, hasHealthCondition: !!health } });
+    dispatch({
+      type: "completeOnboarding",
+      profile: { ...DEFAULT_PROFILE, ...state.profile, enjoyed, access, usualTime: usual ?? "1to2", hasHealthCondition: health === "yes" || health === "skip", fitbitConnected: connected },
+      plan,
+    });
     onDone();
   };
 
-  const toggle = (id: string) =>
-    setDraft((d) => ({
-      ...d,
-      enjoyedFamilyIds: d.enjoyedFamilyIds.includes(id) ? d.enjoyedFamilyIds.filter((x) => x !== id) : [...d.enjoyedFamilyIds, id],
-    }));
-
-  const connect = () => {
-    setConnecting(true);
-    setTimeout(() => {
-      setConnecting(false);
-      setDraft((d) => ({ ...d, fitbitConnected: true }));
-    }, 900);
-  };
-
-  const results = query ? searchFamilies(query) : ACTIVITIES;
+  const results = query ? searchFamilies(query) : PICKABLE;
+  const current = bouts[bout];
 
   return (
     <div className="onb">
-      {step > 0 && (
-        <div className="onb-progress" aria-label={`Step ${step} of ${STEPS - 1}`}>
-          {Array.from({ length: STEPS - 1 }, (_, i) => (
-            <span key={i} className={i < step ? "on" : ""} />
-          ))}
+      {step !== "welcome" && (
+        <div className="onb-progress" aria-label={`Step ${idx + 1} of ${ORDER.length}`}>
+          {ORDER.map((s, i) => <span key={s} className={i <= idx ? "on" : ""} />)}
         </div>
       )}
 
-      {step === 0 && (
+      {step === "welcome" && (
         <>
           <div className="grow">
-            <div className="welcome-art">
-              <GoalStrip done={SAMPLE} showScale={false} />
+            <div className="welcome-coins" aria-hidden>
+              {(["bronze", "silver", "gold", "gold", "silver", "bronze", "gold"] as const).map((m, i) => <MedalCoin key={i} medal={m} size={40} />)}
             </div>
-            <h1 style={{ fontSize: 40, lineHeight: 1.05 }}>Make your workouts count</h1>
+            <h1 style={{ fontSize: 40, lineHeight: 1.05 }}>Stop deciding. Start moving.</h1>
             <p className="lead" style={{ marginTop: 14 }}>
-              Tell me what you enjoy and how much time you have. I'll turn it into a week that meets the
-              physical activity guideline: 150 minutes of moderate activity, or 75 vigorous.
+              Each day I'll hand you one workout that fits your time and the things you enjoy, and count it toward the
+              activity guideline. You just tap.
             </p>
           </div>
           <div className="actions">
-            <button className="btn btn-primary btn-block" onClick={next}>Get started</button>
+            <button className="btn btn-primary btn-block" onClick={() => go("fitbit")}>Get started</button>
           </div>
         </>
       )}
 
-      {step === 1 && (
+      {step === "fitbit" && (
         <>
           <div className="grow">
-            <h1>How much free time do you have this week?</h1>
-            <p className="lead">A rough guess is fine. Short blocks of 15 or 20 minutes count.</p>
-            <div className="time-display" aria-live="polite">{formatDuration(draft.weeklyTimeMin)}</div>
-            <p className="muted small" style={{ marginBottom: 20 }}>this week</p>
-            <label className="sr-only" htmlFor="time">Free time this week in minutes</label>
-            <input
-              id="time" type="range" min={30} max={300} step={15} value={draft.weeklyTimeMin}
-              onChange={(e) => setDraft({ ...draft, weeklyTimeMin: Number(e.target.value) })}
-            />
-            <div className="range-scale"><span>30 min</span><span>5 hr</span></div>
+            <h1>Connect your Fitbit</h1>
+            <p className="lead">I read your workouts to see how much each one counts. In this demo the data is simulated.</p>
+            <div className="device">
+              <div className="device-icon"><WatchIcon /></div>
+              <div style={{ flex: 1 }}>
+                <b>Fitbit</b>
+                <p className="small muted">{connected ? "Connected" : "Not connected"}</p>
+              </div>
+              {!connected && (
+                <button className="btn btn-quiet" style={{ minHeight: 40 }} disabled={connecting}
+                  onClick={() => { setConnecting(true); setTimeout(() => { setConnecting(false); setConnected(true); }, 800); }}>
+                  {connecting ? "Connecting…" : "Connect"}
+                </button>
+              )}
+            </div>
           </div>
           <div className="actions">
-            <button className="btn btn-primary btn-block" onClick={next}>Continue</button>
-            <button className="btn btn-ghost" onClick={back}>Back</button>
+            <button className="btn btn-primary btn-block" onClick={() => go("health")} disabled={!connected}>Continue</button>
+            <button className="btn btn-ghost" onClick={() => go("welcome")}>Back</button>
           </div>
         </>
       )}
 
-      {step === 2 && (
+      {step === "health" && (
         <>
           <div className="grow">
-            <h1>What do you enjoy doing?</h1>
-            <p className="lead">Pick two or three. I'll only suggest these, and your first pick is your favorite.</p>
+            <h1>Anything we should know?</h1>
+            <p className="lead">For example heart disease, high blood pressure, diabetes or pregnancy. If so, I'll skip vigorous suggestions and suggest checking with a clinician first.</p>
+            <div className="choice">
+              <button aria-pressed={health === "none"} onClick={() => setHealth("none")}><b>No health conditions</b></button>
+              <button aria-pressed={health === "yes"} onClick={() => setHealth("yes")}><b>I have a condition</b><span>Moderate activity only for now</span></button>
+              <button aria-pressed={health === "skip"} onClick={() => setHealth("skip")}><b>Prefer not to say</b><span>I'll play it safe with moderate activity</span></button>
+            </div>
+          </div>
+          <div className="actions">
+            <button className="btn btn-primary btn-block" onClick={() => go("path")} disabled={!health}>Continue</button>
+            <button className="btn btn-ghost" onClick={() => go("fitbit")}>Back</button>
+          </div>
+        </>
+      )}
+
+      {step === "path" && (
+        <>
+          <div className="grow">
+            <h1>First, I'll watch a week</h1>
+            <p className="lead">Wear your Fitbit as usual for 7 days. I won't suggest anything yet. On day 8 I'll show you what I noticed, and we'll build your list from what you already do.</p>
+            <p className="small muted">Your progress and medals count from today.</p>
+          </div>
+          <div className="actions">
+            <button className="btn btn-primary btn-block" onClick={() => { setObserved(true); go("observing"); }}>Start my week</button>
+            <button className="btn btn-ghost" onClick={() => { setObserved(false); go("enjoy"); }}>Don't want to wait? Set up now</button>
+          </div>
+        </>
+      )}
+
+      {step === "observing" && (
+        <>
+          <div className="grow">
+            <h1>Watching your week</h1>
+            <p className="lead">Day 1 of 7. Just move the way you normally do.</p>
+            <ol className="observe-days">
+              {DAY_NAMES_LONG.map((d, i) => (
+                <li key={d} className={i === 0 ? "now" : ""}><MedalCoin medal="none" size={30} pending={i === 0} future={i > 0} /><span>{d.slice(0, 3)}</span></li>
+              ))}
+            </ol>
+          </div>
+          <div className="actions">
+            <button className="btn btn-primary btn-block" onClick={() => go("confirm")}>Skip ahead to day 8 (demo)</button>
+            <button className="btn btn-ghost" onClick={() => go("path")}>Back</button>
+          </div>
+        </>
+      )}
+
+      {step === "confirm" && current && (
+        <>
+          <div className="grow">
+            <h1>Here's what I noticed</h1>
+            <p className="lead">{bout + 1} of {bouts.length}. Confirming helps me count it right.</p>
+            <div className="msg agent" style={{ maxWidth: "100%" }}>
+              {DAY_NAMES_LONG[current.dayIndex]}, {current.durationMin} min at {current.startTime}. Looks like {getVariant(current.variantId).family.noun}. Right?
+            </div>
+            {!fixing ? (
+              <div className="bubbles" style={{ marginTop: 12 }}>
+                <button className="chip chip-strong" onClick={() => confirmBout(getVariant(current.variantId).family.id)}>Yes</button>
+                <button className="chip" onClick={() => setFixing(true)}>It was something else</button>
+                <button className="chip" onClick={() => confirmBout(null)}>Skip</button>
+              </div>
+            ) : (
+              <div className="chips" style={{ marginTop: 12 }}>
+                {PICKABLE.map((f) => (
+                  <button key={f.id} className="chip" onClick={() => confirmBout(f.id)}><span className="dot" style={{ background: f.color }} />{f.name}</button>
+                ))}
+              </div>
+            )}
+          </div>
+          <div className="actions">
+            <button className="btn btn-ghost" onClick={() => go("observing")}>Back</button>
+          </div>
+        </>
+      )}
+
+      {step === "enjoy" && (
+        <>
+          <div className="grow">
+            <h1>{observed ? "Anything else you enjoy?" : "What do you enjoy doing?"}</h1>
+            <p className="lead">I'll only suggest these. Tap in order of how much you like them; your first is your favorite.</p>
             <label className="sr-only" htmlFor="q">Search activities</label>
-            <input id="q" className="search" placeholder="Search, e.g. salsa or bike" value={query} onChange={(e) => setQuery(e.target.value)} />
+            <input id="q" className="search" placeholder="Search, e.g. salsa or hoops" value={query} onChange={(e) => setQuery(e.target.value)} />
             <div className="chips">
               {results.map((f) => {
-                const order = draft.enjoyedFamilyIds.indexOf(f.id);
+                const order = enjoyed.indexOf(f.id);
                 return (
                   <button key={f.id} className="chip" aria-pressed={order >= 0} onClick={() => toggle(f.id)}>
                     {order >= 0 ? <span className="order">{order + 1}</span> : <span className="dot" style={{ background: f.color }} />}
@@ -111,65 +234,85 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
                   </button>
                 );
               })}
-              {results.length === 0 && <p className="muted small">No match yet. Try a broader word like "dance" or "walk".</p>}
             </div>
           </div>
           <div className="actions">
-            <button className="btn btn-primary btn-block" onClick={next} disabled={draft.enjoyedFamilyIds.length === 0}>
-              {draft.enjoyedFamilyIds.length === 0 ? "Pick at least one" : "Continue"}
-            </button>
-            <button className="btn btn-ghost" onClick={back}>Back</button>
+            <button className="btn btn-primary btn-block" onClick={() => go("access")} disabled={enjoyed.length === 0}>{enjoyed.length ? "Continue" : "Pick at least one"}</button>
+            <button className="btn btn-ghost" onClick={() => go(observed ? "confirm" : "path")}>Back</button>
           </div>
         </>
       )}
 
-      {step === 3 && (
+      {step === "access" && (
         <>
           <div className="grow">
-            <h1>Any health condition that affects exercise?</h1>
-            <p className="lead">
-              For example heart disease, high blood pressure, diabetes, or pregnancy. If so, I'll keep to moderate
-              activity and suggest checking with a clinician before going vigorous.
-            </p>
+            <h1>Which can you actually do this month?</h1>
+            <p className="lead">I won't suggest anything you can't get to.</p>
+            <ul className="access-list">
+              {enjoyed.map((id) => {
+                const f = getFamily(id);
+                return (
+                  <li key={id}>
+                    <b><span className="dot" style={{ background: f.color }} /> {f.name}</b>
+                    {f.needs && <span className="xs muted">{id === "basketball" ? "Is there a court near you?" : `Needs ${f.needs}`}</span>}
+                    <div className="slot-row" role="radiogroup" aria-label={`Access to ${f.name}`}>
+                      {ACCESS.map(([a, label]) => (
+                        <button key={a} role="radio" aria-checked={(access[id] ?? "have") === a} className="slot" onClick={() => setAccess((x) => ({ ...x, [id]: a }))}>{label}</button>
+                      ))}
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+          <div className="actions">
+            <button className="btn btn-primary btn-block" onClick={() => go("time")}>Continue</button>
+            <button className="btn btn-ghost" onClick={() => go("enjoy")}>Back</button>
+          </div>
+        </>
+      )}
+
+      {step === "time" && (
+        <>
+          <div className="grow">
+            <h1>Most weeks, how much time do you have?</h1>
+            <p className="lead">A rough guess is fine. Short blocks count.</p>
             <div className="choice">
-              <button aria-pressed={health === false} onClick={() => setHealth(false)}>
-                <b>No</b><span>Plan with moderate and vigorous activity</span>
-              </button>
-              <button aria-pressed={health === true} onClick={() => setHealth(true)}>
-                <b>Yes, or I'm not sure</b><span>Plan with moderate activity only for now</span>
-              </button>
+              {TIME.map(([id, label, preset]) => (
+                <button key={id} aria-pressed={usual === id} onClick={() => { setUsual(id); setPlan(preset); }}><b>{label}</b></button>
+              ))}
             </div>
           </div>
           <div className="actions">
-            <button className="btn btn-primary btn-block" onClick={next} disabled={health === null}>Continue</button>
-            <button className="btn btn-ghost" onClick={back}>Back</button>
+            <button className="btn btn-primary btn-block" onClick={() => go("plan")} disabled={!usual}>Continue</button>
+            <button className="btn btn-ghost" onClick={() => go("access")}>Back</button>
           </div>
         </>
       )}
 
-      {step === 4 && (
+      {step === "plan" && (
         <>
           <div className="grow">
-            <h1>Connect your Fitbit</h1>
-            <p className="lead">I'll read your workouts to see how much each one counts. In this demo the data is simulated.</p>
-            <div className="device">
-              <div className="device-icon"><WatchIcon /></div>
-              <div style={{ flex: 1 }}>
-                <b>Fitbit</b>
-                <p className="small muted">{draft.fitbitConnected
-                    ? `Connected. ${state.sessions.length} ${state.sessions.length === 1 ? "workout" : "workouts"} found this week.`
-                    : "Not connected"}</p>
-              </div>
-              {!draft.fitbitConnected && (
-                <button className="btn btn-quiet" onClick={connect} disabled={connecting} style={{ minHeight: 40 }}>
-                  {connecting ? "Connecting…" : "Connect"}
-                </button>
-              )}
-            </div>
+            <h1>Plan this week</h1>
+            <p className="lead">Mark the days you can't exercise at all as Off. The weekly goal stays the same; the other days share it.</p>
+            <ul className="plan-grid">
+              {plan.map((slot, i) => (
+                <li key={i}>
+                  <span className="small"><b>{DAY_NAMES_LONG[i].slice(0, 3)}</b></span>
+                  <div className="slot-row" role="radiogroup" aria-label={`${DAY_NAMES_LONG[i]} time`}>
+                    {SLOTS.map((s) => (
+                      <button key={s} role="radio" aria-checked={slot === s} className="slot" title={SLOT_HINT[s]}
+                        onClick={() => setPlan((p) => p.map((x, j) => (j === i ? s : x)))}>{SLOT_LABEL[s]}</button>
+                    ))}
+                  </div>
+                </li>
+              ))}
+            </ul>
+            <p className="xs muted" style={{ marginTop: 8 }}>Short is 10–20 min, Medium about 30, Long 45 or more.</p>
           </div>
           <div className="actions">
-            <button className="btn btn-primary btn-block" onClick={finish}>{draft.fitbitConnected ? "See my week" : "Skip for now"}</button>
-            <button className="btn btn-ghost" onClick={back}>Back</button>
+            <button className="btn btn-primary btn-block" onClick={finish} disabled={plan.every((s) => s === "off")}>Start today</button>
+            <button className="btn btn-ghost" onClick={() => go("time")}>Back</button>
           </div>
         </>
       )}

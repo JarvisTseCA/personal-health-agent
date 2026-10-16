@@ -1,78 +1,176 @@
 import { createContext, useContext, useEffect, useMemo, useReducer, useRef, type ReactNode } from "react";
-import { PERSONAS, SIMULATED_SYNCS } from "../data/mockFitbit";
-import type { Session } from "../lib/guideline";
-import type { PlanKind } from "../lib/planner";
+import { PERSONAS } from "../data/mockFitbit";
+import { fmt, withCredit, type Session } from "../lib/met";
+import type { DaySlot, WeekPlan } from "../lib/plan";
+import type { Access, DeclineReason, Energy, Place, Suggestion } from "../lib/suggest";
+import type { QuestionId } from "../services/answers";
 import { buildAgentContext, type AgentContext } from "../services/context";
 import { repository } from "../services/store";
-import type { AppState, ChatMessage, UserProfile } from "./types";
+import * as Today from "./today";
+import type { AppState, ChatMessage, ClinicianSettings, Overlay, UserProfile } from "./types";
+
+export { newId } from "./today";
 
 export const DEFAULT_PROFILE: UserProfile = {
   name: "Alex",
-  weeklyTimeMin: 120,
-  enjoyedFamilyIds: [],
+  enjoyed: [],
+  access: {},
+  usualTime: "1to2",
   hasHealthCondition: false,
   fitbitConnected: false,
+  clinicianViewEnabled: false,
 };
 
-export function initialState(personaId = "alex"): AppState {
-  const persona = PERSONAS.find((p) => p.id === personaId) ?? PERSONAS[0];
+export const DEFAULT_CLINICIAN: ClinicianSettings = { goal: null, noVigorous: false, maxSessionMin: null, note: "" };
+
+function personaState(personaId: string): Pick<AppState, "personaId" | "sessions" | "history" | "declines" | "plan" | "goal"> {
+  const p = PERSONAS.find((x) => x.id === personaId) ?? PERSONAS[0];
   return {
-    onboarded: false,
-    profile: DEFAULT_PROFILE,
-    sessions: persona.sessions,
-    todayIndex: 2, // Wednesday: a stable "mid-week" for demos
-    chosenPlan: null,
-    chat: [],
-    personaId: persona.id,
-    syncCount: 0,
+    personaId: p.id,
+    sessions: p.thisWeek,
+    history: p.history,
+    declines: p.declines.map((d, i) => ({ id: `pd-${i}`, ...d })),
+    plan: p.plan,
+    goal: p.goal,
   };
 }
 
-type Action =
+export function initialState(personaId = "alex"): AppState {
+  const base: AppState = {
+    version: 2,
+    onboarded: false,
+    profile: DEFAULT_PROFILE,
+    clinician: DEFAULT_CLINICIAN,
+    goalSource: "default",
+    ...personaState(personaId),
+    todayIndex: 2, // Wednesday: a stable mid-week for demos
+    today: { dayKey: "", step: "time", checkIn: {}, entries: [], exclude: [], boost: false, nudged: false },
+    chat: [],
+    syncCount: 0,
+    painReports: 0,
+    overlay: null,
+    toast: null,
+    recapHandled: false,
+  };
+  return Today.startDay(base);
+}
+
+/** The profile a persona would have after onboarding (used by "Skip onboarding"). */
+export function personaProfile(state: AppState): UserProfile {
+  const p = PERSONAS.find((x) => x.id === state.personaId) ?? PERSONAS[0];
+  return { ...state.profile, enjoyed: p.enjoyed, access: p.access, fitbitConnected: true };
+}
+
+export type Action =
   | { type: "hydrate"; state: AppState }
-  | { type: "completeOnboarding"; profile: UserProfile }
+  | { type: "completeOnboarding"; profile: UserProfile; plan: WeekPlan }
   | { type: "updateProfile"; patch: Partial<UserProfile> }
-  | { type: "addSession"; session: Omit<Session, "id"> }
-  | { type: "removeSession"; id: string }
-  | { type: "syncFitbit" }
-  | { type: "choosePlan"; kind: PlanKind | null }
+  | { type: "setAccess"; familyId: string; access: Access }
+  | { type: "toggleEnjoyed"; familyId: string }
+  | { type: "moveEnjoyed"; familyId: string; dir: -1 | 1 }
+  | { type: "forgetDecline"; id: string }
+  | { type: "addSessionManual"; session: Session }
+  | { type: "setSlot"; day: number; slot: DaySlot }
   | { type: "setToday"; index: number }
   | { type: "loadPersona"; personaId: string }
+  | { type: "time"; label: string; minutes: number }
+  | { type: "place"; label: string; place: Place }
+  | { type: "energy"; label: string; energy: Energy }
+  | { type: "mood"; label: string; mood: string }
+  | { type: "showBackups" }
+  | { type: "accept"; suggestion: Suggestion }
+  | { type: "decline" }
+  | { type: "reason"; reason: DeclineReason }
+  | { type: "otherNote"; text: string }
+  | { type: "wantMore" }
+  | { type: "ask"; q: QuestionId }
+  | { type: "sync" }
+  | { type: "confirm"; answer: "yes" | "not-exercise" | "other" | { familyId: string } }
+  | { type: "keepGoing"; yes: boolean }
+  | { type: "restartDay" }
+  | { type: "acceptGoal"; to: number }
+  | { type: "keepGoal" }
+  | { type: "clinician"; patch: Partial<ClinicianSettings> }
+  | { type: "overlay"; overlay: Overlay }
+  | { type: "toast"; text: string | null }
   | { type: "addMessage"; message: ChatMessage }
   | { type: "updateMessage"; id: string; text: string; suggestions?: string[] }
   | { type: "reset" };
-
-let idCounter = 0;
-export const newId = (prefix: string) => `${prefix}-${Date.now().toString(36)}-${(idCounter++).toString(36)}`;
 
 function reducer(state: AppState, action: Action): AppState {
   switch (action.type) {
     case "hydrate":
       return action.state;
     case "completeOnboarding":
-      return { ...state, onboarded: true, profile: action.profile };
+      return Today.startDay({ ...state, onboarded: true, profile: action.profile, plan: action.plan });
     case "updateProfile":
       return { ...state, profile: { ...state.profile, ...action.patch } };
-    case "addSession":
-      return { ...state, sessions: [...state.sessions, { ...action.session, id: newId("s") }] };
-    case "removeSession":
-      return { ...state, sessions: state.sessions.filter((s) => s.id !== action.id) };
-    case "syncFitbit": {
-      const next = SIMULATED_SYNCS[state.syncCount % SIMULATED_SYNCS.length];
+    case "setAccess":
+      return { ...state, profile: { ...state.profile, access: { ...state.profile.access, [action.familyId]: action.access } } };
+    case "toggleEnjoyed": {
+      const e = state.profile.enjoyed;
+      const on = e.includes(action.familyId);
       return {
         ...state,
-        syncCount: state.syncCount + 1,
-        sessions: [...state.sessions, { ...next, id: newId("fb"), dayIndex: state.todayIndex }],
+        profile: {
+          ...state.profile,
+          enjoyed: on ? e.filter((x) => x !== action.familyId) : [...e, action.familyId],
+          access: on ? state.profile.access : { ...state.profile.access, [action.familyId]: state.profile.access[action.familyId] ?? "have" },
+        },
       };
     }
-    case "choosePlan":
-      return { ...state, chosenPlan: action.kind };
-    case "setToday":
-      return { ...state, todayIndex: action.index };
-    case "loadPersona": {
-      const fresh = initialState(action.personaId);
-      return { ...state, sessions: fresh.sessions, personaId: fresh.personaId, syncCount: 0, chosenPlan: null };
+    case "moveEnjoyed": {
+      const e = [...state.profile.enjoyed];
+      const i = e.indexOf(action.familyId);
+      const j = i + action.dir;
+      if (i < 0 || j < 0 || j >= e.length) return state;
+      [e[i], e[j]] = [e[j], e[i]];
+      return { ...state, profile: { ...state.profile, enjoyed: e } };
     }
+    case "addSessionManual": {
+      const credit = withCredit(action.session).credit;
+      return { ...state, sessions: [...state.sessions, action.session], toast: credit > 0 ? `Added: +${fmt(credit)} MET-hours.` : "Added. Light activity earns a medal, not goal credit." };
+    }
+    case "forgetDecline":
+      return { ...state, declines: state.declines.filter((d) => d.id !== action.id) };
+    case "setSlot": {
+      const plan = [...state.plan];
+      plan[action.day] = action.slot;
+      return { ...state, plan };
+    }
+    case "setToday":
+      return Today.startDay({ ...state, todayIndex: action.index });
+    case "loadPersona": {
+      const next = { ...state, ...personaState(action.personaId), syncCount: 0, painReports: 0, clinician: DEFAULT_CLINICIAN, goalSource: "default" as const, recapHandled: false };
+      return Today.startDay(state.onboarded ? { ...next, profile: personaProfile(next) } : next);
+    }
+    case "time": return Today.answerTime(state, action.label, action.minutes);
+    case "place": return Today.answerPlace(state, action.label, action.place);
+    case "energy": return Today.answerEnergy(state, action.label, action.energy);
+    case "mood": return Today.answerMood(state, action.label, action.mood);
+    case "showBackups": return Today.showBackups(state);
+    case "accept": return Today.accept(state, action.suggestion);
+    case "decline": return Today.decline(state);
+    case "reason": return Today.chooseReason(state, action.reason);
+    case "otherNote": return Today.otherNote(state, action.text);
+    case "wantMore": return Today.wantMore(state);
+    case "ask": return Today.ask(state, action.q);
+    case "sync": return Today.sync(state);
+    case "confirm": return Today.confirm(state, action.answer);
+    case "keepGoing": return Today.keepGoing(state, action.yes);
+    case "restartDay":
+      // Demo control: replay today from the check-in, without today's workouts.
+      return Today.startDay({ ...state, sessions: state.sessions.filter((x) => x.dayIndex !== state.todayIndex) });
+    case "acceptGoal":
+      return { ...state, goal: action.to, goalSource: "recap", recapHandled: true };
+    case "keepGoal":
+      return { ...state, recapHandled: true };
+    case "clinician":
+      return { ...state, clinician: { ...state.clinician, ...action.patch } };
+    case "overlay":
+      return { ...state, overlay: action.overlay };
+    case "toast":
+      return { ...state, toast: action.text };
     case "addMessage":
       return { ...state, chat: [...state.chat, action.message] };
     case "updateMessage":
@@ -99,7 +197,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     repository.load().then((saved) => {
-      if (saved) dispatch({ type: "hydrate", state: { ...initialState(), ...saved } });
+      // Older saves (version 1, guideline minutes) don't fit the new model; start fresh.
+      if (saved && (saved as AppState).version === 2) dispatch({ type: "hydrate", state: { ...initialState(), ...saved, overlay: null, toast: null } });
       hydrated.current = true;
     });
   }, []);

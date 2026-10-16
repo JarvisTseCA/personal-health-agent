@@ -1,16 +1,39 @@
-import type { Session } from "../lib/guideline";
-import type { PlanKind } from "../lib/planner";
+import type { WeekRecord } from "../data/mockFitbit";
+import type { Session } from "../lib/met";
+import type { Medal } from "../lib/medals";
+import type { WeekPlan } from "../lib/plan";
+import type { Access, Constraint, DeclineReason, Energy, Place, Suggestion } from "../lib/suggest";
+
+export type UsualTime = "under1" | "1to2" | "2to3" | "3plus";
 
 /** Everything we know about the user. Later this lives in the database. */
 export interface UserProfile {
   name: string;
-  /** Minutes the user said they have free this week */
-  weeklyTimeMin: number;
-  /** Activity family ids, in the order the user picked them (first = favorite) */
-  enjoyedFamilyIds: string[];
-  /** User reported a health condition → suggest checking with a clinician before vigorous activity */
+  /** Activity family ids the user enjoys, favorite first */
+  enjoyed: string[];
+  access: Record<string, Access>;
+  usualTime: UsualTime;
+  /** Set at onboarding or by a "something hurts" decline: no vigorous suggestions */
   hasHealthCondition: boolean;
   fitbitConnected: boolean;
+  clinicianViewEnabled: boolean;
+}
+
+/** Set by a clinician in the clinician view, during a visit. Overrides the defaults. */
+export interface ClinicianSettings {
+  goal: number | null;
+  noVigorous: boolean;
+  maxSessionMin: number | null;
+  note: string;
+}
+
+/** One "not today" the coach remembers. `day` is relative to this week's Monday. */
+export interface DeclineRecord {
+  id: string;
+  familyId: string;
+  reason: DeclineReason;
+  day: number;
+  note?: string;
 }
 
 export interface ChatMessage {
@@ -21,16 +44,64 @@ export interface ChatMessage {
   suggestions?: string[];
 }
 
-export type Screen = "onboarding" | "week" | "plan" | "coach" | "showcase";
+export interface CheckIn {
+  minutes: number;
+  place: Place;
+  energy: Energy;
+  mood: string;
+}
+
+export type TodayStep =
+  | "time" | "place" | "energy" | "mood"
+  | "suggested" | "reason" | "reason-other"
+  | "accepted" | "confirm" | "confirm-other" | "nudge" | "wrap";
+
+export interface TodayEntry {
+  id: string;
+  role: "agent" | "user" | "medal";
+  text: string;
+  medal?: Medal;
+}
+
+export interface TodayState {
+  /** Which demo day this flow belongs to; a new day starts a new check-in */
+  dayKey: string;
+  step: TodayStep;
+  checkIn: Partial<CheckIn>;
+  entries: TodayEntry[];
+  exclude: string[];
+  constraint?: Constraint;
+  boost: boolean;
+  current?: { lead: Suggestion; backups: Suggestion[]; desk: boolean; showBackups: boolean };
+  accepted?: Suggestion;
+  pendingSessionId?: string;
+  nudged: boolean;
+}
+
+export type Screen = "onboarding" | "today" | "week" | "medals" | "coach" | "showcase";
+export type Overlay = null | "prefs" | "recap" | "clinician";
 
 export interface AppState {
+  version: 2;
   onboarded: boolean;
   profile: UserProfile;
+  clinician: ClinicianSettings;
+  /** The user's own weekly goal in MET-hours (a clinician goal overrides it) */
+  goal: number;
+  goalSource: "default" | "recap";
+  plan: WeekPlan;
   sessions: Session[];
+  history: WeekRecord[];
+  declines: DeclineRecord[];
   /** Today, as an index into the demo week (0 = Monday) */
   todayIndex: number;
-  chosenPlan: PlanKind | null;
+  today: TodayState;
   chat: ChatMessage[];
   personaId: string;
   syncCount: number;
+  /** "Something hurts" reports, for the clinician's flags */
+  painReports: number;
+  overlay: Overlay;
+  toast: string | null;
+  recapHandled: boolean;
 }

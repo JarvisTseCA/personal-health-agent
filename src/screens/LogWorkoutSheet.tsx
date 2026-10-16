@@ -1,13 +1,13 @@
 import { useState } from "react";
 import { Sheet } from "../components/Sheet";
-import { ACTIVITIES, getFamily } from "../lib/activities";
-import { DAY_NAMES, guidelineMinutes, intensityOf } from "../lib/guideline";
-import { useStore } from "../state/store";
+import { getFamily, PICKABLE } from "../lib/activities";
+import { creditFor, DAY_NAMES, fmt, intensityOf } from "../lib/met";
+import { newId, useStore } from "../state/store";
 
 export function LogWorkoutSheet({ onClose }: { onClose: () => void }) {
   const { state, dispatch } = useStore();
-  const enjoyed = state.profile.enjoyedFamilyIds;
-  const ordered = [...enjoyed.map(getFamily), ...ACTIVITIES.filter((f) => !enjoyed.includes(f.id))];
+  const enjoyed = state.profile.enjoyed;
+  const ordered = [...enjoyed.map(getFamily), ...PICKABLE.filter((f) => !enjoyed.includes(f.id))];
   const [familyId, setFamilyId] = useState(ordered[0]?.id ?? "cycling");
   const family = getFamily(familyId);
   const [variantId, setVariantId] = useState(family.variants[0].id);
@@ -15,7 +15,7 @@ export function LogWorkoutSheet({ onClose }: { onClose: () => void }) {
   const [duration, setDuration] = useState(30);
   const [day, setDay] = useState(state.todayIndex);
 
-  const credit = guidelineMinutes(variant.met, duration);
+  const credit = creditFor(variant.met, duration);
   const intensity = intensityOf(variant.met);
 
   const pickFamily = (id: string) => {
@@ -24,7 +24,7 @@ export function LogWorkoutSheet({ onClose }: { onClose: () => void }) {
   };
 
   const save = () => {
-    dispatch({ type: "addSession", session: { variantId: variant.id, durationMin: duration, dayIndex: day, source: "manual" } });
+    dispatch({ type: "addSessionManual", session: { id: newId("m"), variantId: variant.id, durationMin: duration, dayIndex: day, source: "manual", confirmed: true } });
     onClose();
   };
 
@@ -76,8 +76,8 @@ export function LogWorkoutSheet({ onClose }: { onClose: () => void }) {
 
       <p className="field small" aria-live="polite">
         {intensity === "light"
-          ? `${variant.label} is light activity (under 3 MET), so it doesn't count toward the goal. It's still good for you.`
-          : `Counts as ${credit} guideline minutes${intensity === "vigorous" ? ", because vigorous minutes count double" : ""}.`}
+          ? `${variant.label} is light activity (under 3 MET). It earns a bronze medal but doesn't count toward the goal for now.`
+          : `${variant.met} × ${duration} min ÷ 60 = ${fmt(credit)} MET-hours.`}
       </p>
 
       <div className="btn-row" style={{ marginTop: 16 }}>

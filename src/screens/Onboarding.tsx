@@ -8,6 +8,8 @@
  */
 import { useMemo, useState } from "react";
 import { WatchIcon } from "../components/Icons";
+import { OtherInput } from "../components/OtherInput";
+import { matchActivity, parseMinutes, parsePlanChanges, parseYesNo } from "../lib/freeText";
 import { MedalCoin } from "../components/Medal";
 import { PERSONAS } from "../data/mockFitbit";
 import { getFamily, getVariant, PICKABLE, searchFamilies } from "../lib/activities";
@@ -57,7 +59,64 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
     }).slice(0, 3);
   }, [state.personaId]);
 
-  const go = (s: Step) => setStep(s);
+  const [hint, setHint] = useState<string | null>(null);
+  const go = (s: Step) => { setStep(s); setHint(null); };
+  const note = (text: string, where: string) => dispatch({ type: "addNote", text, where: `Onboarding: ${where}` });
+
+  // ---- The "Other" box on each step: typed answers become the same choices the buttons make.
+  const typedHealth = (text: string) => {
+    if (/^(no|none|nope|nothing|all good|healthy)\b/i.test(text)) { setHealth("none"); setHint("Got it: no health conditions."); return; }
+    setHealth("yes");
+    note(text, "health");
+    setHint("Thanks, noted. I'll keep to moderate activity for now and suggest checking with a clinician before anything vigorous.");
+  };
+  const typedBout = (text: string) => {
+    const yn = parseYesNo(text);
+    if (!fixing && yn === true) { confirmBout(getVariant(current.variantId).family.id); return; }
+    if (/\b(skip|not sure|don't know|dont know|no idea)\b/i.test(text)) { confirmBout(null); return; }
+    const fam = matchActivity(text);
+    if (fam) { confirmBout(fam); setHint(`Got it: ${getFamily(fam).noun}.`); return; }
+    if (!fixing && yn === false) { setFixing(true); return; }
+    note(`Did "${text}"`, "confirm workout");
+    confirmBout(null);
+    setHint(`"${text}" isn't in my activity list yet, so I've noted it for the team.`);
+  };
+  const typedEnjoy = (text: string) => {
+    const fam = matchActivity(text);
+    if (fam) {
+      if (!enjoyed.includes(fam)) toggle(fam);
+      setHint(`Added ${getFamily(fam).noun}.`);
+      return;
+    }
+    note(`Enjoys "${text}"`, "activities");
+    setHint(`I don't have "${text}" in my list yet, so I can't count it accurately. I've noted it for the team.`);
+  };
+  const typedAccess = (text: string) => {
+    const fam = matchActivity(text);
+    if (fam && enjoyed.includes(fam)) {
+      const a: Access = /\b(sometimes|some weeks|occasionally)\b/i.test(text) ? "sometimes" : /\b(no|not|can't|cannot|don't|dont|broken|closed|without)\b/i.test(text) ? "no" : "have";
+      setAccess((x) => ({ ...x, [fam]: a }));
+      setHint(`Set ${getFamily(fam).noun} to "${ACCESS.find(([k]) => k === a)![1]}".`);
+      return;
+    }
+    note(text, "access");
+    setHint("Noted. I'll keep that in mind when I suggest things.");
+  };
+  const typedTime = (text: string) => {
+    const m = parseMinutes(text);
+    if (m === null) { setHint("I didn't catch a time. Roughly how much a week, like 90 minutes or 2 hours?"); return; }
+    const row = m < 60 ? TIME[0] : m <= 120 ? TIME[1] : m <= 180 ? TIME[2] : TIME[3];
+    setUsual(row[0]);
+    setPlan(row[2]);
+    setHint(`About ${m >= 60 ? `${Math.round((m / 60) * 10) / 10} hr` : `${m} min`} a week, so I picked "${row[1]}".`);
+  };
+  const typedPlan = (text: string) => {
+    const changes = parsePlanChanges(text);
+    const days = Object.keys(changes).map(Number);
+    if (!days.length) { note(text, "plan"); setHint('Noted. To change a day, try something like "Thursday off, Saturday long".'); return; }
+    setPlan((p) => p.map((x, i) => changes[i] ?? x));
+    setHint(`Updated ${days.map((d) => `${DAY_NAMES_LONG[d]} to ${SLOT_LABEL[changes[d]]}`).join(", ")}.`);
+  };
   const idx = ORDER.indexOf(step as Step);
 
   const confirmBout = (familyId: string | null) => {
@@ -149,6 +208,7 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
               <button aria-pressed={health === "yes"} onClick={() => setHealth("yes")}><b>I have a condition</b><span>Moderate activity only for now</span></button>
               <button aria-pressed={health === "skip"} onClick={() => setHealth("skip")}><b>Prefer not to say</b><span>I'll play it safe with moderate activity</span></button>
             </div>
+            <OtherInput placeholder="Other: describe it in your own words" onSubmit={typedHealth} hint={hint} />
           </div>
           <div className="actions">
             <button className="btn btn-primary btn-block" onClick={() => go("path")} disabled={!health}>Continue</button>
@@ -210,6 +270,7 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
                 ))}
               </div>
             )}
+            <OtherInput key={`${bout}-${fixing}`} placeholder={fixing ? "Other: type what it was" : "Other: type your answer"} onSubmit={typedBout} hint={hint} />
           </div>
           <div className="actions">
             <button className="btn btn-ghost" onClick={() => go("observing")}>Back</button>
@@ -235,6 +296,7 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
                 );
               })}
             </div>
+            <OtherInput placeholder="Other: an activity not listed here" onSubmit={typedEnjoy} hint={hint} />
           </div>
           <div className="actions">
             <button className="btn btn-primary btn-block" onClick={() => go("access")} disabled={enjoyed.length === 0}>{enjoyed.length ? "Continue" : "Pick at least one"}</button>
@@ -264,6 +326,7 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
                 );
               })}
             </ul>
+            <OtherInput placeholder="Other: e.g. my bike is in the shop" onSubmit={typedAccess} hint={hint} />
           </div>
           <div className="actions">
             <button className="btn btn-primary btn-block" onClick={() => go("time")}>Continue</button>
@@ -279,9 +342,10 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
             <p className="lead">A rough guess is fine. Short blocks count.</p>
             <div className="choice">
               {TIME.map(([id, label, preset]) => (
-                <button key={id} aria-pressed={usual === id} onClick={() => { setUsual(id); setPlan(preset); }}><b>{label}</b></button>
+                <button key={id} aria-pressed={usual === id} onClick={() => { setUsual(id); setPlan(preset); setHint(null); }}><b>{label}</b></button>
               ))}
             </div>
+            <OtherInput placeholder="Other: e.g. about 90 minutes" onSubmit={typedTime} hint={hint} />
           </div>
           <div className="actions">
             <button className="btn btn-primary btn-block" onClick={() => go("plan")} disabled={!usual}>Continue</button>
@@ -309,6 +373,7 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
               ))}
             </ul>
             <p className="xs muted" style={{ marginTop: 8 }}>Short is 10–20 min, Medium about 30, Long 45 or more.</p>
+            <OtherInput placeholder="Other: e.g. Thu off, Sat long" onSubmit={typedPlan} hint={hint} />
           </div>
           <div className="actions">
             <button className="btn btn-primary btn-block" onClick={finish} disabled={plan.every((s) => s === "off")}>Start today</button>

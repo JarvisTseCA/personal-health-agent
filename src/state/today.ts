@@ -15,7 +15,9 @@ import type { Medal } from "../lib/medals";
 import { countsTowardGoal, fmt, fmtGoal, minutesFor, UNCONFIRMED_MET, withCredit, type Session } from "../lib/met";
 import { WEEKLY_UPPER_LIMIT } from "../lib/goal";
 import { afterDecline, DECLINE_LABEL, suggest, type DeclineReason, type Energy, type Place, type Suggestion } from "../lib/suggest";
+import { matchActivity, parseEnergy, parseMinutes, parsePlace, parseReason, parseYesNo } from "../lib/freeText";
 import { answer, QUESTIONS, type QuestionId } from "../services/answers";
+import { SCRIPTED_REPLIES } from "../services/mockResponses";
 import { buildAgentContext, buildSuggestInput } from "../services/context";
 import type { AppState, TodayEntry, TodayState } from "./types";
 
@@ -106,8 +108,8 @@ function describe(s: Suggestion): string {
   return s.pattern ? `${variant.label}, ${s.pattern.toLowerCase()}` : `${s.durationMin} min of ${family.noun} (${variant.label.toLowerCase()})`;
 }
 
-export function accept(state: AppState, which: Suggestion): AppState {
-  const s = push(state, user(state.today.current?.lead === which ? "Let's do it" : `I'll do ${describe(which)}`));
+export function accept(state: AppState, which: Suggestion, typed?: string): AppState {
+  const s = push(state, user(typed ?? (state.today.current?.lead === which ? "Let's do it" : `I'll do ${describe(which)}`)));
   return setToday(push(s, agent(`Nice. ${describe(which).replace(/^./, (c) => c.toUpperCase())}. I'll watch for it on your Fitbit and count it when it syncs.`)), {
     step: "accepted", accepted: which,
   });
@@ -126,16 +128,20 @@ const REASON_REPLY: Record<DeclineReason, (noun: string) => string> = {
   "no-access": (n) => `Got it. I'll leave ${n} out until you tell me it's available again.`,
   weather: () => "Let's stay inside today.",
   hurts: () => "Sorry to hear that. Let's keep today gentle, and please check with your clinician before anything vigorous. I've turned off vigorous suggestions for now.",
-  other: () => "Tell me a bit more?",
+  other: () => "Thanks, I'll remember that.",
 };
 
-export function chooseReason(state: AppState, reason: DeclineReason): AppState {
+/** A decline reason, tapped or typed. Typed text is kept on the decline record. */
+export function chooseReason(state: AppState, reason: DeclineReason, typed?: string): AppState {
   const cur = state.today.current?.lead;
   if (!cur) return state;
   const noun = getFamily(cur.familyId).noun;
-  let s = push(state, user(DECLINE_LABEL[reason]), agent(REASON_REPLY[reason](noun)));
-  s = { ...s, declines: [...s.declines, { id: newId("d"), familyId: cur.familyId, reason, day: s.todayIndex }] };
-  if (reason === "other") return setToday(s, { step: "reason-other" });
+  let s = push(state, user(typed ?? DECLINE_LABEL[reason]), agent(REASON_REPLY[reason](noun)));
+  s = { ...s, declines: [...s.declines, { id: newId("d"), familyId: cur.familyId, reason, day: s.todayIndex, note: typed }] };
+  if (reason === "other") {
+    s = setToday(s, { exclude: [...s.today.exclude, cur.familyId] });
+    return offer(s, "Here's another idea.");
+  }
 
   const { constraint, excludeFamily, minutes } = afterDecline(reason, cur, s.today.constraint);
   const exclude = excludeFamily ? [...s.today.exclude, cur.familyId] : s.today.exclude;
@@ -153,17 +159,6 @@ export function chooseReason(state: AppState, reason: DeclineReason): AppState {
     return setToday(s, { step: "suggested", current: { lead: gentle[0], backups: gentle.slice(1), desk: true, showBackups: false } });
   }
   return offer(s, "How about this instead?");
-}
-
-export function otherNote(state: AppState, text: string): AppState {
-  const cur = state.today.current?.lead;
-  if (!cur) return state;
-  const declines = [...state.declines];
-  const last = declines.at(-1);
-  if (last && last.reason === "other") declines[declines.length - 1] = { ...last, note: text };
-  let s = push({ ...state, declines }, user(text), agent("Thanks, I'll remember that."));
-  s = setToday(s, { exclude: [...s.today.exclude, cur.familyId] });
-  return offer(s, "Here's another idea.");
 }
 
 export function wantMore(state: AppState): AppState {
@@ -199,7 +194,7 @@ function afterCredit(before: AppState, after: AppState, s: Session): AppState {
     st = push(st, { id: newId("m"), role: "medal", text, medal: m1 });
   }
   st = push(st, agent(credit > 0
-    ? `+${fmt(credit)} MET-hours from ${family.noun}. You're at ${fmt(ctx.week.done)} of ${fmtGoal(ctx.goal)} this week.`
+    ? `+${fmt(credit)} MET-hours from ${s.customName ?? family.noun}. You're at ${fmt(ctx.week.done)} of ${fmtGoal(ctx.goal)} this week.`
     : `${variant.label} is light activity, so it earns the medal but not goal credit for now.`));
 
   const t = ctx.todayTarget;
@@ -207,7 +202,7 @@ function afterCredit(before: AppState, after: AppState, s: Session): AppState {
   const limitHit = WEEKLY_UPPER_LIMIT !== null && ctx.week.done >= WEEKLY_UPPER_LIMIT;
   if (!st.today.nudged && t > 0 && d < t && d >= t * 0.5 && !limitHit && countsTowardGoal(variant.met)) {
     const more = minutesFor(variant.met, t - d);
-    st = push(st, agent(`You're at ${Math.round((d / t) * 100)}% of today's target. ${more} more minutes of ${family.noun} finishes it.`));
+    st = push(st, agent(`You're at ${Math.round((d / t) * 100)}% of today's target. ${more} more minutes of ${s.customName ?? family.noun} finishes it.`));
     return setToday(st, { step: "nudge", nudged: true, accepted: { familyId: family.id, variantId: variant.id, durationMin: more, met: variant.met, credit: (variant.met * more) / 60, rawMetHours: (variant.met * more) / 60, reasons: [], score: 0 } });
   }
   const wrap = d + 1e-9 >= t || t === 0
@@ -242,14 +237,16 @@ function nearestVariant(familyId: string, met: number): string {
   return [...f.variants].sort((a, b) => Math.abs(a.met - met) - Math.abs(b.met - met))[0].id;
 }
 
-export function confirm(state: AppState, answerId: "yes" | "not-exercise" | "other" | { familyId: string }): AppState {
+export type ConfirmAnswer = "yes" | "not-exercise" | "other" | { familyId: string } | { customName: string };
+
+export function confirm(state: AppState, answerId: ConfirmAnswer, typed?: string): AppState {
   const id = state.today.pendingSessionId;
   const s = state.sessions.find((x) => x.id === id);
   if (!s) return state;
   if (answerId === "other") return setToday(push(state, user("Other…"), agent("What was it?")), { step: "confirm-other" });
   if (answerId === "not-exercise") {
     const st = { ...state, sessions: state.sessions.filter((x) => x.id !== id) };
-    return setToday(push(st, user("Not exercise"), agent("Thanks, I've removed it.")), { step: "wrap", pendingSessionId: undefined });
+    return setToday(push(st, user(typed ?? "Not exercise"), agent("Thanks, I've removed it.")), { step: "wrap", pendingSessionId: undefined });
   }
   const before = { ...state, sessions: state.sessions.filter((x) => x.id !== id) };
   let fixed: Session;
@@ -257,24 +254,113 @@ export function confirm(state: AppState, answerId: "yes" | "not-exercise" | "oth
   if (answerId === "yes") {
     fixed = { ...s, confirmed: true };
     said = "Yes";
-  } else {
+  } else if ("familyId" in answerId) {
     fixed = { ...s, confirmed: true, variantId: nearestVariant(answerId.familyId, UNCONFIRMED_MET[s.band ?? "fairly"] + 1) };
     said = `It was ${getFamily(answerId.familyId).noun}`;
+  } else {
+    // Not in the activity list: keep their name for it, count at the bottom of the measured band.
+    fixed = { ...s, confirmed: true, variantId: s.band === "very" ? "other-very" : "other-fairly", customName: answerId.customName };
+    said = answerId.customName;
   }
   let st = { ...state, sessions: state.sessions.map((x) => (x.id === id ? fixed : x)) };
-  st = setToday(push(st, user(said)), { pendingSessionId: undefined });
+  st = setToday(push(st, user(typed ?? said)), { pendingSessionId: undefined });
+  if (typeof answerId === "object" && "customName" in answerId) {
+    st = push(st, agent(`${answerId.customName} isn't in my activity list yet, so I counted it at ${fixed.variantId === "other-very" ? "6.0" : "3.0"} MET, the bottom of what your Fitbit measured. I've noted it for the team.`));
+    st = { ...st, notes: [...st.notes, { id: newId("n"), text: `Did "${answerId.customName}"`, where: "Today: confirm workout", day: st.todayIndex }] };
+  }
   return afterCredit(before, st, fixed);
 }
 
-export function keepGoing(state: AppState, yes: boolean): AppState {
+export function keepGoing(state: AppState, yes: boolean, typed?: string): AppState {
   const more = state.today.accepted;
   if (!yes || !more) {
-    return setToday(push(state, user("Done for today"), agent("Good work today. I've re-planned the rest of your week.")), { step: "wrap", accepted: undefined });
+    return setToday(push(state, user(typed ?? "Done for today"), agent("Good work today. I've re-planned the rest of your week.")), { step: "wrap", accepted: undefined });
   }
   const s: Session = { id: newId("fb"), variantId: more.variantId, durationMin: more.durationMin, dayIndex: state.todayIndex, source: "fitbit", confirmed: true, startTime: "6:50 pm" };
-  const st = push({ ...state, sessions: [...state.sessions, s] }, user("Keep going"), agent(`Fitbit synced another ${more.durationMin} minutes.`));
+  const st = push({ ...state, sessions: [...state.sessions, s] }, user(typed ?? "Keep going"), agent(`Fitbit synced another ${more.durationMin} minutes.`));
   return afterCredit(state, st, s);
 }
 
 /** Families offered under "Other…" when confirming a detected bout. */
 export const CONFIRM_CHOICES = PICKABLE;
+
+function note(state: AppState, text: string, where: string): AppState {
+  return { ...state, notes: [...state.notes, { id: newId("n"), text, where, day: state.todayIndex }] };
+}
+
+/** A typed question or comment: answered by the coach (scripted in the demo), step unchanged. */
+function coachReply(state: AppState, text: string): AppState {
+  const ctx = buildAgentContext(state);
+  const t = text.toLowerCase();
+  const r = SCRIPTED_REPLIES.find((x) => x.match(t, ctx))!;
+  return push(state, user(text), agent(r.reply(t, ctx)));
+}
+
+const DECLINE_WORDS = /\b(not today|no thanks|no thank|something else|don't want|dont want|can't|cannot|skip|pass|nah|no)\b/;
+
+/**
+ * The "Other" text box under every set of bubbles. Reads the typed answer for
+ * the current step; anything it can't place becomes a note or a coach reply.
+ */
+export function freeText(state: AppState, text: string): AppState {
+  const t = state.today;
+  switch (t.step) {
+    case "time": {
+      const m = parseMinutes(text);
+      if (m === null) return push(state, user(text), agent("I didn't catch a time. Roughly how many minutes, like 15 or 40?"));
+      return answerTime(state, text, Math.min(m, 120));
+    }
+    case "place": {
+      const p = parsePlace(text);
+      const s = answerPlace(state, text, p ?? "other");
+      return p ? s : setToday(s, { placeLabel: text });
+    }
+    case "energy":
+      return answerEnergy(state, text, parseEnergy(text));
+    case "mood": {
+      const fam = matchActivity(text);
+      let s = setToday(push(state, user(text)), { checkIn: { ...t.checkIn, mood: fam ?? "surprise" } });
+      if (!fam) {
+        s = note(s, `In the mood for "${text}"`, "Today: mood");
+        return offer(push(s, agent("I don't have that in my activity list yet, so I've noted it. Here's my pick for now.")));
+      }
+      if (!s.profile.enjoyed.includes(fam)) {
+        s = { ...s, profile: { ...s.profile, enjoyed: [...s.profile.enjoyed, fam], access: { ...s.profile.access, [fam]: "have" } } };
+        s = push(s, agent(`I've added ${getFamily(fam).noun} to your list.`));
+      }
+      return offer(push(s, agent(`${getFamily(fam).name} it is. Here's my pick.`)));
+    }
+    case "suggested": {
+      const yn = parseYesNo(text);
+      if (yn === true && t.current) return accept(state, t.current.lead, text);
+      if (DECLINE_WORDS.test(text.toLowerCase())) {
+        const reason = parseReason(text);
+        if (reason === "other") return setToday(push(state, user(text), agent("No problem. What's getting in the way?")), { step: "reason", accepted: undefined });
+        return chooseReason(state, reason, text);
+      }
+      return coachReply(state, text);
+    }
+    case "reason":
+      return chooseReason(state, parseReason(text), text);
+    case "accepted":
+      if (DECLINE_WORDS.test(text.toLowerCase())) return setToday(push(state, user(text), agent("No problem. What's getting in the way?")), { step: "reason", accepted: undefined });
+      return coachReply(state, text);
+    case "confirm":
+    case "confirm-other": {
+      const low = text.toLowerCase();
+      if (/\b(not exercise|wasn't exercise|wasnt exercise|nothing|didn't|didnt|no workout)\b/.test(low)) return confirm(state, "not-exercise", text);
+      const fam = matchActivity(text);
+      if (fam) return confirm(state, { familyId: fam }, text);
+      if (t.step === "confirm" && parseYesNo(text) === true) return confirm(state, "yes", text);
+      if (t.step === "confirm" && parseYesNo(text) === false) return setToday(push(state, user(text), agent("What was it? Pick one or type it.")), { step: "confirm-other" });
+      return confirm(state, { customName: text.charAt(0).toUpperCase() + text.slice(1) }, text);
+    }
+    case "nudge": {
+      const yn = parseYesNo(text);
+      if (yn !== null) return keepGoing(state, yn, text);
+      return coachReply(state, text);
+    }
+    case "wrap":
+      return coachReply(state, text);
+  }
+}

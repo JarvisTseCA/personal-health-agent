@@ -36,6 +36,15 @@ export interface DeclineRecord {
   note?: string;
 }
 
+/** Something the user typed that the app couldn't turn into a choice. The coach keeps it. */
+export interface NoteRecord {
+  id: string;
+  text: string;
+  /** Where it was typed, e.g. "Onboarding: health" or "Today: mood" */
+  where: string;
+  day: number;
+}
+
 export interface ChatMessage {
   id: string;
   role: "user" | "agent";
@@ -53,7 +62,7 @@ export interface CheckIn {
 
 export type TodayStep =
   | "time" | "place" | "energy" | "mood"
-  | "suggested" | "reason" | "reason-other"
+  | "suggested" | "reason"
   | "accepted" | "confirm" | "confirm-other" | "nudge" | "wrap";
 
 export interface TodayEntry {
@@ -68,6 +77,8 @@ export interface TodayState {
   dayKey: string;
   step: TodayStep;
   checkIn: Partial<CheckIn>;
+  /** What the user typed for place, when it wasn't one of the options */
+  placeLabel?: string;
   entries: TodayEntry[];
   exclude: string[];
   constraint?: Constraint;
@@ -93,6 +104,7 @@ export interface AppState {
   sessions: Session[];
   history: WeekRecord[];
   declines: DeclineRecord[];
+  notes: NoteRecord[];
   /** Today, as an index into the demo week (0 = Monday) */
   todayIndex: number;
   today: TodayState;

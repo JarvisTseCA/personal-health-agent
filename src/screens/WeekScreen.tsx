@@ -7,12 +7,27 @@ import { DAY_NAMES_LONG, fmt, fmtGoal } from "../lib/met";
 import { SLOT_HINT, SLOT_LABEL, SLOTS } from "../lib/plan";
 import { useStore } from "../state/store";
 import { LogWorkoutSheet } from "./LogWorkoutSheet";
+import { OtherInput } from "../components/OtherInput";
+import { parsePlanChanges } from "../lib/freeText";
 
 export function WeekScreen() {
   const { state, ctx, dispatch } = useStore();
   const [editing, setEditing] = useState(false);
   const [log, setLog] = useState(false);
   const t = state.todayIndex;
+  const [hint, setHint] = useState<string | null>(null);
+
+  const typedPlan = (text: string) => {
+    const changes = parsePlanChanges(text);
+    const days = Object.keys(changes).map(Number).filter((d) => d >= t);
+    if (!days.length) {
+      dispatch({ type: "addNote", text, where: "Week: plan" });
+      setHint('Noted. To change a day, try something like "Thursday off, Saturday long".');
+      return;
+    }
+    for (const d of days) dispatch({ type: "setSlot", day: d, slot: changes[d] });
+    setHint(`Updated ${days.map((d) => `${DAY_NAMES_LONG[d]} to ${SLOT_LABEL[changes[d]]}`).join(", ")}. The rest of the goal is re-split.`);
+  };
 
   const goalNote =
     ctx.goalBy === "clinician" ? "Set by your clinician"
@@ -91,7 +106,7 @@ export function WeekScreen() {
                       <div className="item" key={s.id}>
                         <span className="dot" style={{ background: family.color }} />
                         <div className="what">
-                          <b>{family.name}</b> {s.durationMin} min
+                          <b>{s.customName ?? family.name}</b> {s.durationMin} min
                           <div className="meta">
                             {s.confirmed ? `${variant.label}, ${variant.met} MET` : `Unconfirmed, counted at ${s.met} MET`}
                             {s.source === "fitbit" ? ", from Fitbit" : ", logged by you"}
@@ -106,6 +121,7 @@ export function WeekScreen() {
             );
           })}
         </ul>
+        {editing && <OtherInput placeholder="Other: e.g. Thu off, Sat long" onSubmit={typedPlan} hint={hint} />}
       </section>
 
       <button className="btn btn-quiet btn-block" style={{ marginTop: 8 }} onClick={() => setLog(true)}><PlusIcon />Log a workout Fitbit missed</button>

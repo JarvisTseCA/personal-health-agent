@@ -71,6 +71,8 @@ export interface Session {
   band?: FitbitBand;
   startTime?: string;
   avgHeartRate?: number;
+  /** What the user called it, when they typed an activity that isn't in the list */
+  customName?: string;
 }
 
 export interface SessionWithCredit extends Session {

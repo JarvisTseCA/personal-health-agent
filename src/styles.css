@@ -609,6 +609,18 @@ input[type="range"] { width: 100%; accent-color: var(--ink); height: 32px; }
 .checks li span { color: var(--ink-2); }
 .demo-panel { overflow-y: auto; }
 
+/* The "Other" box: always the last option, a blank field to type into */
+.other-input { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; }
+.other-input form { display: flex; gap: 8px; }
+.other-input input { flex: 1; min-width: 0; min-height: 44px; border-radius: 14px; border: 1.5px dashed var(--line-strong); padding: 0 14px; background: var(--surface); font-size: var(--t-sm); }
+.other-input input:focus { border-style: solid; border-color: var(--ink); outline: none; }
+.other-input input::placeholder { color: var(--ink-3); }
+.other-input button { width: 44px; height: 44px; flex: none; border-radius: 50%; border: 0; background: var(--ink); color: #fff; display: grid; place-items: center; }
+.other-input button:disabled { background: var(--line-strong); }
+.other-input button svg { width: 20px; height: 20px; }
+.other-hint { color: var(--ink-2); padding-left: 4px; }
+.feed > .other-input { margin-top: 2px; }
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
 }

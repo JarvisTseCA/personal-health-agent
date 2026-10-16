@@ -66,10 +66,19 @@ export function PreferencesSheet({ onClose, openClinician }: { onClose: () => vo
 
       <div className="field">
         <label className="lbl">What the coach remembers</label>
-        {state.declines.length === 0 ? (
-          <p className="small muted">Nothing yet. When you say "not today", the reason shows up here.</p>
+        {state.declines.length + state.notes.length === 0 ? (
+          <p className="small muted">Nothing yet. When you say "not today" or type your own answer, it shows up here.</p>
         ) : (
           <ul className="memory-list">
+            {[...state.notes].reverse().map((n) => (
+              <li key={n.id}>
+                <div>
+                  <b className="small">"{n.text}"</b>
+                  <p className="xs muted">{n.where}, {when(state.todayIndex - n.day)}</p>
+                </div>
+                <button className="btn btn-ghost small-btn" onClick={() => dispatch({ type: "forgetNote", id: n.id })}>Forget</button>
+              </li>
+            ))}
             {[...state.declines].reverse().map((d) => (
               <li key={d.id}>
                 <div>

@@ -66,7 +66,49 @@ team made on its open questions. The one-line goal behind every feature: **take 
 telling the user what exercise to do.** It's for people with little time, or who don't want to think about
 what to do, and once they start moving it encourages them to keep going.
 
-Each subsection below gives the instruction, then how the app follows it.
+The Workflow subsection shows how the features fit together. Each feature subsection after it gives the
+instruction, then how the app follows it.
+
+### Workflow
+
+The app runs on three loops: onboarding once, planning every week, and a check-in every day.
+
+```mermaid
+flowchart TD
+    A["Onboarding (once)<br/>Fitbit, health question,<br/>observe a week, confirm, likes"] --> B["Weekly planning (Sunday)<br/>mark off days, split the goal"]
+    B --> C["1. Check in<br/>time, place, energy, mood"]
+    C --> D["2. Suggest<br/>1 pick + 2 backups"]
+    D --> E{Accept?}
+    E -- "no: Not today + reason" --> F["Reason saved<br/>to memory"]
+    F -- "new pick" --> D
+    Q["3. Ask a question<br/>e.g. What's a MET?"] -. "any time" .-> D
+    E -- yes --> G["4. Work out<br/>Fitbit sync, confirm if unsure"]
+    G --> H["Credit and medals<br/>MET-hours, bronze to gold"]
+    H -- "next day" --> C
+    H -- "end of week" --> R["Weekly review<br/>recap, goal offer"]
+    R --> B
+```
+
+1. **Onboarding (once).** The user connects Fitbit and answers one health question. The app then watches a
+   week of Fitbit data. On day 8 the user confirms the workouts the app detected and adds activities they
+   enjoy, what they can access, and their usual weekly time.
+2. **Weekly planning (every Sunday).** The user marks the days they can't exercise. The weekly goal is split
+   over the other days by how much time each one has. The plan can change mid-week, and what's left is
+   re-split.
+3. **The daily loop.**
+   1. *Check in:* the user taps how much time they have, where they are, how they feel and what they're in
+      the mood for.
+   2. *Suggest:* the coach gives one pick and two backups. If the user says *Not today*, they give a reason,
+      the coach saves it and gives a new pick.
+   3. *Ask:* at any point the user can tap or type a question, such as *What's a MET?*
+   4. *Work out:* Fitbit syncs the workout and the user confirms it if the app isn't sure. It's converted to
+      MET-hours, medals update, and if the user got partway to today's target the coach nudges them to keep
+      going. The rest of the week's targets adjust.
+4. **Weekly review (end of week).** The recap shows last week's total and medals, then offers to raise, lower
+   or keep the goal. It leads straight into next week's planning.
+
+The clinician view sits outside these loops. The user opens it during a visit, and what the clinician sets
+(goal, limits, a note) applies from then on.
 
 ### Onboarding
 
@@ -242,15 +284,18 @@ Code: `src/lib/verify.ts`, `src/services/prompts.ts`
 These are in the brief but not in the demo: importing the user's schedule, using location to know which
 activities are nearby, and using weather to swap in indoor options.
 
-### Open clinical questions
+### Questions for clinical review
 
-These need clinical input and are left as settings in the code:
+These need clinical input before the app is used with real users. Until they're answered, the app takes the
+cautious option shown for each one.
 
-- Should light activity (under 3 MET) count toward the weekly goal, or only toward medals?
-  (`LIGHT_COUNTS_TOWARD_GOAL`, currently off)
-- What evidence-based weekly upper limit should stop the "keep going" nudges and cap goal raises?
-  (`WEEKLY_UPPER_LIMIT`, not set)
-- How low should repeated goal halving go before the app suggests talking with a clinician instead?
+| Question | Why it matters | What the app does for now |
+|---|---|---|
+| **Light activity and the goal.** Should activity under 3 MET (a slow walk, desk band sets) count toward the weekly MET-hour goal, or only earn a medal? | The activity guideline counts only moderate (3+ MET) and vigorous (6+ MET) activity, but desk moves are the only option on 0-minute days. | Light activity earns a bronze medal and keeps the streak, but adds nothing to the goal. Setting: `LIGHT_COUNTS_TOWARD_GOAL` in `src/lib/met.ts` (off). |
+| **Weekly upper limit.** Is there an evidence-based upper limit on weekly MET-hours? | It sets when the coach stops "keep going" nudges and suggests rest, which weeks get flagged in the clinician view, and how high an automatic goal raise can go. | No limit is set. Raises follow the rounding rule only, and the clinician view says the limit isn't set yet. Setting: `WEEKLY_UPPER_LIMIT` in `src/lib/goal.ts` (`null`). |
+| **Floor for goal cuts.** Halving after 3 low weeks can repeat. Below what goal should the app stop cutting and suggest talking with a clinician instead? | Repeated halving could take the goal far below anything meaningful without anyone reviewing it. | No floor. Each cut is only an offer the user must accept, and any goal below 7.5 is labeled a stepping stone back to the guideline. |
+
+The same list is at the end of the *PHA App Workflow* doc.
 
 ## How the numbers work
 

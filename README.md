@@ -59,6 +59,199 @@ at the bottom of the effort band Fitbit measured.
 sync, open the recap or clinician view, reset, and show the backend: the **verifier's checks** on the
 current suggestion and the prompt the coach would receive.
 
+## Design guidelines
+
+The app is built from the team's design brief and the *PHA App Workflow* doc, including the decisions the
+team made on its open questions. The one-line goal behind every feature: **take away decision fatigue by
+telling the user what exercise to do.** It's for people with little time, or who don't want to think about
+what to do, and once they start moving it encourages them to keep going.
+
+Each subsection below gives the instruction, then how the app follows it.
+
+### Onboarding
+
+**Instruction:** Learn what the user already does from a week of Fitbit data, then confirm it with them and
+ask for anything else they enjoy and can do.
+
+- Observe first is the default: connect Fitbit, answer one health question, then wear the Fitbit for a week
+  while the coach makes no suggestions. Medals still count during that week.
+- On day 8 the coach shows each workout it detected ("Tuesday, 30 min, looks like cycling. Right?") and the
+  user confirms, corrects or skips it.
+- Then the user adds activities they enjoy (in order of preference), says whether they can get to each one
+  ("Is there a court near you?"), gives their usual weekly time, and plans the first week.
+- *Don't want to wait? Set up now* skips the observation week.
+- Any health answer other than "No health conditions" turns off vigorous suggestions and suggests checking
+  with a clinician first.
+
+Code: `src/screens/Onboarding.tsx`
+
+### Weekly planning and daily targets
+
+**Instruction:** Split the weekly goal across the days the user can exercise. Let them mark days they can't
+exercise at all, and let them change the plan mid-week, with the remaining goal split over the remaining days.
+
+- Each day is *Off*, *Short* (10–20 min), *Medium* (about 30) or *Long* (45+).
+- The weekly goal never drops because of off days; their share moves to the other days, weighted by time.
+- *Change my week* works at any point. Every change, and every Fitbit sync, re-splits what's left.
+- Today's target is fixed at the start of the day, so silver is judged against a number that doesn't move
+  during a workout.
+
+Code: `src/lib/plan.ts`, `src/screens/WeekScreen.tsx`
+
+### Daily check-in
+
+**Instruction:** Ask for the user's preferences and availability each day.
+
+- Four quick questions, each answered with one tap: time today, where they are, how they feel, and what
+  they're in the mood for.
+- *Surprise me* skips straight to a suggestion for users who don't want to think about it.
+- Answering *0 min* skips the rest and offers desk moves.
+
+Code: `src/state/today.ts`, `src/screens/TodayScreen.tsx`
+
+### Exercise suggestions
+
+**Instruction:** Suggest an exercise for the day that fits the user's preferences, what they can access, their
+time and their goal. Avoid repetition. Use their past feedback. If they have no time, suggest something they
+can do at their desk.
+
+- One pick plus two backups, the backups of a different type where possible.
+- The ranker filters to activities the user enjoys, can access and has time for, and that their health
+  settings allow. It then scores them on preference, fit to today's target, how recently each was done, past
+  declines and today's energy.
+- Each card says why it was picked ("Your favorite", "Not done in the last few days").
+- With 0 minutes, it offers desk moves with a resistance band. These earn a bronze medal.
+
+Code: `src/lib/suggest.ts`
+
+### Declining a suggestion
+
+**Instruction:** The user can turn a suggestion down and say why. The coach remembers the reason and uses it
+for later suggestions.
+
+- *Not today* asks for a reason: no time, too tired, not in the mood, did this recently, can't access it,
+  weather, something hurts, or a typed answer.
+- Each reason changes the next pick right away (shorter, lighter, indoors, a different type) and is saved.
+  Preferences shows what the coach remembers, and the user can delete any of it.
+- *Something hurts* always takes the safety path: gentle options only, vigorous suggestions off, and a
+  prompt to check with a clinician.
+
+Code: `src/state/today.ts`, `src/screens/PreferencesSheet.tsx`
+
+### Clarification questions
+
+**Instruction:** The user can ask questions (for example, "What is MET?") at any point.
+
+- One-tap question chips sit under every suggestion: *What's a MET?*, *Why this activity?*, *How did you
+  calculate this?*, *Does walking count?*, *Why is my goal 7.5?*
+- Answers come from a fixed glossary, the ranker's real reasons and the calculator's real numbers, never
+  numbers the coach makes up.
+- The Coach tab takes questions in the user's own words.
+
+Code: `src/services/answers.ts`, `src/services/mockResponses.ts`
+
+### Workout detection
+
+**Instruction:** Use Fitbit data to infer what the user did, and ask them to confirm.
+
+- A workout that matches the accepted plan is logged automatically.
+- Otherwise the coach asks: "Looks like 32 min of cycling at 6:10 pm. Right?"
+- Until it's confirmed, a workout counts conservatively, at the bottom of the effort band Fitbit measured
+  (3.0 or 6.0 MET).
+
+Code: `src/state/today.ts`, `src/data/mockFitbit.ts`
+
+### Keeping going and doing more
+
+**Instruction:** Once a user starts, encourage them to keep going. If they want to do more today, suggest a
+bigger session and ask less of another day.
+
+- When a workout gets at least halfway to today's target, the coach sends one nudge: "8 more minutes
+  finishes it."
+- *I want more today* offers a bigger option, and the rest of the week's targets drop to match.
+
+Code: `src/state/today.ts`
+
+### Medals and streaks
+
+**Instruction:** Any exercise earns a bronze medal for the day. Reaching the daily goal earns silver. Reaching
+the weekly goal turns every medal that week gold. A screen shows the streak as medals.
+
+- Light activity, such as a short walk or desk moves, counts toward bronze.
+- The streak counts days in a row with at least a bronze. Any day with no activity ends it, even a planned
+  day off.
+- The Medals tab shows the streak and every week as a row of coins.
+
+Code: `src/lib/medals.ts`, `src/screens/MedalsScreen.tsx`
+
+### Goal setting and adjustment
+
+**Instruction:** The default weekly goal is 7.5 MET-hours. Adjust it up or down based on the user's past
+weeks.
+
+- 7.5 MET-hours equals the activity guideline: 150 min at 3 MET or 75 min at 6 MET.
+- **Raise:** take the lower of the last 2 weeks and round it down to a multiple of 2.5. If that's above the
+  current goal, offer it.
+- **Lower:** if the user is under half the goal 3 weeks in a row, offer half the goal.
+- The same rules apply at every goal level, including below 7.5. A goal below 7.5 is labeled a stepping stone.
+- The weekly recap makes the offer and the user accepts, keeps or types their own goal. A goal set by a
+  clinician is never changed automatically.
+
+Code: `src/lib/goal.ts`, `src/screens/RecapSheet.tsx`
+
+### Clinician view
+
+**Instruction:** A separate screen where a clinician can check the user's exercise records and set a goal.
+
+- The user turns it on in Preferences and hands their phone to the clinician during a visit, so no clinician
+  account is needed.
+- It shows weekly MET-hours, activity mix, why workouts get skipped, and flags such as pain reports and long gaps.
+- The clinician can set the weekly goal, turn off vigorous activity, cap session length and leave a note.
+  These limits feed the verifier's checks.
+- On hand-back the user sees a summary of what changed.
+
+Code: `src/screens/ClinicianView.tsx`
+
+### Tap first, type anytime
+
+**Instruction:** Show option bubbles so users rarely have to type, but always let them type their own answer.
+
+- Every question offers bubbles or buttons, with an *Other* text box below them.
+- Typed answers become the same choices the bubbles make ("25 min", "Thursday off, Saturday long", "my knee
+  hurts").
+- Anything the app can't place is saved as a note the coach remembers. An activity that isn't in the list
+  keeps the user's name for it.
+
+Code: `src/lib/freeText.ts`, `src/components/OtherInput.tsx`
+
+### Two agents and guardrails
+
+**Instruction:** Use two agents in the back end to check each other's work, while the user talks to only one.
+Add a guardrail to check calculation outputs. Describe each agent's task in natural language.
+
+- The coach talks to the user. A verifier checks each suggestion before the user sees it.
+- All numbers come from plain code (the calculator), never from a language model.
+- The verifier checks the MET source, the arithmetic, the time fit, preferences, repetition, safety limits and
+  session length. The demo panel shows its results.
+- Each agent's task is written as a short plain-English brief that anyone on the team can edit.
+
+Code: `src/lib/verify.ts`, `src/services/prompts.ts`
+
+### Not built yet
+
+These are in the brief but not in the demo: importing the user's schedule, using location to know which
+activities are nearby, and using weather to swap in indoor options.
+
+### Open clinical questions
+
+These need clinical input and are left as settings in the code:
+
+- Should light activity (under 3 MET) count toward the weekly goal, or only toward medals?
+  (`LIGHT_COUNTS_TOWARD_GOAL`, currently off)
+- What evidence-based weekly upper limit should stop the "keep going" nudges and cap goal raises?
+  (`WEEKLY_UPPER_LIMIT`, not set)
+- How low should repeated goal halving go before the app suggests talking with a clinician instead?
+
 ## How the numbers work
 
 - **MET-hours = MET × minutes ÷ 60**, with MET values from the [2024 Adult Compendium of Physical Activities](https://pacompendium.com/adult-compendium/) (`src/lib/activities.ts`).

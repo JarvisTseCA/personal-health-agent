@@ -1,31 +1,32 @@
-import { useCallback, useEffect, useState, type ComponentType } from "react";
+import { useCallback, useEffect, useRef, useState, type ComponentType } from "react";
 import { DemoPanel } from "./components/DemoPanel";
-import { CoachIcon, MedalIcon, ShowcaseIcon, TodayIcon, WeekIcon } from "./components/Icons";
-import { ClinicianView } from "./screens/ClinicianView";
+import { CoachIcon, MedalIcon, ShowcaseIcon, StethoscopeIcon, TodayIcon } from "./components/Icons";
+import { ClinicianScreen } from "./screens/ClinicianScreen";
 import { CoachScreen } from "./screens/CoachScreen";
-import { MedalsScreen } from "./screens/MedalsScreen";
 import { Onboarding } from "./screens/Onboarding";
 import { PreferencesSheet } from "./screens/PreferencesSheet";
-import { RecapSheet } from "./screens/RecapSheet";
+import { ProgressScreen } from "./screens/ProgressScreen";
 import { ShowcaseScreen } from "./screens/ShowcaseScreen";
 import { TodayScreen } from "./screens/TodayScreen";
-import { WeekScreen } from "./screens/WeekScreen";
 import { useStore } from "./state/store";
 import type { Screen } from "./state/types";
 
 const TABS: Array<{ id: Screen; label: string; Icon: ComponentType<{ className?: string }> }> = [
   { id: "today", label: "Today", Icon: TodayIcon },
-  { id: "week", label: "Week", Icon: WeekIcon },
-  { id: "medals", label: "Medals", Icon: MedalIcon },
+  { id: "progress", label: "Progress", Icon: MedalIcon },
   { id: "coach", label: "Coach", Icon: CoachIcon },
+  { id: "clinician", label: "Clinician", Icon: StethoscopeIcon },
   { id: "showcase", label: "Showcase", Icon: ShowcaseIcon },
 ];
 
-const SCREENS: Screen[] = ["onboarding", "today", "week", "medals", "coach", "showcase"];
+const SCREENS: Screen[] = ["onboarding", "today", "progress", "coach", "clinician", "showcase"];
+/** Old links: Week and Medals are now part of Progress. */
+const RENAMED: Record<string, Screen> = { week: "progress", medals: "progress" };
 
-/** Screen lives in the URL hash (#week) so links and refreshes keep your place. */
+/** Screen lives in the URL hash (#progress) so links and refreshes keep your place. */
 function readHash(): Screen | null {
-  const h = window.location.hash.replace(/^#\/?/, "") as Screen;
+  const raw = window.location.hash.replace(/^#\/?/, "");
+  const h = (RENAMED[raw] ?? raw) as Screen;
   return SCREENS.includes(h) ? h : null;
 }
 
@@ -68,6 +69,12 @@ export default function App() {
   const overlay = state.onboarded ? state.overlay : null;
   const close = () => dispatch({ type: "overlay", overlay: null });
 
+  // "Not now" and "Cancel" on the Clinician tab go back to the tab the user came from.
+  const lastTab = useRef<Screen>("today");
+  useEffect(() => {
+    if (active !== "clinician" && active !== "onboarding") lastTab.current = active;
+  }, [active]);
+
   return (
     <div className="desk">
       <section className="desk-intro">
@@ -89,21 +96,20 @@ export default function App() {
           </div>
         </div>
 
-        {overlay === "clinician" ? (
-          <ClinicianView />
+        {active === "clinician" ? (
+          <ClinicianScreen onSaved={() => go("today")} onLeave={() => go(lastTab.current)} />
         ) : active === "coach" ? (
           <CoachScreen />
         ) : (
           <main className="screen" key={active}>
             {active === "onboarding" && <Onboarding onDone={() => go("today")} />}
             {active === "today" && <TodayScreen go={go} openPrefs={() => dispatch({ type: "overlay", overlay: "prefs" })} />}
-            {active === "week" && <WeekScreen />}
-            {active === "medals" && <MedalsScreen />}
+            {active === "progress" && <ProgressScreen />}
             {active === "showcase" && <ShowcaseScreen />}
           </main>
         )}
 
-        {active !== "onboarding" && overlay !== "clinician" && (
+        {active !== "onboarding" && active !== "clinician" && (
           <nav className="tabbar" aria-label="Main">
             {TABS.map(({ id, label, Icon }) => (
               <button key={id} className="tab" aria-current={active === id ? "page" : undefined} onClick={() => go(id)}>
@@ -114,8 +120,7 @@ export default function App() {
           </nav>
         )}
 
-        {overlay === "prefs" && <PreferencesSheet onClose={close} openClinician={() => dispatch({ type: "overlay", overlay: "clinician" })} />}
-        {overlay === "recap" && <RecapSheet onClose={close} onPlan={() => { close(); go("week"); }} />}
+        {overlay === "prefs" && active !== "clinician" && <PreferencesSheet onClose={close} openClinician={() => { close(); go("clinician"); }} />}
 
         {state.toast && (
           <div className="toast" role="status">

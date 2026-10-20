@@ -16,15 +16,23 @@ export interface UserProfile {
   /** Set at onboarding or by a "something hurts" decline: no vigorous suggestions */
   hasHealthCondition: boolean;
   fitbitConnected: boolean;
-  clinicianViewEnabled: boolean;
 }
 
-/** Set by a clinician in the clinician view, during a visit. Overrides the defaults. */
+/** Set by a clinician in the Clinician tab, during a visit. Overrides the defaults. */
 export interface ClinicianSettings {
   goal: number | null;
   noVigorous: boolean;
   maxSessionMin: number | null;
+  /** Shown to the user on Today */
   note: string;
+  /** The goal template's other fields. Optional so older saves still load. */
+  name?: string;
+  role?: string;
+  reason?: string;
+  review?: string;
+  precautions?: string;
+  /** ISO time the clinician last saved */
+  updated?: string;
 }
 
 /** One "not today" the coach remembers. `day` is relative to this week's Monday. */
@@ -98,8 +106,8 @@ export interface TodayState {
   nudged: boolean;
 }
 
-export type Screen = "onboarding" | "today" | "week" | "medals" | "coach" | "showcase";
-export type Overlay = null | "prefs" | "recap" | "clinician";
+export type Screen = "onboarding" | "today" | "progress" | "coach" | "clinician" | "showcase";
+export type Overlay = null | "prefs";
 
 export interface AppState {
   version: 2;

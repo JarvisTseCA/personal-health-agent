@@ -147,11 +147,17 @@ export function TodayScreen({ go, openPrefs }: { go: (s: Screen) => void; openPr
               : <span className="v num">{fmt(ctx.todayDone)}<small>/{fmt(ctx.todayTarget)}</small></span>}
           </div>
         </div>
-        <button className="streak" onClick={() => go("medals")}>
+        <button className="streak" onClick={() => go("progress")}>
           <b className="num">{ctx.streak.current}</b>-day streak{ctx.streak.todayPending ? ", keep it going today" : ""}
         </button>
       </section>
-      {state.clinician.note.trim() && <p className="clin-note"><b>From your clinician:</b> {state.clinician.note}</p>}
+      {(state.clinician.note.trim() || state.clinician.precautions?.trim()) && (
+        <div className="clin-note">
+          <b>From {state.clinician.name?.trim() || "your clinician"}:</b> {state.clinician.note}
+          {state.clinician.precautions?.trim() && <p className="xs" style={{ marginTop: 4 }}><b>Precautions:</b> {state.clinician.precautions}</p>}
+          {state.clinician.review && <p className="xs muted" style={{ marginTop: 4 }}>Goal review: {state.clinician.review.toLowerCase()}</p>}
+        </div>
+      )}
 
       <div className="feed" aria-live="polite">
         {t.entries.map((e) =>
@@ -258,8 +264,7 @@ export function TodayScreen({ go, openPrefs }: { go: (s: Screen) => void; openPr
         {t.step === "wrap" && (
           <div className="live">
             <Bubbles label="What next">
-              <button className="chip" onClick={() => go("week")}>See my week</button>
-              <button className="chip" onClick={() => go("medals")}>See my medals</button>
+              <button className="chip" onClick={() => go("progress")}>See my progress</button>
               <button className="chip" onClick={() => dispatch({ type: "sync" })}>Sync another workout (demo)</button>
             </Bubbles>
             <Questions ids={["medals", "goal"]} />

@@ -19,10 +19,12 @@ export const DEFAULT_PROFILE: UserProfile = {
   usualTime: "1to2",
   hasHealthCondition: false,
   fitbitConnected: false,
-  clinicianViewEnabled: false,
 };
 
-export const DEFAULT_CLINICIAN: ClinicianSettings = { goal: null, noVigorous: false, maxSessionMin: null, note: "" };
+export const DEFAULT_CLINICIAN: ClinicianSettings = {
+  goal: null, noVigorous: false, maxSessionMin: null, note: "",
+  name: "", role: "", reason: "", review: "", precautions: "",
+};
 
 function personaState(personaId: string): Pick<AppState, "personaId" | "sessions" | "history" | "declines" | "notes" | "plan" | "goal"> {
   const p = PERSONAS.find((x) => x.id === personaId) ?? PERSONAS[0];

@@ -11,3 +11,9 @@ dist/
 .idea/
 coverage/
 *.tsbuildinfo
+
+# Python backend
+.venv/
+__pycache__/
+.pytest_cache/
+backend/data/

@@ -5,6 +5,7 @@ import type { DaySlot, WeekPlan } from "../lib/plan";
 import type { Access, DeclineReason, Energy, Place, Suggestion } from "../lib/suggest";
 import type { QuestionId } from "../services/answers";
 import { buildAgentContext, type AgentContext } from "../services/context";
+import { backendHealth, fetchSuggestion, type BackendSuggestion } from "../services/backend";
 import { repository } from "../services/store";
 import * as Today from "./today";
 import type { AppState, ChatMessage, ClinicianSettings, Overlay, UserProfile } from "./types";
@@ -98,6 +99,7 @@ export type Action =
   | { type: "toast"; text: string | null }
   | { type: "addMessage"; message: ChatMessage }
   | { type: "updateMessage"; id: string; text: string; suggestions?: string[] }
+  | { type: "backendSuggestion"; replaces: Suggestion; result: BackendSuggestion }
   | { type: "reset" };
 
 function reducer(state: AppState, action: Action): AppState {
@@ -183,6 +185,8 @@ function reducer(state: AppState, action: Action): AppState {
         ...state,
         chat: state.chat.map((m) => (m.id === action.id ? { ...m, text: action.text, suggestions: action.suggestions ?? m.suggestions } : m)),
       };
+    case "backendSuggestion":
+      return Today.applyBackendSuggestion(state, action.replaces, action.result);
     case "reset":
       return initialState();
   }
@@ -210,6 +214,20 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (hydrated.current) repository.save(state);
+  }, [state]);
+
+  // When the ranker has just shown a suggestion, ask the backend (Jev) for its
+  // pick and swap it in. If the backend is down, the ranker's pick stays.
+  const asked = useRef(new WeakSet<object>());
+  useEffect(() => {
+    const c = state.today.current;
+    if (state.today.step !== "suggested" || !c || c.source !== "rules" || c.desk || asked.current.has(c.lead)) return;
+    const replaces = c.lead;
+    asked.current.add(replaces);
+    backendHealth().then((h) => {
+      if (!h) return;
+      fetchSuggestion(state).then((r) => r && dispatch({ type: "backendSuggestion", replaces, result: r }));
+    });
   }, [state]);
 
   const ctx = useMemo(() => buildAgentContext(state), [state]);

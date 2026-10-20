@@ -109,14 +109,11 @@ export function PreferencesSheet({ onClose, openClinician }: { onClose: () => vo
         </div>
         <div className="switch-row">
           <div>
-            <b className="small">Clinician view</b>
-            <p className="xs muted">Open it at a visit and hand your phone to your clinician</p>
+            <b className="small">Clinician</b>
+            <p className="xs muted">At a visit, hand your phone to your clinician to set your goals</p>
           </div>
-          <button className="switch" role="switch" aria-checked={p.clinicianViewEnabled} aria-label="Clinician view" onClick={() => patch({ clinicianViewEnabled: !p.clinicianViewEnabled })} />
+          <button className="btn btn-quiet small-btn" onClick={openClinician}>Open</button>
         </div>
-        {p.clinicianViewEnabled && (
-          <button className="btn btn-quiet btn-block" style={{ marginTop: 8 }} onClick={openClinician}>Open clinician view</button>
-        )}
       </div>
 
       <div className="btn-row" style={{ marginTop: 20 }}>

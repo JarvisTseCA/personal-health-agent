@@ -51,8 +51,8 @@ export function DemoPanel({ go }: { go: (s: Screen) => void }) {
         {!state.onboarded && <button className="btn btn-quiet" onClick={skipOnboarding}>Skip onboarding</button>}
         <button className="btn btn-quiet" disabled={!state.onboarded} onClick={() => { dispatch({ type: "restartDay" }); go("today"); }}>Start today's check-in over</button>
         <button className="btn btn-quiet" disabled={!state.onboarded} onClick={() => { dispatch({ type: "sync" }); go("today"); }}>Simulate a Fitbit sync</button>
-        <button className="btn btn-quiet" disabled={!state.onboarded} onClick={() => dispatch({ type: "overlay", overlay: "recap" })}>Open the weekly recap</button>
-        <button className="btn btn-quiet" disabled={!state.onboarded} onClick={() => { dispatch({ type: "updateProfile", patch: { clinicianViewEnabled: true } }); dispatch({ type: "overlay", overlay: "clinician" }); }}>Open the clinician view</button>
+        <button className="btn btn-quiet" disabled={!state.onboarded} onClick={() => { dispatch({ type: "overlay", overlay: null }); go("progress"); }}>Open Progress</button>
+        <button className="btn btn-quiet" disabled={!state.onboarded} onClick={() => { dispatch({ type: "overlay", overlay: null }); go("clinician"); }}>Open the Clinician tab</button>
         <button className="btn btn-quiet" onClick={() => { dispatch({ type: "reset" }); go("onboarding"); }}>Reset demo</button>
       </div>
 

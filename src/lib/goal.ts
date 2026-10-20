@@ -1,5 +1,5 @@
 /**
- * Weekly goal adjustment, offered in the weekly recap. The user taps to accept.
+ * Weekly goal adjustment, offered in the Last week section of the Progress tab. The user taps to accept.
  * The same rules apply at every goal level, including below 7.5.
  *
  *  Raise: take the lower of the last 2 weeks and round it down to a multiple

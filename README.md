@@ -40,17 +40,91 @@ and the app's data is saved in SQLite. Without the backend, the app works exactl
 
 ## What's in the demo
 
-| Screen | What it shows (maps to the workflow doc) |
-|---|---|
-| Onboarding | **Observe first**: connect Fitbit, one health question, watch a week, then confirm what was detected, likes (ranked), access, usual time and the first weekly plan. *Set up now* skips the week |
-| Today | **The daily loop**: check-in bubbles (time, place, energy, mood) → one pick + two backups → *Not today* with a reason → a new pick. Question chips (*What's a MET?*, *Why this?*, *How did you calculate this?*) at every step. *Sync Fitbit* logs the workout, asks to confirm if unsure, awards medals and nudges *keep going* |
-| Week | Daily targets split by available time; **Change my week** marks days off at any point and re-splits what's left |
-| Medals | Streak (a medal every day), bronze / silver / gold rules, every week's coins |
-| Coach | Free-form questions, answered from scripts with the user's real numbers |
-| Showcase | The **demo moment**: pick activities, see what 30 min is worth, compare *too little / overdid it / with the agent* |
-| Weekly recap (sheet) | Last week's total and medals, plus the goal offer: raise, lower or keep |
-| Preferences (sheet) | Ranked activities with access, what the coach remembers (declines), health flag, clinician view switch |
-| Clinician view | Opened on the user's phone at a visit: weekly chart, activity mix, skip reasons, flags; sets goal, no-vigorous limit, max session, a note. Hand-back shows the user what changed |
+The app has five tabs: **Today · Progress · Coach · Clinician · Showcase**. Onboarding runs once before
+them, and Preferences opens as a sheet from Today.
+
+### Onboarding (runs once)
+
+**Observe first**: connect Fitbit, answer one health question, watch a week, then confirm what was detected,
+add liked activities (ranked), access, usual time and the first weekly plan. *Set up now* skips the week.
+
+### Today
+
+The daily loop, and the screen the app opens on.
+
+- **Summary card:** this week's medals, a bar for the week's MET-hours and one for today's target, and the
+  streak. Tapping the streak opens Progress.
+- **Check-in:** bubbles for time, place, energy and mood (*Surprise me* skips ahead; *0 min* offers desk moves).
+- **Suggestion:** one pick and two backups. *Not today* asks for a reason and gives a new pick.
+- **Questions:** chips such as *What's a MET?*, *Why this?* and *How did you calculate this?* at every step.
+- **Workout:** *Sync Fitbit* logs it, asks to confirm if unsure, awards medals and nudges *keep going*.
+- **From your clinician:** after a visit, the clinician's note, precautions and goal review date appear here.
+- The settings button opens **Preferences**: ranked activities with access, what the coach remembers
+  (declines and notes), the health flag, Fitbit, and a shortcut to the Clinician tab.
+
+Code: `src/screens/TodayScreen.tsx`, `src/state/today.ts`, `src/screens/PreferencesSheet.tsx`
+
+### Progress
+
+One tab for how activity adds up. It replaces the old Week tab, Medals tab and weekly recap sheet.
+Top to bottom:
+
+- **This week:** MET-hours done against the goal, the goal strip, percent done and what's left, and the
+  streak (current and best). The line under the heading says where the goal came from (guideline, raised,
+  stepping stone or clinician).
+- **Day by day:** each day's medal, target and workouts (from Fitbit or logged). *Change my week* marks days
+  *Off*, *Short*, *Medium* or *Long* at any point and re-splits what's left. *Log a workout Fitbit missed*
+  adds one by hand.
+- **Last week:** the recap: total, medals, a line of praise and the activity with the most time. Below it,
+  the goal offer: raise, lower or keep, or type your own goal.
+- **Earlier weeks:** every week before that as a row of medals; gold weeks are highlighted.
+- **How medals work:** bronze, silver and gold rules, and what ends a streak.
+
+Code: `src/screens/ProgressScreen.tsx`
+
+### Coach
+
+A chat for free-form questions, answered from scripts with the user's real numbers, including the
+clinician guardrail for pain or dizziness.
+
+Code: `src/screens/CoachScreen.tsx`, `src/services/mockResponses.ts`
+
+### Clinician
+
+Used at a visit, on the user's own phone, so no clinician account is needed.
+
+- **Consent first.** Every time the tab opens, a pop-up asks: *"Do you want your clinician to help you set
+  your exercise goals? If so, please hand your phone to them now, and they will have access to your
+  records."* *Not now* goes back to the previous tab. Nothing is shown until the user agrees.
+- **Goal template** (dropdowns plus free text):
+
+  | Field | Input |
+  |---|---|
+  | Name | Free text |
+  | Role | Dropdown: physician, nurse practitioner, physician assistant, physical therapist, exercise physiologist, other |
+  | Reason for this goal | Dropdown: prevention, blood pressure / heart, blood sugar / diabetes, weight, after injury or illness, pregnancy / postpartum, other |
+  | MET-hours per week | Dropdown: keep the app's goal, 3.75, 5, 7.5 (guideline), 10, 15, or a custom number from 1 to 30 |
+  | Intensity allowed | Dropdown: moderate and vigorous, or moderate only (under 6 MET) |
+  | Longest single session | Dropdown: no limit, 30, 45 or 60 min |
+  | Review this goal | Dropdown: in 2 weeks, 4 weeks, 3 months, or at the next visit |
+  | Note for the user | Free text |
+  | Precautions | Free text |
+
+  A live line converts the goal to minutes, e.g. 7.5 MET-hours ≈ 150 min moderate or 75 min vigorous.
+- **Records:** weekly MET-hours against each week's goal, activity mix, why workouts get skipped, and flags
+  (health condition, pain reports, longest gap without activity, the open weekly-limit question).
+- **Save and hand back** applies the goal and limits, returns to Today and shows the user what changed.
+  *Cancel* discards the changes.
+
+Code: `src/screens/ClinicianScreen.tsx`
+
+### Showcase
+
+The **demo moment** from the one-pager. It works without onboarding. Pick two or three activities, see
+what 30 minutes of each is worth, and compare three weeks: *too little*, *overdid it* and *with the agent*,
+with the agent's plan expandable.
+
+Code: `src/screens/ShowcaseScreen.tsx`
 
 **Typing is always an option.** Every question that offers buttons or bubbles also has an *Other* text box
 below them. Typed answers are read into the same choices (`src/lib/freeText.ts`): "25 min", "at the gym",
@@ -60,7 +134,7 @@ at the bottom of the effort band Fitbit measured.
 
 **Demo controls** (right side on desktop): switch scenario (*Alex*, *On a roll* → goal raise, *Tough month*
 → goal cut, *Fresh start*), pretend it's a different day, restart today's check-in, simulate a Fitbit
-sync, open the recap or clinician view, reset, and show the backend: the **verifier's checks** on the
+sync, jump to Progress or the Clinician tab, reset, and show the backend: the **verifier's checks** on the
 current suggestion and the prompt the coach would receive.
 
 ## Design guidelines
@@ -108,11 +182,11 @@ flowchart TD
    4. *Work out:* Fitbit syncs the workout and the user confirms it if the app isn't sure. It's converted to
       MET-hours, medals update, and if the user got partway to today's target the coach nudges them to keep
       going. The rest of the week's targets adjust.
-4. **Weekly review (end of week).** The recap shows last week's total and medals, then offers to raise, lower
-   or keep the goal. It leads straight into next week's planning.
+4. **Weekly review (end of week).** The *Last week* section of Progress shows last week's total and medals,
+   then offers to raise, lower or keep the goal. Planning the next week happens in the same tab.
 
-The clinician view sits outside these loops. The user opens it during a visit, and what the clinician sets
-(goal, limits, a note) applies from then on.
+The Clinician tab sits outside these loops. The user opens it during a visit and agrees to share their
+records, and what the clinician sets (goal, limits, note, precautions) applies from then on.
 
 ### Onboarding
 
@@ -142,7 +216,7 @@ exercise at all, and let them change the plan mid-week, with the remaining goal 
 - Today's target is fixed at the start of the day, so silver is judged against a number that doesn't move
   during a workout.
 
-Code: `src/lib/plan.ts`, `src/screens/WeekScreen.tsx`
+Code: `src/lib/plan.ts`, `src/screens/ProgressScreen.tsx`
 
 ### Daily check-in
 
@@ -226,9 +300,9 @@ the weekly goal turns every medal that week gold. A screen shows the streak as m
 - Light activity, such as a short walk or desk moves, counts toward bronze.
 - The streak counts days in a row with at least a bronze. Any day with no activity ends it, even a planned
   day off.
-- The Medals tab shows the streak and every week as a row of coins.
+- The Progress tab shows the streak and every week as a row of coins.
 
-Code: `src/lib/medals.ts`, `src/screens/MedalsScreen.tsx`
+Code: `src/lib/medals.ts`, `src/screens/ProgressScreen.tsx`
 
 ### Goal setting and adjustment
 
@@ -240,23 +314,24 @@ weeks.
   current goal, offer it.
 - **Lower:** if the user is under half the goal 3 weeks in a row, offer half the goal.
 - The same rules apply at every goal level, including below 7.5. A goal below 7.5 is labeled a stepping stone.
-- The weekly recap makes the offer and the user accepts, keeps or types their own goal. A goal set by a
-  clinician is never changed automatically.
+- The *Last week* section of Progress makes the offer and the user accepts, keeps or types their own goal.
+  A goal set by a clinician is never changed automatically.
 
-Code: `src/lib/goal.ts`, `src/screens/RecapSheet.tsx`
+Code: `src/lib/goal.ts`, `src/screens/ProgressScreen.tsx`
 
-### Clinician view
+### Clinician tab
 
 **Instruction:** A separate screen where a clinician can check the user's exercise records and set a goal.
 
-- The user turns it on in Preferences and hands their phone to the clinician during a visit, so no clinician
-  account is needed.
-- It shows weekly MET-hours, activity mix, why workouts get skipped, and flags such as pain reports and long gaps.
-- The clinician can set the weekly goal, turn off vigorous activity, cap session length and leave a note.
-  These limits feed the verifier's checks.
-- On hand-back the user sees a summary of what changed.
+- The user hands their phone to the clinician during a visit, so no clinician account is needed.
+- Opening the tab always asks for consent first; the records stay hidden until the user agrees.
+- The goal template uses dropdowns for structured fields (role, reason, MET-hours per week, intensity,
+  session length, review date) and free text for the name, a note and precautions.
+- The goal, intensity and session limits feed the verifier's checks. A clinician goal is never changed
+  automatically by the goal rules.
+- On hand-back the user sees a summary of what changed, and Today shows the note and precautions.
 
-Code: `src/screens/ClinicianView.tsx`
+Code: `src/screens/ClinicianScreen.tsx`
 
 ### Tap first, type anytime
 
@@ -296,7 +371,7 @@ cautious option shown for each one.
 | Question | Why it matters | What the app does for now |
 |---|---|---|
 | **Light activity and the goal.** Should activity under 3 MET (a slow walk, desk band sets) count toward the weekly MET-hour goal, or only earn a medal? | The activity guideline counts only moderate (3+ MET) and vigorous (6+ MET) activity, but desk moves are the only option on 0-minute days. | Light activity earns a bronze medal and keeps the streak, but adds nothing to the goal. Setting: `LIGHT_COUNTS_TOWARD_GOAL` in `src/lib/met.ts` (off). |
-| **Weekly upper limit.** Is there an evidence-based upper limit on weekly MET-hours? | It sets when the coach stops "keep going" nudges and suggests rest, which weeks get flagged in the clinician view, and how high an automatic goal raise can go. | No limit is set. Raises follow the rounding rule only, and the clinician view says the limit isn't set yet. Setting: `WEEKLY_UPPER_LIMIT` in `src/lib/goal.ts` (`null`). |
+| **Weekly upper limit.** Is there an evidence-based upper limit on weekly MET-hours? | It sets when the coach stops "keep going" nudges and suggests rest, which weeks get flagged in the Clinician tab, and how high an automatic goal raise can go. | No limit is set. Raises follow the rounding rule only, and the Clinician tab says the limit isn't set yet. Setting: `WEEKLY_UPPER_LIMIT` in `src/lib/goal.ts` (`null`). |
 | **Floor for goal cuts.** Halving after 3 low weeks can repeat. Below what goal should the app stop cutting and suggest talking with a clinician instead? | Repeated halving could take the goal far below anything meaningful without anyone reviewing it. | No floor. Each cut is only an offer the user must accept, and any goal below 7.5 is labeled a stepping stone back to the guideline. |
 
 The same list is at the end of the *PHA App Workflow* doc.

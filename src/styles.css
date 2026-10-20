@@ -562,7 +562,7 @@ input[type="range"] { width: 100%; accent-color: var(--ink); height: 32px; }
 .memory-list li:first-child { border-top: 0; }
 
 /* ------------------------------------------------------------------
-   Clinician view: a different room. White, denser, chart-first.
+   Clinician tab: a different room. White, denser, chart-first.
 ------------------------------------------------------------------- */
 .clinician { flex: 1; display: flex; flex-direction: column; min-height: 0; background: var(--surface); }
 .clinician-head { display: flex; gap: 12px; align-items: center; padding: 10px 20px 14px; border-bottom: 1px solid var(--line); }
@@ -624,3 +624,47 @@ input[type="range"] { width: 100%; accent-color: var(--ink); height: 32px; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
 }
+
+/* ---------- Progress tab ---------- */
+.pg-week-head { margin: 0 0 6px; }
+.pg-week-head h2 { font-size: var(--t-xl); font-weight: 800; }
+.pg-week-head + .hero-number { margin-top: 8px; }
+.pg-streak { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); font-size: var(--t-sm); }
+.pg-streak b { font-size: var(--t-lg); }
+.pg-card { background: var(--surface); border: 1px solid var(--line); border-radius: 20px; padding: 14px 14px 12px; }
+.pg-card.is-gold { background: var(--gold-wash); border-color: #ebd48e; }
+.pg-card-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; margin-bottom: 10px; font-size: var(--t-sm); }
+
+/* ---------- Clinician tab ---------- */
+.clinician { position: relative; }
+.cl-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.cl-grid .cl-row { margin: 0; }
+.cl-row { display: flex; flex-direction: column; gap: 6px; margin-bottom: 14px; min-width: 0; }
+.cl-label { font-weight: 700; font-size: var(--t-sm); }
+.cl-select, .cl-input {
+  width: 100%; min-height: 44px; border-radius: 12px; border: 1.5px solid var(--line-strong);
+  background: var(--paper); padding: 0 12px; font-size: var(--t-sm);
+}
+.cl-select {
+  appearance: none; -webkit-appearance: none; padding-right: 34px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1.5l5 5 5-5' fill='none' stroke='%231F1B3A' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: right 12px center;
+}
+textarea.cl-input { padding: 10px 12px; resize: vertical; min-height: 64px; line-height: 1.4; }
+.cl-input:focus, .cl-select:focus { border-color: var(--ink); outline: none; }
+.cl-summary { margin: -4px 0 16px; padding: 10px 12px; border-radius: 12px; background: var(--wash); font-size: var(--t-sm); }
+.cl-locked { background: repeating-linear-gradient(180deg, var(--wash) 0 14px, transparent 14px 40px); opacity: .6; }
+
+/* Consent pop-up shown each time the Clinician tab opens */
+.consent-backdrop { position: absolute; inset: 0; background: #1f1b3a8c; z-index: 40; animation: fade .16s ease-out; }
+.consent {
+  position: absolute; left: 18px; right: 18px; top: 50%; transform: translateY(-50%); z-index: 41;
+  background: var(--surface); border-radius: 24px; padding: 22px 20px 18px; box-shadow: 0 24px 48px -16px #1f1b3a80;
+  display: flex; flex-direction: column; gap: 10px; animation: consent-in .22s cubic-bezier(.2, .8, .2, 1);
+}
+.consent h2 { font-size: var(--t-xl); font-weight: 800; }
+.consent-icon { width: 44px; height: 44px; border-radius: 14px; background: var(--wash); display: grid; place-items: center; }
+.consent-icon svg { width: 24px; height: 24px; }
+.consent-actions { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
+@keyframes consent-in { from { opacity: 0; transform: translateY(-46%) scale(.96); } }
+@media (prefers-reduced-motion: reduce) { .consent { animation: none; } }

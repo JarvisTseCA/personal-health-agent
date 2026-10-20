@@ -170,20 +170,30 @@ function deskOptions(): SuggestResult {
   return { lead: opts[0], backups: opts.slice(1), desk: true };
 }
 
-export function suggest(input: SuggestInput): SuggestResult {
-  const choices = durationChoices(input.minutes, input.maxSessionMin);
-  if (input.minutes <= 0 || choices.length === 0) return deskOptions();
-
-  const families = input.enjoyed
+/**
+ * What passes the hard filters today: enjoyed, accessible, not ruled out,
+ * allowed by health limits and today's constraints, and the session lengths
+ * that fit. The ranker scores these; the backend sends them to Jev as options.
+ */
+export function candidates(input: SuggestInput): { options: Array<{ family: ActivityFamily; variant: ActivityVariant }>; durations: number[] } {
+  const durations = durationChoices(input.minutes, input.maxSessionMin);
+  if (input.minutes <= 0 || durations.length === 0) return { options: [], durations: [] };
+  const options = input.enjoyed
     .filter((id) => !input.exclude.includes(id) && input.access[id] !== "no")
     .map(getFamily)
-    .filter((f) => !f.fallbackOnly);
+    .filter((f) => !f.fallbackOnly)
+    .flatMap((family) => family.variants.filter((v) => allowed(family, v, input)).map((variant) => ({ family, variant })));
+  return { options, durations };
+}
+
+export function suggest(input: SuggestInput): SuggestResult {
+  const { options, durations: choices } = candidates(input);
+  if (choices.length === 0) return deskOptions();
 
   const best: Suggestion[] = [];
-  for (const f of families) {
+  for (const f of [...new Set(options.map((o) => o.family))]) {
     let top: Suggestion | null = null;
-    for (const v of f.variants) {
-      if (!allowed(f, v, input)) continue;
+    for (const { variant: v } of options.filter((o) => o.family === f)) {
       const d = pickDuration(v, choices, aim(input));
       const { score, reasons, credit } = scoreOne(f, v, d, input);
       if (!top || score > top.score) top = { familyId: f.id, variantId: v.id, durationMin: d, met: v.met, credit, rawMetHours: metHours(v.met, d), reasons, score };

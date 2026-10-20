@@ -18,6 +18,7 @@ import { afterDecline, DECLINE_LABEL, suggest, type DeclineReason, type Energy, 
 import { matchActivity, parseEnergy, parseMinutes, parsePlace, parseReason, parseYesNo } from "../lib/freeText";
 import { answer, QUESTIONS, type QuestionId } from "../services/answers";
 import { SCRIPTED_REPLIES } from "../services/mockResponses";
+import type { BackendSuggestion } from "../services/backend";
 import { buildAgentContext, buildSuggestInput } from "../services/context";
 import type { AppState, TodayEntry, TodayState } from "./types";
 
@@ -95,7 +96,22 @@ function offer(state: AppState, intro?: string): AppState {
   } else if (intro) {
     s = push(s, agent(intro));
   }
-  return setToday(s, { step: "suggested", current: { lead: r.lead!, backups: r.backups, desk: r.desk, showBackups: false } });
+  return setToday(s, { step: "suggested", current: { lead: r.lead!, backups: r.backups, desk: r.desk, showBackups: false, source: "rules" } });
+}
+
+/**
+ * Swap the ranker's pick for the backend's (Jev). Only applies while the user
+ * is still looking at the pick it `replaces`; if they've moved on, it's dropped.
+ */
+export function applyBackendSuggestion(state: AppState, replaces: Suggestion, r: BackendSuggestion): AppState {
+  const c = state.today.current;
+  if (state.today.step !== "suggested" || !c || c.source !== "rules" || c.lead !== replaces) return state;
+  return setToday(state, {
+    current: {
+      ...c, lead: r.lead, backups: r.backups, source: r.source,
+      jev: { model: r.model, logId: r.logId, request: r.jevRequest, answers: r.jevAnswers },
+    },
+  });
 }
 
 export function showBackups(state: AppState): AppState {

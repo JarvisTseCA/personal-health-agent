@@ -83,7 +83,16 @@ export interface TodayState {
   exclude: string[];
   constraint?: Constraint;
   boost: boolean;
-  current?: { lead: Suggestion; backups: Suggestion[]; desk: boolean; showBackups: boolean };
+  current?: {
+    lead: Suggestion;
+    backups: Suggestion[];
+    desk: boolean;
+    showBackups: boolean;
+    /** Who picked it: the in-app ranker, or Jev via the backend (live or mocked) */
+    source?: "rules" | "jev" | "mock";
+    /** The prompt sent to Jev and its answers, for the demo panel */
+    jev?: { model: string; logId: number; request: unknown; answers: unknown };
+  };
   accepted?: Suggestion;
   pendingSessionId?: string;
   nudged: boolean;

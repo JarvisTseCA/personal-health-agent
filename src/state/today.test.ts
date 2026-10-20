@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { buildSuggestRequest, type BackendSuggestion } from "../services/backend";
 import { buildAgentContext } from "../services/context";
 import { initialState, personaProfile } from "./store";
 import * as T from "./today";
@@ -132,5 +133,35 @@ describe("today flow", () => {
     expect(sess.customName).toBe("Pickleball");
     expect(sess.confirmed).toBe(true);
     expect(["other-fairly", "other-very"]).toContain(sess.variantId);
+  });
+});
+
+describe("backend (Jev) suggestions", () => {
+  const fromJev = (s: AppState): BackendSuggestion => {
+    const [lead, ...backups] = [s.today.current!.lead, ...s.today.current!.backups].reverse();
+    return { source: "mock", model: "mock", logId: 1, lead, backups, jevRequest: {}, jevAnswers: {} };
+  };
+
+  it("sends only the options that pass the hard filters, and the check-in variables", () => {
+    const s = checkIn(onboarded(), 30);
+    const body = buildSuggestRequest(s);
+    expect(body.check_in.minutes).toBe(30);
+    expect(body.durations.every((d) => d <= 30)).toBe(true);
+    expect(body.options.every((o) => s.profile.enjoyed.includes(o.family_id))).toBe(true);
+  });
+
+  it("swaps in the backend's pick while the ranker's is still showing", () => {
+    const s = checkIn(onboarded());
+    const r = fromJev(s);
+    const next = T.applyBackendSuggestion(s, s.today.current!.lead, r);
+    expect(next.today.current!.lead).toBe(r.lead);
+    expect(next.today.current!.source).toBe("mock");
+  });
+
+  it("drops a late answer once the user has moved on", () => {
+    const s = checkIn(onboarded());
+    const r = fromJev(s);
+    const accepted = T.accept(s, s.today.current!.lead);
+    expect(T.applyBackendSuggestion(accepted, s.today.current!.lead, r)).toBe(accepted);
   });
 });

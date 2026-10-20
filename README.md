@@ -34,6 +34,10 @@ To try it on your phone, connect to the same Wi-Fi and open the "Network" URL Vi
 | `npm test` | Run the unit tests for the MET-hour math, targets, medals, goal rules, ranker and Today flow |
 | `npm run typecheck` | TypeScript check only |
 
+**With the Python backend (Jev + SQLite):** start it on port 8000 as described in
+[docs/architecture.md](docs/architecture.md#run-it), then run `npm run dev` as usual. Suggestions then come from Jev
+and the app's data is saved in SQLite. Without the backend, the app works exactly as the demo above.
+
 ## What's in the demo
 
 | Screen | What it shows (maps to the workflow doc) |

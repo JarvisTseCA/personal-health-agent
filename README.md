@@ -54,8 +54,10 @@ The daily loop, and the screen the app opens on.
 
 - **Summary card:** this week's medals, a bar for the week's MET-hours and one for today's target, and the
   streak. Tapping the streak opens Progress.
-- **Check-in:** bubbles for time, place, energy and mood (*Surprise me* skips ahead; *0 min* offers desk moves).
-- **Suggestion:** one pick and two backups. *Not today* asks for a reason and gives a new pick.
+- **Summary legend:** the week bar reads *Done* (green), *Left for today* (amber), *Upcoming days* (gray).
+- **Check-in:** bubbles for time, where they'll exercise and how they feel (*0 min* offers desk moves).
+- **Suggestion:** one pick, three buttons: *Let's start*, *Remind me later* (the coach asks when) and
+  *Give me another option* (swaps in the next pick, no reason needed).
 - **Questions:** chips such as *What's a MET?*, *Why this?* and *How did you calculate this?* at every step.
 - **Workout:** *Sync Fitbit* logs it, asks to confirm if unsure, awards medals and nudges *keep going*.
 - **From your clinician:** after a visit, the clinician's note, precautions and goal review date appear here.
@@ -154,11 +156,12 @@ The app runs on three loops: onboarding once, planning every week, and a check-i
 ```mermaid
 flowchart TD
     A["Onboarding (once)<br/>Fitbit, health question,<br/>observe a week, confirm, likes"] --> B["Weekly planning (Sunday)<br/>mark off days, split the goal"]
-    B --> C["1. Check in<br/>time, place, energy, mood"]
-    C --> D["2. Suggest<br/>1 pick + 2 backups"]
-    D --> E{Accept?}
-    E -- "no: Not today + reason" --> F["Reason saved<br/>to memory"]
-    F -- "new pick" --> D
+    B --> C["1. Check in<br/>time, place, energy"]
+    C --> D["2. Suggest<br/>1 pick"]
+    D --> E{Let's start?}
+    E -- "Give me another option" --> D
+    E -- "Remind me later" --> F["Ask when,<br/>remind then"]
+    F -- "reminder" --> D
     Q["3. Ask a question<br/>e.g. What's a MET?"] -. "any time" .-> D
     E -- yes --> G["4. Work out<br/>Fitbit sync, confirm if unsure"]
     G --> H["Credit and medals<br/>MET-hours, bronze to gold"]
@@ -174,10 +177,9 @@ flowchart TD
    over the other days by how much time each one has. The plan can change mid-week, and what's left is
    re-split.
 3. **The daily loop.**
-   1. *Check in:* the user taps how much time they have, where they are, how they feel and what they're in
-      the mood for.
-   2. *Suggest:* the coach gives one pick and two backups. If the user says *Not today*, they give a reason,
-      the coach saves it and gives a new pick.
+   1. *Check in:* the user taps how much time they have, where they'll exercise and how they feel.
+   2. *Suggest:* the coach gives one pick with three buttons: *Let's start*, *Remind me later* or *Give me
+      another option*. A reason for turning it down can still be typed, and the coach saves it.
    3. *Ask:* at any point the user can tap or type a question, such as *What's a MET?*
    4. *Work out:* Fitbit syncs the workout and the user confirms it if the app isn't sure. It's converted to
       MET-hours, medals update, and if the user got partway to today's target the coach nudges them to keep
@@ -222,9 +224,11 @@ Code: `src/lib/plan.ts`, `src/screens/ProgressScreen.tsx`
 
 **Instruction:** Ask for the user's preferences and availability each day.
 
-- Four quick questions, each answered with one tap: time today, where they are, how they feel, and what
-  they're in the mood for.
-- *Surprise me* skips straight to a suggestion for users who don't want to think about it.
+- Three quick questions, each answered with one tap: time today (0, 5, 10, 30 or 45+ min), where they'll
+  exercise (home, office, outside), and how they feel (*Up for a challenge* or *Normal*).
+- There's no "what are you in the mood for?" question: the coach picks, to avoid decision fatigue.
+- Feeling tired isn't a button, to nudge toward moving, but typing it works and the pick gets easier.
+- *Up for a challenge* aims for 1.5× today's target; *Normal* aims for today's target.
 - Answering *0 min* skips the rest and offers desk moves.
 
 Code: `src/state/today.ts`, `src/screens/TodayScreen.tsx`
@@ -235,7 +239,10 @@ Code: `src/state/today.ts`, `src/screens/TodayScreen.tsx`
 time and their goal. Avoid repetition. Use their past feedback. If they have no time, suggest something they
 can do at their desk.
 
-- One pick plus two backups, the backups of a different type where possible.
+- One pick on screen. The ranker keeps two backups (of a different type where possible) for *Give me
+  another option*, which cycles through them.
+- *Remind me later* asks when (in 30 min, in 1 hour, this evening, or a typed time) and brings the same pick
+  back then.
 - The ranker filters to activities the user enjoys, can access and has time for, and that their health
   settings allow. It then scores them on preference, fit to today's target, how recently each was done, past
   declines and today's energy.
@@ -249,8 +256,9 @@ Code: `src/lib/suggest.ts`
 **Instruction:** The user can turn a suggestion down and say why. The coach remembers the reason and uses it
 for later suggestions.
 
-- *Not today* asks for a reason: no time, too tired, not in the mood, did this recently, can't access it,
-  weather, something hurts, or a typed answer.
+- There's no *Not today* button on the pick: typing a reason in the Other box ("my knee hurts", "no time")
+  starts it. *Change of plans* on an accepted workout still offers the reasons as bubbles: no time, too tired,
+  not in the mood, did this recently, can't access it, weather, something hurts.
 - Each reason changes the next pick right away (shorter, lighter, indoors, a different type) and is saved.
   Preferences shows what the coach remembers, and the user can delete any of it.
 - *Something hurts* always takes the safety path: gentle options only, vigorous suggestions off, and a
@@ -288,7 +296,8 @@ bigger session and ask less of another day.
 
 - When a workout gets at least halfway to today's target, the coach sends one nudge: "8 more minutes
   finishes it."
-- *I want more today* offers a bigger option, and the rest of the week's targets drop to match.
+- *Up for a challenge* at check-in offers a bigger session (aiming for 1.5× today's target), and the rest of
+  the week's targets drop to match.
 
 Code: `src/state/today.ts`
 

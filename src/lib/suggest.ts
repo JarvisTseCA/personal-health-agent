@@ -51,6 +51,8 @@ export interface SuggestInput {
   mood: string;
   /** MET-hours still needed to reach today's target */
   needed: number;
+  /** Today's full target in MET-hours (for "Up for a challenge" = 1.5× this) */
+  target?: number;
   /** "I want more today" */
   boost: boolean;
   /** Families done recently, with how many days ago */
@@ -86,10 +88,21 @@ function allowed(f: ActivityFamily, v: ActivityVariant, input: SuggestInput): bo
   return creditFor(v.met, 10) > 0;
 }
 
-/** How much of the remaining target to aim for. */
+/** "Up for a challenge" (or "I want more") aims for this much of today's target. */
+export const CHALLENGE_FACTOR = 1.5;
+
+const stretching = (input: SuggestInput) => input.boost || input.energy === "challenge";
+
+/**
+ * MET-hours to aim for in this session. Normal: what's left of today's
+ * target. Challenge: enough to reach 1.5× today's target in total.
+ */
 function aim(input: SuggestInput): number {
-  if (input.needed > 0) return input.needed * (input.boost ? 1.5 : 1);
-  return input.boost ? 1.5 : 0;
+  if (!stretching(input)) return Math.max(0, input.needed);
+  const target = input.target ?? input.needed;
+  if (target <= 0) return input.boost ? CHALLENGE_FACTOR : 0;
+  const doneToday = Math.max(0, target - input.needed);
+  return Math.max(0, target * CHALLENGE_FACTOR - doneToday);
 }
 
 function pickDuration(v: ActivityVariant, choices: number[], want: number): number {
@@ -118,7 +131,7 @@ function scoreOne(f: ActivityFamily, v: ActivityVariant, d: number, input: Sugge
     const r = credit / want;
     if (r < 1) score -= (1 - r) * 3;
     if (r > 1.5) score -= (r - 1.5) * 2;
-    if (r + 1e-9 >= 1) reasons.push(input.boost ? "Goes past today's target" : "Covers today's target");
+    if (r + 1e-9 >= 1) reasons.push(stretching(input) ? "Goes past today's target" : "Covers today's target");
   }
   reasons.push(`Fits in ${input.minutes} min`);
 

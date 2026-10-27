@@ -70,7 +70,7 @@ export interface CheckIn {
 
 export type TodayStep =
   | "time" | "place" | "energy" | "mood"
-  | "suggested" | "reason"
+  | "suggested" | "reason" | "remind" | "reminded"
   | "accepted" | "confirm" | "confirm-other" | "nudge" | "wrap";
 
 export interface TodayEntry {
@@ -102,6 +102,8 @@ export interface TodayState {
     jev?: { model: string; logId: number; request: unknown; answers: unknown };
   };
   accepted?: Suggestion;
+  /** When the user asked to be reminded about the current pick ("in 1 hour") */
+  reminder?: string;
   pendingSessionId?: string;
   nudged: boolean;
 }

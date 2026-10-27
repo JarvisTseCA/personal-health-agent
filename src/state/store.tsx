@@ -84,6 +84,10 @@ export type Action =
   | { type: "showBackups" }
   | { type: "accept"; suggestion: Suggestion }
   | { type: "decline" }
+  | { type: "another" }
+  | { type: "remindLater" }
+  | { type: "setReminder"; when: string }
+  | { type: "reminderDue" }
   | { type: "reason"; reason: DeclineReason }
   | { type: "freeText"; text: string }
   | { type: "addNote"; text: string; where: string }
@@ -158,6 +162,10 @@ function reducer(state: AppState, action: Action): AppState {
     case "showBackups": return Today.showBackups(state);
     case "accept": return Today.accept(state, action.suggestion);
     case "decline": return Today.decline(state);
+    case "another": return Today.anotherOption(state);
+    case "remindLater": return Today.remindLater(state);
+    case "setReminder": return Today.setReminder(state, action.when);
+    case "reminderDue": return Today.reminderDue(state);
     case "reason": return Today.chooseReason(state, action.reason);
     case "freeText": return Today.freeText(state, action.text);
     case "addNote": return { ...state, notes: [...state.notes, { id: Today.newId("n"), text: action.text, where: action.where, day: state.todayIndex }] };

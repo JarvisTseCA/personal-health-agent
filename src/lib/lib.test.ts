@@ -160,6 +160,22 @@ describe("suggestions", () => {
     expect(r.lead!.familyId).toBe("desk");
   });
 
+  it("aims for today's target when normal, and 1.5× it when up for a challenge", () => {
+    const target = 1.3;
+    const normal = suggest({ ...base, minutes: 60, needed: target, target }).lead!;
+    const hard = suggest({ ...base, minutes: 60, needed: target, target, energy: "challenge" }).lead!;
+    expect(normal.credit + 1e-9).toBeGreaterThanOrEqual(target);
+    expect(normal.credit).toBeLessThan(target * 1.5);
+    expect(hard.credit + 1e-9).toBeGreaterThanOrEqual(target * 1.5);
+  });
+
+  it("counts what's already done today toward the 1.5× challenge", () => {
+    // Target 1.3, 0.8 done: a challenge aims for 1.95 total, so 1.15 more.
+    const hard = suggest({ ...base, minutes: 60, needed: 0.5, target: 1.3, energy: "challenge" }).lead!;
+    expect(hard.credit + 1e-9).toBeGreaterThanOrEqual(1.15);
+    expect(hard.reasons).toContain("Goes past today's target");
+  });
+
   it("never suggests vigorous activity with a health flag", () => {
     const r = suggest({ ...base, noVigorous: true, energy: "challenge", minutes: 60, needed: 4 });
     for (const s of [r.lead!, ...r.backups]) expect(s.met).toBeLessThan(6);

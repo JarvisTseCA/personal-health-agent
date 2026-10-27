@@ -1,6 +1,6 @@
 import { DAY_NAMES_LONG, fmt, fmtGoal } from "../lib/met";
 import { MEDAL_LABEL } from "../lib/medals";
-import { weekMonth, type WeekIn } from "../lib/periods";
+import type { WeekIn } from "../lib/periods";
 import { MedalCoin } from "./Medal";
 
 interface Props {
@@ -8,8 +8,6 @@ interface Props {
   weeks: WeekIn[];
   /** Monthly view: day numbers in each cell, days outside this month dimmed */
   month?: { year: number; month: number };
-  /** Quarterly view: a month name above each month's first week */
-  monthLabels?: boolean;
   size?: number;
 }
 
@@ -23,9 +21,8 @@ const short = (d: Date) => d.toLocaleDateString(undefined, { month: "short", day
  * each day with activity and an empty circle for each day without (a dash
  * on a planned day off). A week that reached its goal is highlighted gold.
  */
-export function MedalCalendar({ weeks, month, monthLabels, size = 24 }: Props) {
+export function MedalCalendar({ weeks, month, size = 24 }: Props) {
   const dates = !!month;
-  let lastMonth = "";
   return (
     <div className={`cal${dates ? " with-dates" : ""}`}>
       <div className="cal-head" aria-hidden>
@@ -36,16 +33,9 @@ export function MedalCalendar({ weeks, month, monthLabels, size = 24 }: Props) {
       <ol className="cal-rows">
         {weeks.map((w) => {
           const met = w.done + EPS >= w.goal;
-          const m = weekMonth(w.start);
-          const mKey = `${m.year}-${m.month}`;
-          const header = monthLabels && mKey !== lastMonth
-            ? new Date(m.year, m.month, 1).toLocaleDateString(undefined, { month: "long" })
-            : null;
-          lastMonth = mKey;
           const label = `Week of ${w.label}: ${fmt(w.done)} of ${fmtGoal(w.goal)} MET-hours${met ? ", goal reached" : ""}`;
           return (
             <li key={w.start.getTime()} className="cal-item">
-              {header && <span className="cal-month">{header}</span>}
               <div className={`cal-row${met ? " is-gold" : ""}`} role="group" aria-label={label}>
                 {!dates && <span className="cal-week">{w.label}</span>}
                 {w.medals.map((medal, i) => {

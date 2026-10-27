@@ -3,7 +3,7 @@
  * Top to bottom: this week (total, streak, day-by-day plan and workouts),
  * last week's recap with the goal offer, earlier weeks, and the medal rules.
  */
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { TimeOptions } from "../components/TimeOptions";
 import { WeekBars, WeekLegend } from "../components/WeekBar";
 import { PlusIcon } from "../components/Icons";
@@ -15,7 +15,7 @@ import { RAISE_STEP } from "../lib/goal";
 import { DAY_NAMES_LONG, fmt, fmtGoal } from "../lib/met";
 import { SLOT_HINT, SLOT_LABEL, SLOT_MINUTES } from "../lib/plan";
 import { useStore } from "../state/store";
-import { groupWeeks, weekMonth, type Period, type PeriodView, type WeekIn } from "../lib/periods";
+import { groupWeeks, type WeekIn } from "../lib/periods";
 import { CalendarKey, MedalCalendar } from "../components/MedalCalendar";
 import { weekStart } from "../services/context";
 import { LogWorkoutSheet } from "./LogWorkoutSheet";
@@ -31,7 +31,7 @@ export function ProgressScreen() {
       </div>
       <ThisWeek />
       <LastWeek />
-      <EarlierWeeks />
+      <MonthByMonth />
       <MedalRules />
     </>
   );
@@ -257,74 +257,58 @@ function LastWeek() {
   );
 }
 
-const VIEWS: Array<[PeriodView, string]> = [["week", "Weekly"], ["month", "Monthly"], ["quarter", "Quarterly"]];
-const WEEKS_SHOWN = 6;
+const MONTH_NAMES = Array.from({ length: 12 }, (_, m) => new Date(2000, m, 1).toLocaleDateString(undefined, { month: "long" }));
 
 /**
- * Earlier weeks as a medal calendar, switchable between weeks, months and
- * 4-month periods. Every view shows a row per week with a medal (or an empty
- * circle) for each day, and a gold row for each week that reached its goal.
- * Weekly covers the weeks before last; Monthly and Quarterly include last
- * week too, so each period is complete.
+ * Past weeks one month at a time, picked with a Year and a Month dropdown
+ * (only months with data are listed). It opens on the latest month. The
+ * month shows its totals, then a medal calendar: a row per week, a medal or
+ * an empty circle per day, and a gold row for each week that met its goal.
  */
-function EarlierWeeks() {
+function MonthByMonth() {
   const { ctx } = useStore();
-  const [view, setView] = useState<PeriodView>("week");
-  const [all, setAll] = useState(false);
-  if (!ctx.past.length) return null;
+  const [pick, setPick] = useState<string | null>(null);
+  const months = useMemo(
+    () => groupWeeks(ctx.past.map((w): WeekIn => ({ start: w.start, label: w.label, done: w.totals.done, goal: w.goal, medals: w.medals, plan: w.plan })), weekStart(0)),
+    [ctx.past],
+  );
+  if (!months.length) return null;
 
-  const toWeek = (w: (typeof ctx.past)[number]): WeekIn => ({ start: w.start, label: w.label, done: w.totals.done, goal: w.goal, medals: w.medals, plan: w.plan });
-  const earlier = ctx.past.slice(0, -1).map(toWeek);
-  const shown = all ? earlier : earlier.slice(-WEEKS_SHOWN);
-  const periods = view === "week" ? [] : groupWeeks(ctx.past.map(toWeek), view, weekStart(0));
+  const p = months.find((m) => m.key === pick) ?? months[0];
+  const years = [...new Set(months.map((m) => m.year))];
+  const inYear = months.filter((m) => m.year === p.year).sort((a, b) => a.month - b.month);
+  const ordered = [...p.weeks].sort((a, b) => a.start.getTime() - b.start.getTime());
 
   return (
     <section className="section">
-      <h2>Earlier weeks</h2>
-      <div className="seg-toggle three" role="group" aria-label="Group by">
-        {VIEWS.map(([v, label]) => (
-          <button key={v} aria-pressed={view === v} onClick={() => setView(v)}>{label}</button>
-        ))}
+      <h2>Month by month</h2>
+      <div className="pg-month-pick">
+        <label>
+          <span className="cl-label">Year</span>
+          <select className="cl-select" value={p.year} onChange={(e) => setPick(months.find((m) => m.year === Number(e.target.value))!.key)}>
+            {years.map((y) => <option key={y} value={y}>{y}</option>)}
+          </select>
+        </label>
+        <label>
+          <span className="cl-label">Month</span>
+          <select className="cl-select" value={p.key} onChange={(e) => setPick(e.target.value)}>
+            {inYear.map((m) => <option key={m.key} value={m.key}>{MONTH_NAMES[m.month]}{m.partial ? " (so far)" : ""}</option>)}
+          </select>
+        </label>
       </div>
       <CalendarKey />
-
-      {view === "week" ? (
-        earlier.length === 0 ? <p className="small muted" style={{ marginTop: 12 }}>Only last week so far; it's shown above.</p> : (
-          <div className="pg-cal-card">
-            {earlier.length > WEEKS_SHOWN && (
-              <button className="link-btn cal-more" onClick={() => setAll((a) => !a)}>
-                {all ? "Show the latest 6 weeks" : `Show all ${earlier.length} weeks`}
-              </button>
-            )}
-            <MedalCalendar weeks={shown} />
-          </div>
-        )
-      ) : (
-        <ul className="week-list" style={{ marginTop: 12 }}>
-          {periods.map((p) => <PeriodCard key={p.key} p={p} view={view} />)}
-        </ul>
-      )}
-    </section>
-  );
-}
-
-/** One month or 4-month period: the totals, then its weeks as a medal calendar. */
-function PeriodCard({ p, view }: { p: Period; view: Exclude<PeriodView, "week"> }) {
-  const ordered = [...p.weeks].sort((a, b) => a.start.getTime() - b.start.getTime());
-  return (
-    <li>
-      <div className="week-list-head">
-        <b>{p.label}{p.partial && <span className="muted" style={{ fontWeight: 400 }}> · so far</span>}</b>
-        <span className="small"><span className="num">{fmt(p.done)}</span><span className="muted"> of {fmtGoal(p.goal)}</span></span>
+      <div className="pg-cal-card">
+        <div className="week-list-head">
+          <b>{p.label}{p.partial && <span className="muted" style={{ fontWeight: 400 }}> · so far</span>}</b>
+          <span className="small"><span className="num">{fmt(p.done)}</span><span className="muted"> of {fmtGoal(p.goal)}</span></span>
+        </div>
+        <p className="xs muted">
+          {p.goldWeeks} of {p.weeks.length} {p.weeks.length === 1 ? "week" : "weeks"} gold · {p.activeDays} active {p.activeDays === 1 ? "day" : "days"}
+          {" · "}{p.medals.gold} gold, {p.medals.silver} silver, {p.medals.bronze} bronze
+        </p>
+        <MedalCalendar weeks={ordered} month={{ year: p.year, month: p.month }} />
       </div>
-      <p className="xs muted">
-        {p.goldWeeks} of {p.weeks.length} {p.weeks.length === 1 ? "week" : "weeks"} gold · {p.activeDays} active {p.activeDays === 1 ? "day" : "days"}
-        {" · "}{p.medals.gold} gold, {p.medals.silver} silver, {p.medals.bronze} bronze
-      </p>
-      {view === "month"
-        ? <MedalCalendar weeks={ordered} month={weekMonth(ordered[0].start)} />
-        : <MedalCalendar weeks={ordered} monthLabels size={20} />}
-    </li>
+    </section>
   );
 }
 

@@ -56,7 +56,9 @@ The daily loop, and the screen the app opens on.
 - **Summary card:** this week's medals, a bar for the week's MET-hours and one for today's target, and the
   streak. Tapping the streak opens Progress.
 - **Summary legend:** the week bar reads *Done* (green), *Left for today* (amber), *Upcoming days* (gray).
-- **Check-in:** bubbles for time, where they'll exercise and how they feel (*0 min* offers desk moves).
+- **Check-in:** bubbles for time (*Off*, 0, 5, 10, 30, 45+ min), where they'll exercise and how they feel.
+  *Off* makes today a day off; *0 min* offers desk moves.
+- **Edit an answer:** tap any answer you sent for its time and a pencil, which goes back to that question.
 - **Suggestion:** one pick, three buttons: *Let's start*, *Remind me later* (the coach asks when) and
   *Give me another option* (swaps in the next pick, no reason needed).
 - **Questions:** chips such as *What's a MET?*, *Why this?* and *How did you calculate this?* at every step.
@@ -89,7 +91,8 @@ Code: `src/screens/ProgressScreen.tsx`
 ### Coach
 
 A chat for free-form questions, answered from scripts with the user's real numbers, including the
-clinician guardrail for pain or dizziness.
+clinician guardrail for pain or dizziness. Tap a message you sent to edit it (*Cancel* / *Save*); saving asks
+again and replaces the reply.
 
 Code: `src/screens/CoachScreen.tsx`, `src/services/mockResponses.ts`
 
@@ -309,7 +312,7 @@ bigger session and ask less of another day.
   finishes it."
 - *Up for a challenge* at check-in offers a harder session (aiming for 1.5× today's target), and the rest of
   the week's targets drop to match. The extra comes from intensity, not time: the session stays at its usual
-  length and the pace goes up (see the Today design decisions below).
+  length and the pace goes up (see Design decisions below).
 
 Code: `src/state/today.ts`
 
@@ -382,29 +385,30 @@ Add a guardrail to check calculation outputs. Describe each agent's task in natu
 
 Code: `src/lib/verify.ts`, `src/services/prompts.ts`
 
-### Today page: design decisions
+### Design decisions
 
-A running log of what we decided for the Today page and why, so the reasoning doesn't get lost. Add new
-decisions at the bottom with the date.
+A running log of what we decided for the Today page and the pages around it (Progress, Coach, onboarding)
+and why, so the reasoning doesn't get lost. Add new decisions at the bottom with the date and the page. When a
+later decision changes an earlier one, the earlier row says so instead of being deleted.
 
-| Date | Decision | Why |
-|---|---|---|
-| Oct 26, 2026 | The summary card has a legend: *Done* (green), *Left for today* (amber), *Upcoming days* (gray). | The bar's colors weren't explained anywhere. |
-| Oct 26, 2026 | The *This week* bar reads left to right: past days done, a gap, today (done + left), a gap, then what the coming days still need. The *Today* bar uses the same green and amber. | Today stands on its own, so it's clear how much is left now versus later in the week. Activity colors stay on the Progress tab (until Oct 27, below). |
-| Oct 26, 2026 | Time options are 0, 5, 10, 30 and 45+ min. | 5 minutes still counts and is an easy yes on a busy day; 20 was dropped to keep five buttons. |
-| Oct 26, 2026 | The place question reads "Where will you be exercising?" with Home, Office and Outside. *Traveling* was removed. | Outside covers it. Typing "hotel" or "airport" still works. |
-| Oct 26, 2026 | "How do you feel?" offers only *Up for a challenge* and *Normal*. Feeling tired can be typed but isn't a button. | We don't want to make skipping the easy tap. Typing "tired" still gives a lighter pick. |
-| Oct 26, 2026 | *Normal* aims for today's target; *Up for a challenge* aims for 1.5× it, counting anything already done today. | Gives users a clear way to bank extra on a good day, which lowers the rest of the week. |
-| Oct 26, 2026 | No "What are you in the mood for?" question. After the check-in, the coach shows one pick. | Avoid decision fatigue: the user answers how they feel, the coach decides. |
-| Oct 26, 2026 | The pick has three buttons: *Let's start*, *Remind me later*, *Give me another option*. *Not today*, *Show other options* and *I want more today* were removed from the card. | One decision on screen. *Up for a challenge* replaces *I want more today*. |
-| Oct 26, 2026 | *Remind me later* asks when (in 30 min, in 1 hour, this evening, or a typed time), then brings the same pick back. | Keeps the plan instead of losing the day. In the demo, *Remind me now (demo)* stands in for the notification. |
-| Oct 26, 2026 | *Give me another option* swaps in the next pick without asking why, and cycles back to the first. | Asking for a reason every time is friction. A reason can still be typed, and is remembered. |
-| Oct 27, 2026 | A challenge earns its extra MET-hours with **intensity, not time**. The session keeps its usual length (the shortest that covers today's need at the activity's easiest pace) and uses the gentlest harder pace that reaches 1.5×. It gets shorter if that pace gets there sooner. It gets longer only if the activity has no pace hard enough. The app's ranker and the agent (Jev, `backend/app/challenge.py`) follow the same rule. | The aim is MET-hours, and a harder pace is the challenge the user asked for. Example (target 1.3): dancing goes from 20 min salsa (4.8 MET) to 20 min ballroom (6.0 MET), 154% of the target. Paces are steps, so some land above 1.5×: cycling has nothing between easy (4.3) and commute (6.8), so it lands at 174%. Yoga, Zumba and hiking have no pace hard enough, so they run longer. |
-| Oct 27, 2026 | Tapping an answer you sent shows when you sent it and a pencil, modeled on Claude's chat. On Today, the pencil goes back to that question as things were then: later messages are dropped, along with anything they changed (a decline, a health flag, a synced workout). The options come back with the old answer in the Other box, and *Cancel* restores everything. On Coach, the message is edited in place (*Cancel* / *Save*) and the reply is regenerated. | People mis-tap, change their mind, or answer before they've thought about it. Going back should be one tap, not a restart of the day. Today goes back to the question, not an edit box, because most answers there are taps. Answers saved before this change can't be edited. |
-| Oct 27, 2026 | Progress uses the same legend and *This week* / *Today* bars as the Today card, replacing the activity-colored goal strip. | One way to read progress across the app. Each workout's activity and color are still listed under *Day by day*. |
-| Oct 27, 2026 | The day options are the same everywhere: *Off*, 0, 5, 10, 30 and 45+ min, shown as three rows (*Off* / 0, 5, 10, 30 min / 45+ min) on Today, Progress and onboarding. On Progress the button reads *Update my goals*. Saved plans convert Short → 10, Medium → 30, Long → 45 min. | One vocabulary for time, so planning a day and checking in on it use the same words. Targets are now split by the actual minutes. *Off* (can't exercise) and *0 min* (desk moves) are different: only *Off* is a day off. |
-| Oct 27, 2026 | *Off* at Today's time question makes today a day off: its target moves to the rest of the week and the coach wraps up. Typing "sick" or "day off" does the same. Editing that answer puts the day back. | A sick day shouldn't need a trip to Progress. Whether an off day keeps the streak is still open (see Project Questions, "Off days"). |
-| Oct 27, 2026 | Onboarding is shorter: the access page ("Which can you actually do this month?") and the usual-time page ("Most weeks, how much time do you have?") are gone. The plan page starts every day at 10 min. Every page has *Back*. The health page leads with a large text box, with *No health conditions* and *Prefer not to say* below it. | Fewer choices before the first suggestion. Access is better learned as the user goes (a typed "can't access it"), and a flat 10 min a day is an easy starting point to adjust. A free-text box catches things the three buttons couldn't, like an injury or medication. |
+| Date | Page | Decision | Why |
+|---|---|---|---|
+| Oct 26, 2026 | Today | The summary card has a legend: *Done* (green), *Left for today* (amber), *Upcoming days* (gray). | The bar's colors weren't explained anywhere. |
+| Oct 26, 2026 | Today | The *This week* bar reads left to right: past days done, a gap, today (done + left), a gap, then what the coming days still need. The *Today* bar uses the same green and amber. | Today stands on its own, so it's clear how much is left now versus later in the week. Activity colors stay on the Progress tab (until Oct 27, below). |
+| Oct 26, 2026 | Today | Time options are 0, 5, 10, 30 and 45+ min (*Off* added on Oct 27, below). | 5 minutes still counts and is an easy yes on a busy day; 20 was dropped to keep five buttons. |
+| Oct 26, 2026 | Today | The place question reads "Where will you be exercising?" with Home, Office and Outside. *Traveling* was removed. | Outside covers it. Typing "hotel" or "airport" still works. |
+| Oct 26, 2026 | Today | "How do you feel?" offers only *Up for a challenge* and *Normal*. Feeling tired can be typed but isn't a button. | We don't want to make skipping the easy tap. Typing "tired" still gives a lighter pick. |
+| Oct 26, 2026 | Today | *Normal* aims for today's target; *Up for a challenge* aims for 1.5× it, counting anything already done today. | Gives users a clear way to bank extra on a good day, which lowers the rest of the week. |
+| Oct 26, 2026 | Today | No "What are you in the mood for?" question. After the check-in, the coach shows one pick. | Avoid decision fatigue: the user answers how they feel, the coach decides. |
+| Oct 26, 2026 | Today | The pick has three buttons: *Let's start*, *Remind me later*, *Give me another option*. *Not today*, *Show other options* and *I want more today* were removed from the card. | One decision on screen. *Up for a challenge* replaces *I want more today*. |
+| Oct 26, 2026 | Today | *Remind me later* asks when (in 30 min, in 1 hour, this evening, or a typed time), then brings the same pick back. | Keeps the plan instead of losing the day. In the demo, *Remind me now (demo)* stands in for the notification. |
+| Oct 26, 2026 | Today | *Give me another option* swaps in the next pick without asking why, and cycles back to the first. | Asking for a reason every time is friction. A reason can still be typed, and is remembered. |
+| Oct 27, 2026 | Today, agent | A challenge earns its extra MET-hours with **intensity, not time**. The session keeps its usual length (the shortest that covers today's need at the activity's easiest pace) and uses the gentlest harder pace that reaches 1.5×. It gets shorter if that pace gets there sooner. It gets longer only if the activity has no pace hard enough. The app's ranker and the agent (Jev, `backend/app/challenge.py`) follow the same rule. | The aim is MET-hours, and a harder pace is the challenge the user asked for. Example (target 1.3): dancing goes from 20 min salsa (4.8 MET) to 20 min ballroom (6.0 MET), 154% of the target. Paces are steps, so some land above 1.5×: cycling has nothing between easy (4.3) and commute (6.8), so it lands at 174%. Yoga, Zumba and hiking have no pace hard enough, so they run longer. |
+| Oct 27, 2026 | Today, Coach | Tapping an answer you sent shows when you sent it and a pencil, modeled on Claude's chat. On Today, the pencil goes back to that question as things were then: later messages are dropped, along with anything they changed (a decline, a health flag, a synced workout). The options come back with the old answer in the Other box, and *Cancel* restores everything. On Coach, the message is edited in place (*Cancel* / *Save*) and the reply is regenerated. | People mis-tap, change their mind, or answer before they've thought about it. Going back should be one tap, not a restart of the day. Today goes back to the question, not an edit box, because most answers there are taps. Answers saved before this change can't be edited. |
+| Oct 27, 2026 | Progress | Progress uses the same legend and *This week* / *Today* bars as the Today card, replacing the activity-colored goal strip. | One way to read progress across the app. Each workout's activity and color are still listed under *Day by day*. |
+| Oct 27, 2026 | Today, Progress, onboarding | The day options are the same everywhere: *Off*, 0, 5, 10, 30 and 45+ min, shown as three rows (*Off* / 0, 5, 10, 30 min / 45+ min) on Today, Progress and onboarding. On Progress the button reads *Update my goals*. Saved plans convert Short → 10, Medium → 30, Long → 45 min. | One vocabulary for time, so planning a day and checking in on it use the same words. Targets are now split by the actual minutes. *Off* (can't exercise) and *0 min* (desk moves) are different: only *Off* is a day off. |
+| Oct 27, 2026 | Today | *Off* at Today's time question makes today a day off: its target moves to the rest of the week and the coach wraps up. Typing "sick" or "day off" does the same. Editing that answer puts the day back. | A sick day shouldn't need a trip to Progress. Whether an off day keeps the streak is still open (see Project Questions, "Off days"). |
+| Oct 27, 2026 | Onboarding | Onboarding is shorter: the access page ("Which can you actually do this month?") and the usual-time page ("Most weeks, how much time do you have?") are gone. The plan page starts every day at 10 min. Every page has *Back*. The health page leads with a large text box, with *No health conditions* and *Prefer not to say* below it. | Fewer choices before the first suggestion. Access is better learned as the user goes (a typed "can't access it"), and a flat 10 min a day is an easy starting point to adjust. A free-text box catches things the three buttons couldn't, like an injury or medication. |
 
 Still open:
 
@@ -414,9 +418,14 @@ Still open:
   read better with only the three buttons?
 - Changing a day's plan re-splits every day's target, including past days, so marking today *Off* can turn
   yesterday's silver into bronze. Should past days keep the target they had?
+- Off days and the streak (Project Questions, "Off days"). Today a day with no activity ends the streak, even
+  a planned day off. The proposal: off days (e.g. a sick day) don't end the streak, get their own off-day
+  medal, and turn gold with the rest of the week when the weekly goal is reached. Not built yet.
 
-Code: `src/state/today.ts`, `src/lib/suggest.ts` (`challengePlan`), `src/components/WeekBar.tsx`,
-`backend/app/challenge.py`
+Code: `src/state/today.ts`, `src/lib/suggest.ts` (`challengePlan`), `src/lib/plan.ts`,
+`src/components/WeekBar.tsx`, `src/components/TimeOptions.tsx`, `src/components/UserMessage.tsx`,
+`src/screens/TodayScreen.tsx`, `src/screens/ProgressScreen.tsx`, `src/screens/CoachScreen.tsx`,
+`src/screens/Onboarding.tsx`, `backend/app/challenge.py`
 
 ### Not built yet
 

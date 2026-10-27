@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { PERSONAS } from "../data/mockFitbit";
-import { getVariant, settingOf } from "./activities";
+import { getFamily, getVariant, settingOf } from "./activities";
 import { goalOffer } from "./goal";
 import { streakOf, weekMedals } from "./medals";
 import { creditFor, intensityOf, metHours, minutesFor, totalsFor, withCredit } from "./met";
 import { dailyTargets, unplannedLeft, type WeekPlan } from "./plan";
-import { afterDecline, suggest, type SuggestInput } from "./suggest";
+import { afterDecline, challengePlan, suggest, type SuggestInput } from "./suggest";
 import { verifySuggestion } from "./verify";
 
 const close = (a: number, b: number) => expect(a).toBeCloseTo(b, 2);
@@ -158,6 +158,51 @@ describe("suggestions", () => {
     const r = suggest({ ...base, minutes: 0, place: "office" });
     expect(r.desk).toBe(true);
     expect(r.lead!.familyId).toBe("desk");
+  });
+
+  it("aims for today's target when normal, and 1.5× it when up for a challenge", () => {
+    const target = 1.3;
+    const normal = suggest({ ...base, minutes: 60, needed: target, target }).lead!;
+    const hard = suggest({ ...base, minutes: 60, needed: target, target, energy: "challenge" }).lead!;
+    expect(normal.credit + 1e-9).toBeGreaterThanOrEqual(target);
+    expect(normal.credit).toBeLessThan(target * 1.5);
+    expect(hard.credit + 1e-9).toBeGreaterThanOrEqual(target * 1.5);
+  });
+
+  it("counts what's already done today toward the 1.5× challenge", () => {
+    // Target 1.3, 0.8 done: a challenge aims for 1.95 total, so 1.15 more.
+    const hard = suggest({ ...base, minutes: 60, needed: 0.5, target: 1.3, energy: "challenge" }).lead!;
+    expect(hard.credit + 1e-9).toBeGreaterThanOrEqual(1.15);
+    expect(hard.reasons).toContain("Goes past today's target");
+  });
+
+  it("reaches a challenge with a harder pace, not a longer session", () => {
+    for (const enjoyed of [["cycling"], ["dancing"], ["walking"], ["running"], ["strength"]]) {
+      const input = { ...base, enjoyed, access: { [enjoyed[0]]: "have" as const }, needed: 1.3, target: 1.3 };
+      const normal = suggest(input).lead!;
+      const hard = suggest({ ...input, energy: "challenge" }).lead!;
+      expect(hard.familyId).toBe(normal.familyId);
+      expect(hard.met).toBeGreaterThan(normal.met);
+      expect(hard.durationMin).toBeLessThanOrEqual(normal.durationMin);
+      expect(hard.credit + 1e-9).toBeGreaterThanOrEqual(1.3 * 1.5);
+    }
+  });
+
+  it("keeps the usual length and picks the gentlest pace that reaches 1.5×", () => {
+    const dancing = getFamily("dancing").variants;
+    const plan = challengePlan(dancing, [10, 15, 20, 25, 30], 1.3, 1.95)!;
+    expect(plan.usualMin).toBe(20); // salsa (4.8 MET) needs 20 min for 1.3
+    expect(plan.variant.id).toBe("dancing-ballroom"); // 6.0 MET × 20 min = 2.0, not nightclub (9.8)
+    expect(plan.durationMin).toBe(20);
+    expect(plan.longer).toBe(false);
+  });
+
+  it("only goes longer when no harder pace gets there", () => {
+    const yoga = getFamily("yoga").variants; // power yoga (4.0) is the only pace that counts
+    const plan = challengePlan(yoga, [10, 15, 20, 25, 30], 1.3, 1.95)!;
+    expect(plan.variant.id).toBe("yoga-power");
+    expect(plan.longer).toBe(true);
+    expect(plan.durationMin).toBe(30);
   });
 
   it("never suggests vigorous activity with a health flag", () => {

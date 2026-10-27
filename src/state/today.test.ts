@@ -15,8 +15,7 @@ function checkIn(s: AppState, minutes = 30): AppState {
   s = T.answerTime(s, `${minutes} min`, minutes);
   if (minutes === 0) return s;
   s = T.answerPlace(s, "Home", "home");
-  s = T.answerEnergy(s, "Normal", "normal");
-  return T.answerMood(s, "Surprise me", "surprise");
+  return T.answerEnergy(s, "Normal", "normal");
 }
 
 describe("today flow", () => {
@@ -97,16 +96,51 @@ describe("today flow", () => {
     expect(s.today.checkIn.place).toBe("other");
     s = T.freeText(s, "kind of tired");
     expect(s.today.checkIn.energy).toBe("low");
-    s = T.freeText(s, "pickleball");
     expect(s.today.step).toBe("suggested");
-    expect(s.notes.at(-1)?.text).toContain("pickleball");
   });
 
-  it("a typed mood that names a known activity adds it to the list", () => {
-    let s = onboarded();
-    s = T.freeText(T.freeText(T.freeText(s, "30"), "home"), "ok");
-    s = T.freeText(s, "swimming");
-    expect(s.profile.enjoyed).toContain("swimming");
+  it("asks how you feel with two buttons, then goes straight to one pick", () => {
+    expect(T.ENERGY_OPTIONS.map(([, e]) => e)).toEqual(["challenge", "normal"]);
+    let s = T.answerPlace(T.answerTime(onboarded(), "30 min", 30), "Home", "home");
+    expect(s.today.entries.at(-1)?.text).toBe("How do you feel?");
+    s = T.answerEnergy(s, "Normal", "normal");
+    expect(s.today.step).toBe("suggested");
+    expect(s.today.entries.some((e) => /mood for/.test(e.text))).toBe(false);
+  });
+
+  it("'Give me another option' swaps the pick without asking why, and cycles back", () => {
+    let s = checkIn(onboarded());
+    const first = s.today.current!.lead;
+    const n = s.today.current!.backups.length;
+    const declinesBefore = s.declines.length;
+    s = T.anotherOption(s);
+    expect(s.today.step).toBe("suggested");
+    expect(s.today.current!.lead).not.toBe(first);
+    expect(s.declines.length).toBe(declinesBefore);
+    for (let i = 0; i < n; i++) s = T.anotherOption(s);
+    expect(s.today.current!.lead).toBe(first);
+  });
+
+  it("'Remind me later' asks when, sets the reminder, and brings the pick back", () => {
+    let s = checkIn(onboarded());
+    const pick = s.today.current!.lead;
+    s = T.remindLater(s);
+    expect(s.today.step).toBe("remind");
+    expect(s.today.entries.at(-1)?.text).toBe("Sure. When should I remind you?");
+    s = T.setReminder(s, "In 1 hour");
+    expect(s.today.step).toBe("reminded");
+    expect(s.today.reminder).toBe("in 1 hour");
+    expect(s.today.entries.at(-1)?.text).toMatch(/^Got it. I'll remind you in 1 hour about/);
+    s = T.reminderDue(s);
+    expect(s.today.step).toBe("suggested");
+    expect(s.today.current!.lead).toBe(pick);
+  });
+
+  it("a typed reminder time reads naturally", () => {
+    let s = T.freeText(T.remindLater(checkIn(onboarded())), "5:30 pm");
+    expect(s.today.reminder).toBe("at 5:30 pm");
+    s = T.freeText(T.remindLater(checkIn(onboarded())), "after dinner");
+    expect(s.today.reminder).toBe("after dinner");
   });
 
   it("a typed decline reason that mentions pain takes the safety path", () => {

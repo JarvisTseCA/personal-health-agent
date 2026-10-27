@@ -4,6 +4,8 @@ from fastapi.testclient import TestClient
 from app import main
 from app.prompt import build_activity_request, build_duration_request
 from app.schemas import SuggestRequest
+from app.challenge import challenge_plan, minutes_for
+from app.jev import mock_activity, mock_durations
 from app.suggest import AnswerError, assemble, pick_activities
 
 REQ = {
@@ -144,3 +146,35 @@ def test_state_round_trip(client):
     assert client.get("/api/state").json() == {"state": {"version": 2, "goal": 7.5}}
     client.delete("/api/state")
     assert client.get("/api/state").json() == {"state": None}
+
+
+CHALLENGE = {**REQ, "check_in": {**REQ["check_in"], "energy": "challenge"}, "boost": True, "target_met_hours": 2.0}
+
+
+def test_challenge_uses_a_harder_pace_at_the_usual_length():
+    req = SuggestRequest(**CHALLENGE)
+    # Easy cycling (4.3 MET) needs 30 min for 2.0 MET-hours; the challenge aims for 3.0.
+    pace, minutes = challenge_plan(req, "cycling")
+    assert (pace.variant_id, minutes) == ("cycling-steady", 30)
+    assert pace.met * minutes / 60 >= 3.0
+
+
+def test_challenge_goes_longer_only_without_a_harder_pace():
+    req = SuggestRequest(**CHALLENGE)
+    brisk = next(o for o in req.options if o.variant_id == "walking-brisk")
+    assert minutes_for(req, brisk) == 45  # brisk is walking's only pace here: 30 min falls short of 3.0
+
+
+def test_mock_jev_follows_the_challenge_rule():
+    req = SuggestRequest(**CHALLENGE)
+    probs = mock_activity(req)["activity"]["probabilities"]
+    assert probs["cycling-steady"] > probs["cycling-easy"]
+    steady = next(o for o in req.options if o.variant_id == "cycling-steady")
+    assert mock_durations(req, [steady])["duration_cycling_steady"]["choice"] == "30"
+
+
+def test_challenge_prompt_names_the_usual_length():
+    req = SuggestRequest(**CHALLENGE)
+    body = build_duration_request(req, pick_activities(req, ACTIVITY_ANSWERS), "jev-latest")
+    assert "usual session today is 30 minutes" in body["questions"]["duration_cycling_steady"]["instructions"]
+    assert build_activity_request(req, "jev-latest")["state"]["challenge_aim_met_hours"] == 3.0

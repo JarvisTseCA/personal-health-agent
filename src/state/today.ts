@@ -55,9 +55,12 @@ export function startDay(state: AppState): AppState {
   };
 }
 
-export const TIME_OPTIONS: Array<[string, number]> = [["0 min", 0], ["10 min", 10], ["20 min", 20], ["30 min", 30], ["45+ min", 45]];
-export const PLACE_OPTIONS: Array<[string, Place]> = [["Home", "home"], ["Office", "office"], ["Outside", "outside"], ["Traveling", "traveling"]];
-export const ENERGY_OPTIONS: Array<[string, Energy]> = [["Up for a challenge", "challenge"], ["Normal", "normal"], ["Low energy", "low"]];
+export const TIME_OPTIONS: Array<[string, number]> = [["0 min", 0], ["5 min", 5], ["10 min", 10], ["30 min", 30], ["45+ min", 45]];
+// Traveling isn't a button: Outside covers it. Typing "hotel" or "airport" in Other still works.
+export const PLACE_OPTIONS: Array<[string, Place]> = [["Home", "home"], ["Office", "office"], ["Outside", "outside"]];
+// Two buttons only. Feeling tired can still be typed in Other (parsed as "low"); we don't offer it as a tap.
+export const ENERGY_OPTIONS: Array<[string, Energy]> = [["Up for a challenge", "challenge"], ["Normal", "normal"]];
+export const REMIND_OPTIONS = ["In 30 min", "In 1 hour", "This evening"];
 
 export function answerTime(state: AppState, label: string, minutes: number): AppState {
   let s = push(state, user(label));
@@ -67,7 +70,7 @@ export function answerTime(state: AppState, label: string, minutes: number): App
     s = setToday(s, { checkIn: { ...s.today.checkIn, place: "office", energy: "normal", mood: "surprise" } });
     return offer(push(s, agent("No free time today? Here's something you can do at your desk. It still earns today's bronze.")));
   }
-  return setToday(push(s, agent("Where are you?")), { step: "place" });
+  return setToday(push(s, agent("Where will you be exercising?")), { step: "place" });
 }
 
 export function answerPlace(state: AppState, label: string, place: Place): AppState {
@@ -75,11 +78,21 @@ export function answerPlace(state: AppState, label: string, place: Place): AppSt
   return setToday(push(s, agent("How do you feel?")), { step: "energy", checkIn: { ...s.today.checkIn, place } });
 }
 
+/**
+ * Last check-in question. No "what are you in the mood for?" step: to avoid
+ * decision fatigue the coach goes straight to one pick.
+ */
 export function answerEnergy(state: AppState, label: string, energy: Energy): AppState {
-  const s = push(state, user(label));
-  return setToday(push(s, agent("Anything you're in the mood for?")), { step: "mood", checkIn: { ...s.today.checkIn, energy } });
+  const s = setToday(push(state, user(label)), { checkIn: { ...state.today.checkIn, energy, mood: state.today.checkIn.mood ?? "surprise" } });
+  const intro = energy === "challenge"
+    ? "Let's push a little: same time, harder pace."
+    : energy === "low"
+      ? "Let's keep it easy today. Here's my pick."
+      : "Here's my pick for today.";
+  return offer(push(s, agent(intro)));
 }
 
+/** Only reached from saves made before the mood question was removed. */
 export function answerMood(state: AppState, label: string, mood: string): AppState {
   const s = setToday(push(state, user(label)), { checkIn: { ...state.today.checkIn, mood } });
   return offer(push(s, agent(mood === "surprise" ? "Here's my pick for today." : `${getFamily(mood).name} it is. Here's my pick.`)));
@@ -96,7 +109,7 @@ function offer(state: AppState, intro?: string): AppState {
   } else if (intro) {
     s = push(s, agent(intro));
   }
-  return setToday(s, { step: "suggested", current: { lead: r.lead!, backups: r.backups, desk: r.desk, showBackups: false, source: "rules" } });
+  return setToday(s, { step: "suggested", reminder: undefined, current: { lead: r.lead!, backups: r.backups, desk: r.desk, showBackups: false, source: "rules" } });
 }
 
 /**
@@ -125,10 +138,54 @@ function describe(s: Suggestion): string {
 }
 
 export function accept(state: AppState, which: Suggestion, typed?: string): AppState {
-  const s = push(state, user(typed ?? (state.today.current?.lead === which ? "Let's do it" : `I'll do ${describe(which)}`)));
+  const s = push(state, user(typed ?? (state.today.current?.lead === which ? "Let's start" : `I'll do ${describe(which)}`)));
   return setToday(push(s, agent(`Nice. ${describe(which).replace(/^./, (c) => c.toUpperCase())}. I'll watch for it on your Fitbit and count it when it syncs.`)), {
-    step: "accepted", accepted: which,
+    step: "accepted", accepted: which, reminder: undefined,
   });
+}
+
+/**
+ * "Give me another option": swap in the next-ranked pick, no questions asked.
+ * Cycles through the pick and its backups, so the user never hits a dead end.
+ */
+export function anotherOption(state: AppState, typed?: string): AppState {
+  const c = state.today.current;
+  if (!c) return state;
+  const s = push(state, user(typed ?? "Give me another option"));
+  if (c.backups.length === 0) {
+    return push(s, agent("This is the only option that fits your time today. Tell me if something's in the way and I'll adjust."));
+  }
+  const [next, ...rest] = c.backups;
+  return setToday(push(s, agent("How about this instead?")), {
+    step: "suggested", reminder: undefined, current: { ...c, lead: next, backups: [...rest, c.lead], showBackups: false },
+  });
+}
+
+/** "Remind me later": the coach asks when. */
+export function remindLater(state: AppState): AppState {
+  if (!state.today.current) return state;
+  return setToday(push(state, user("Remind me later"), agent("Sure. When should I remind you?")), { step: "remind" });
+}
+
+/** "in 1 hour" stays as is; "5:30" or "5pm" becomes "at 5pm". */
+function whenPhrase(when: string): string {
+  const w = when.trim().replace(/[.!]+$/, "");
+  const lower = w.charAt(0).toLowerCase() + w.slice(1);
+  return /^(in|at|this|tonight|after|before|around|by|tomorrow|later|on|when|during|once)\b/i.test(w) ? lower : `at ${w}`;
+}
+
+export function setReminder(state: AppState, when: string): AppState {
+  const c = state.today.current;
+  if (!c) return state;
+  const s = push(state, user(when), agent(`Got it. I'll remind you ${whenPhrase(when)} about ${describe(c.lead)}.`));
+  return setToday(s, { step: "reminded", reminder: whenPhrase(when) });
+}
+
+/** Demo: the reminder fires, and the same pick comes back with its three buttons. */
+export function reminderDue(state: AppState): AppState {
+  const c = state.today.current;
+  if (!c) return state;
+  return setToday(push(state, agent(`It's time: ${describe(c.lead)}. Ready?`)), { step: "suggested", reminder: undefined });
 }
 
 export function decline(state: AppState): AppState {
@@ -349,6 +406,8 @@ export function freeText(state: AppState, text: string): AppState {
     case "suggested": {
       const yn = parseYesNo(text);
       if (yn === true && t.current) return accept(state, t.current.lead, text);
+      if (/\b(another|something else|different one|other option)\b/i.test(text)) return anotherOption(state, text);
+      if (/\b(remind|later)\b/i.test(text)) return remindLater(state);
       if (DECLINE_WORDS.test(text.toLowerCase())) {
         const reason = parseReason(text);
         if (reason === "other") return setToday(push(state, user(text), agent("No problem. What's getting in the way?")), { step: "reason", accepted: undefined });
@@ -358,6 +417,13 @@ export function freeText(state: AppState, text: string): AppState {
     }
     case "reason":
       return chooseReason(state, parseReason(text), text);
+    case "remind":
+      return setReminder(state, text);
+    case "reminded": {
+      if (parseYesNo(text) === true && t.current) return accept(state, t.current.lead, text);
+      if (/\b(another|something else|different)\b/i.test(text)) return anotherOption(state, text);
+      return coachReply(state, text);
+    }
     case "accepted":
       if (DECLINE_WORDS.test(text.toLowerCase())) return setToday(push(state, user(text), agent("No problem. What's getting in the way?")), { step: "reason", accepted: undefined });
       return coachReply(state, text);

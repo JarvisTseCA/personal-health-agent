@@ -16,6 +16,7 @@ Jev API reference: https://docs.typesafe.ai/api/system-one.md
 """
 from typing import Any, Dict, List
 
+from . import challenge
 from .schemas import Option, SuggestRequest
 
 # Open question for the team: what order should these factors be weighed in?
@@ -25,8 +26,10 @@ ACTIVITY_INSTRUCTIONS = (
     "Pick the one activity this person is most likely to enjoy and actually do today. "
     "Weigh, in order: what they are in the mood for, their energy today, how high it is "
     "on their list of favorites, and variety (avoid what they did yesterday or declined "
-    "recently). On a low-energy day prefer lighter options; when they want a challenge, "
-    "prefer harder ones. Options they can only 'sometimes' access are less likely to happen."
+    "recently). On a low-energy day prefer lighter options. When they want a challenge, "
+    "prefer a harder pace that earns 1.5x today's target in their usual session length "
+    "over an easier pace done for longer. Options they can only 'sometimes' access are less "
+    "likely to happen."
 )
 
 # Open question for the team: when a shorter and a longer session both fit,
@@ -37,6 +40,13 @@ DURATION_INSTRUCTIONS = (
     "about {min_per_met_hour} minutes. Aim to cover the MET-hours still needed today without "
     "going far past it. A shorter session they will finish beats a longer one they will "
     "skip, especially on a low-energy day."
+)
+
+# Added to the duration question when the user is up for a challenge.
+CHALLENGE_DURATION_INSTRUCTIONS = (
+    " They are up for a challenge: aim for about {aim} MET-hours (1.5x today's target). Their "
+    "usual session today is {usual} minutes; keep it no longer than that and let the harder pace "
+    "earn the extra. Go longer only if this pace can't reach the aim in {usual} minutes."
 )
 
 ENERGY_TEXT = {
@@ -84,6 +94,8 @@ def build_state(req: SuggestRequest) -> Dict[str, Any]:
             for d in req.declines
         ],
     }
+    if req.boost:
+        state["challenge_aim_met_hours"] = round(challenge.challenge_aim(req), 2)
     if req.limits.no_vigorous:
         state["health_limit"] = "No vigorous activity (health flag or clinician limit)"
     if req.constraint_notes:
@@ -113,15 +125,23 @@ def build_activity_request(req: SuggestRequest, model: str) -> Dict[str, Any]:
     }
 
 
+def _duration_instructions(req: SuggestRequest, o: Option) -> str:
+    text = DURATION_INSTRUCTIONS.format(
+        activity=f"{o.family_name.lower()} ({o.label.lower()})", met=o.met, min_per_met_hour=round(60 / o.met)
+    )
+    usual = challenge.usual_minutes(req, o.family_id) if req.boost else None
+    if usual is not None:
+        text += CHALLENGE_DURATION_INSTRUCTIONS.format(aim=round(challenge.challenge_aim(req), 2), usual=usual)
+    return text
+
+
 def build_duration_request(req: SuggestRequest, picked: List[Option], model: str) -> Dict[str, Any]:
     """Call 2: how long, asked once for each activity picked in call 1."""
     options = {str(d): f"{d} minutes" for d in req.durations}
     questions = {
         duration_question(o): {
             "type": "choice",
-            "instructions": DURATION_INSTRUCTIONS.format(
-                activity=f"{o.family_name.lower()} ({o.label.lower()})", met=o.met, min_per_met_hour=round(60 / o.met)
-            ),
+            "instructions": _duration_instructions(req, o),
             "criteria": options,
         }
         for o in picked

@@ -14,6 +14,7 @@
   --wash: #ECEAF5;          /* chips, quiet fills */
   --gap: #E6E3F0;           /* unfilled part of the goal strip */
   --good: #2F8F7A;
+  --today-left: #D99A2B;    /* what's left of today's target */
   --caution-bg: #FFF4DE;
   --caution-ink: #7A4B00;
   --focus: #6A5AE0;
@@ -163,6 +164,8 @@ p { margin: 0; }
 .btn-block { width: 100%; }
 .btn-row { display: flex; gap: 10px; }
 .btn-row .btn { flex: 1; }
+.btn-stack { display: flex; flex-direction: column; gap: 8px; }
+.btn-stack .btn { width: 100%; min-height: 46px; }
 
 .icon-btn {
   width: 40px; height: 40px; border-radius: 50%; border: 1px solid var(--line);
@@ -458,8 +461,19 @@ input[type="range"] { width: 100%; accent-color: var(--ink); height: 32px; }
 .summary-line .v { text-align: right; font-weight: 800; font-size: var(--t-md); }
 .summary-line .v small { font-weight: 500; color: var(--ink-3); font-size: var(--t-xs); }
 .summary-line .strip-wrap { min-width: 0; }
-.today-bar { height: 22px; border-radius: 7px; background: var(--gap); overflow: hidden; }
-.today-bar span { display: block; height: 100%; background: var(--ink); border-radius: 7px; transition: width .5s cubic-bezier(.2,.8,.2,1); }
+
+/* Week bar on the Today card: past (green) | today (green + amber) | coming days (gray) */
+.week-bar { display: flex; gap: 4px; height: 22px; min-width: 0; }
+.wb-group { display: flex; gap: 2px; flex-basis: 0; min-width: 6px; border-radius: 7px; overflow: hidden; transition: flex-grow .5s cubic-bezier(.2,.8,.2,1); }
+.wb-group > span { flex-basis: 0; min-width: 3px; transition: flex-grow .5s cubic-bezier(.2,.8,.2,1); }
+.wb-today { gap: 0; }
+.wb-done { background: var(--good); }
+.wb-left { background: var(--today-left); }
+.wb-upcoming, .wb-empty { background: var(--gap); }
+.wb-legend { list-style: none; margin: 0; padding: 0 0 10px; border-bottom: 1px solid var(--line); display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: var(--t-xs); font-weight: 700; color: var(--ink-2); }
+.wb-legend li { display: flex; align-items: center; gap: 6px; }
+.wb-swatch { width: 10px; height: 10px; border-radius: 3px; flex: none; }
+.wb-swatch.wb-upcoming { box-shadow: inset 0 0 0 1px var(--line-strong); }
 .streak { background: none; border: 0; padding: 0; text-align: left; font-size: var(--t-sm); color: var(--ink-2); }
 .streak b { color: var(--ink); font-size: var(--t-md); }
 .clin-note { margin-top: 12px; border-radius: 12px; padding: 10px 12px; background: var(--wash); font-size: var(--t-sm); }

@@ -115,6 +115,7 @@ export function buildSuggestInput(state: AppState, ctx = buildAgentContext(state
     energy: c.energy ?? "normal",
     mood: c.mood ?? "surprise",
     needed: ctx.todayNeeded,
+    target: ctx.todayTarget,
     boost: state.today.boost,
     recent,
     declines: state.declines.map((d) => ({ familyId: d.familyId, reason: d.reason, daysAgo: t - d.day })),

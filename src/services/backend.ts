@@ -48,7 +48,9 @@ export function buildSuggestRequest(state: AppState) {
     day_name: DAY_NAMES_LONG[state.todayIndex],
     check_in: { minutes: input.minutes, place: input.place, energy: input.energy, mood: input.mood },
     needed_met_hours: input.needed,
-    boost: input.boost,
+    target_met_hours: input.target,
+    // "Up for a challenge" aims for 1.5× today's target, same as "I want more".
+    boost: input.boost || input.energy === "challenge",
     enjoyed: input.enjoyed
       .filter((id) => input.access[id] !== "no")
       .map((id, i) => ({ family_id: id, name: getFamily(id).name, rank: i + 1, access: input.access[id] ?? "have" })),

@@ -4,7 +4,7 @@
  * bottom, so there's always exactly one decision in front of the user.
  */
 import { useEffect, useRef } from "react";
-import { GoalStrip } from "../components/GoalStrip";
+import { TodayBar, WeekBar, WeekLegend } from "../components/WeekBar";
 import { SettingsIcon } from "../components/Icons";
 import { MedalCoin, WeekCoins } from "../components/Medal";
 import { getFamily, getVariant } from "../lib/activities";
@@ -12,7 +12,7 @@ import { countsTowardGoal, fmt, fmtGoal, intensityOf } from "../lib/met";
 import { DECLINE_LABEL, type DeclineReason, type Suggestion } from "../lib/suggest";
 import { QUESTIONS, type QuestionId } from "../services/answers";
 import { useStore } from "../state/store";
-import { CONFIRM_CHOICES, ENERGY_OPTIONS, PLACE_OPTIONS, TIME_OPTIONS } from "../state/today";
+import { CONFIRM_CHOICES, ENERGY_OPTIONS, PLACE_OPTIONS, REMIND_OPTIONS, TIME_OPTIONS } from "../state/today";
 import type { Screen, TodayStep } from "../state/types";
 import { OtherInput } from "../components/OtherInput";
 
@@ -22,7 +22,9 @@ const OTHER_PLACEHOLDER: Partial<Record<TodayStep, string>> = {
   place: "Other: e.g. at the gym",
   energy: "Other: tell me how you feel",
   mood: "Other: any activity you have in mind",
-  suggested: "Other: ask or say anything",
+  suggested: "Other: ask, or tell me why not",
+  remind: "Other: e.g. at 5:30 pm",
+  reminded: "Other: ask or change plans",
   reason: "Other: e.g. my knee is sore",
   accepted: "Other: ask or change plans",
   confirm: "Other: what was it?",
@@ -61,7 +63,8 @@ function SuggestionCard({ s, lead }: { s: Suggestion; lead: boolean }) {
   const { ctx, dispatch } = useStore();
   const { family, variant } = getVariant(s.variantId);
   const counts = countsTowardGoal(variant.met);
-  const share = ctx.todayTarget > 0 ? Math.min(1, s.credit / ctx.todayTarget) : 0;
+  const raw = ctx.todayTarget > 0 ? s.credit / ctx.todayTarget : 0;
+  const share = Math.min(1, raw);
 
   if (!lead) {
     return (
@@ -89,9 +92,9 @@ function SuggestionCard({ s, lead }: { s: Suggestion; lead: boolean }) {
         </div>
       </div>
       {counts && ctx.todayTarget > 0 && (
-        <div className="today-share" aria-label={`${Math.round(share * 100)}% of today's target`}>
+        <div className="today-share" aria-label={`${Math.round(raw * 100)}% of today's target`}>
           <div className="bar"><span style={{ width: `${share * 100}%` }} /></div>
-          <span className="xs muted">{share >= 1 ? "Covers today's target" : `${Math.round(share * 100)}% of today's ${fmt(ctx.todayTarget)}`}</span>
+          <span className="xs muted">{raw >= 1.2 ? `${Math.round(raw * 100)}% of today's target` : share >= 1 ? "Covers today's target" : `${Math.round(share * 100)}% of today's ${fmt(ctx.todayTarget)}`}</span>
         </div>
       )}
       <ul className="reasons">
@@ -112,12 +115,9 @@ export function TodayScreen({ go, openPrefs }: { go: (s: Screen) => void; openPr
     end.current?.scrollIntoView({ behavior: "smooth", block: "end" });
   }, [t.entries.length, t.step, t.current?.showBackups]);
 
-  const top3 = state.profile.enjoyed.slice(0, 3);
   const pending = t.pendingSessionId ? state.sessions.find((s) => s.id === t.pendingSessionId) : undefined;
   const pendingFamily = pending ? getVariant(pending.variantId).family.id : undefined;
   const altFamily = state.profile.enjoyed.find((id) => id !== pendingFamily);
-
-  const todayPct = ctx.todayTarget > 0 ? Math.min(1, ctx.todayDone / ctx.todayTarget) : 0;
 
   return (
     <>
@@ -130,18 +130,17 @@ export function TodayScreen({ go, openPrefs }: { go: (s: Screen) => void; openPr
       </div>
 
       <section className="today-summary" aria-label="Progress">
+        <WeekLegend />
         <WeekCoins medals={ctx.medals} todayIndex={state.todayIndex} plan={state.plan} />
         <div className="summary-lines">
           <div className="summary-line">
             <span className="k">This week</span>
-            <GoalStrip done={ctx.week.sessions} goal={ctx.goal} compact showScale={false} />
+            <WeekBar doneByDay={ctx.week.doneByDay} todayIndex={state.todayIndex} todayTarget={ctx.todayTarget} goal={ctx.goal} />
             <span className="v num">{fmt(ctx.week.done)}<small>/{fmtGoal(ctx.goal)}</small></span>
           </div>
           <div className="summary-line">
             <span className="k">Today</span>
-            <div className="today-bar" aria-label={`${fmt(ctx.todayDone)} of ${fmt(ctx.todayTarget)} MET-hours today`}>
-              <span style={{ width: `${todayPct * 100}%` }} />
-            </div>
+            <TodayBar done={ctx.todayDone} target={ctx.todayTarget} />
             {state.plan[state.todayIndex] === "off" && ctx.todayTarget === 0
               ? <span className="v num">{fmt(ctx.todayDone)}<small> off</small></span>
               : <span className="v num">{fmt(ctx.todayDone)}<small>/{fmt(ctx.todayTarget)}</small></span>}
@@ -177,7 +176,7 @@ export function TodayScreen({ go, openPrefs }: { go: (s: Screen) => void; openPr
           </Bubbles>
         )}
         {t.step === "place" && (
-          <Bubbles label="Where are you">
+          <Bubbles label="Where you'll exercise">
             {PLACE_OPTIONS.map(([label, p]) => <button key={p} className="chip" onClick={() => dispatch({ type: "place", label, place: p })}>{label}</button>)}
           </Bubbles>
         )}
@@ -186,32 +185,34 @@ export function TodayScreen({ go, openPrefs }: { go: (s: Screen) => void; openPr
             {ENERGY_OPTIONS.map(([label, e]) => <button key={e} className="chip" onClick={() => dispatch({ type: "energy", label, energy: e })}>{label}</button>)}
           </Bubbles>
         )}
-        {t.step === "mood" && (
-          <Bubbles label="In the mood for">
-            {top3.map((id) => (
-              <button key={id} className="chip" onClick={() => dispatch({ type: "mood", label: getFamily(id).name, mood: id })}>
-                <span className="dot" style={{ background: getFamily(id).color }} />{getFamily(id).name}
-              </button>
-            ))}
-            <button className="chip chip-strong" onClick={() => dispatch({ type: "mood", label: "Surprise me", mood: "surprise" })}>Surprise me</button>
-          </Bubbles>
-        )}
 
         {t.step === "suggested" && t.current && (
           <div className="live">
             <SuggestionCard s={t.current.lead} lead />
-            <div className="btn-row">
-              <button className="btn btn-primary" onClick={() => dispatch({ type: "accept", suggestion: t.current!.lead })}>Let's do it</button>
-              <button className="btn btn-quiet" onClick={() => dispatch({ type: "decline" })}>Not today</button>
+            <div className="btn-stack">
+              <button className="btn btn-primary" onClick={() => dispatch({ type: "accept", suggestion: t.current!.lead })}>Let's start</button>
+              <button className="btn btn-quiet" onClick={() => dispatch({ type: "remindLater" })}>Remind me later</button>
+              <button className="btn btn-quiet" onClick={() => dispatch({ type: "another" })}>Give me another option</button>
             </div>
-            {!t.current.showBackups && t.current.backups.length > 0 && (
-              <button className="btn btn-ghost btn-block" onClick={() => dispatch({ type: "showBackups" })}>Show other options</button>
-            )}
-            {t.current.showBackups && t.current.backups.map((b) => <SuggestionCard key={b.variantId} s={b} lead={false} />)}
-            {!t.current.desk && !t.boost && (
-              <button className="link-btn" onClick={() => dispatch({ type: "wantMore" })}>I want more today</button>
-            )}
             <Questions ids={["met", "why", "how"]} />
+          </div>
+        )}
+
+        {t.step === "remind" && (
+          <Bubbles label="When to remind you">
+            {REMIND_OPTIONS.map((w) => <button key={w} className="chip" onClick={() => dispatch({ type: "setReminder", when: w })}>{w}</button>)}
+          </Bubbles>
+        )}
+        {t.step === "reminded" && t.current && (
+          <div className="live">
+            <div className="plan-ticket" style={{ ["--accent" as string]: getFamily(t.current.lead.familyId).color }}>
+              <span className="xs muted">Reminder {t.reminder}</span>
+              <b>{t.current.lead.pattern ? getVariant(t.current.lead.variantId).variant.label : `${t.current.lead.durationMin} min ${getFamily(t.current.lead.familyId).noun}`}</b>
+            </div>
+            <div className="btn-row">
+              <button className="btn btn-primary" onClick={() => dispatch({ type: "accept", suggestion: t.current!.lead })}>Start now</button>
+              <button className="btn btn-quiet" onClick={() => dispatch({ type: "reminderDue" })}>Remind me now (demo)</button>
+            </div>
           </div>
         )}
 

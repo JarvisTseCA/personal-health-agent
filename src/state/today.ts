@@ -55,8 +55,9 @@ export function startDay(state: AppState): AppState {
   };
 }
 
-export const TIME_OPTIONS: Array<[string, number]> = [["0 min", 0], ["10 min", 10], ["20 min", 20], ["30 min", 30], ["45+ min", 45]];
-export const PLACE_OPTIONS: Array<[string, Place]> = [["Home", "home"], ["Office", "office"], ["Outside", "outside"], ["Traveling", "traveling"]];
+export const TIME_OPTIONS: Array<[string, number]> = [["0 min", 0], ["5 min", 5], ["10 min", 10], ["30 min", 30], ["45+ min", 45]];
+// Traveling isn't a button: Outside covers it. Typing "hotel" or "airport" in Other still works.
+export const PLACE_OPTIONS: Array<[string, Place]> = [["Home", "home"], ["Office", "office"], ["Outside", "outside"]];
 export const ENERGY_OPTIONS: Array<[string, Energy]> = [["Up for a challenge", "challenge"], ["Normal", "normal"], ["Low energy", "low"]];
 
 export function answerTime(state: AppState, label: string, minutes: number): AppState {
@@ -67,7 +68,7 @@ export function answerTime(state: AppState, label: string, minutes: number): App
     s = setToday(s, { checkIn: { ...s.today.checkIn, place: "office", energy: "normal", mood: "surprise" } });
     return offer(push(s, agent("No free time today? Here's something you can do at your desk. It still earns today's bronze.")));
   }
-  return setToday(push(s, agent("Where are you?")), { step: "place" });
+  return setToday(push(s, agent("Where will you be exercising?")), { step: "place" });
 }
 
 export function answerPlace(state: AppState, label: string, place: Place): AppState {

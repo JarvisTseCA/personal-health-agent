@@ -4,7 +4,7 @@
  * bottom, so there's always exactly one decision in front of the user.
  */
 import { useEffect, useRef } from "react";
-import { GoalStrip } from "../components/GoalStrip";
+import { TodayBar, WeekBar, WeekLegend } from "../components/WeekBar";
 import { SettingsIcon } from "../components/Icons";
 import { MedalCoin, WeekCoins } from "../components/Medal";
 import { getFamily, getVariant } from "../lib/activities";
@@ -117,8 +117,6 @@ export function TodayScreen({ go, openPrefs }: { go: (s: Screen) => void; openPr
   const pendingFamily = pending ? getVariant(pending.variantId).family.id : undefined;
   const altFamily = state.profile.enjoyed.find((id) => id !== pendingFamily);
 
-  const todayPct = ctx.todayTarget > 0 ? Math.min(1, ctx.todayDone / ctx.todayTarget) : 0;
-
   return (
     <>
       <div className="screen-head">
@@ -130,18 +128,17 @@ export function TodayScreen({ go, openPrefs }: { go: (s: Screen) => void; openPr
       </div>
 
       <section className="today-summary" aria-label="Progress">
+        <WeekLegend />
         <WeekCoins medals={ctx.medals} todayIndex={state.todayIndex} plan={state.plan} />
         <div className="summary-lines">
           <div className="summary-line">
             <span className="k">This week</span>
-            <GoalStrip done={ctx.week.sessions} goal={ctx.goal} compact showScale={false} />
+            <WeekBar doneByDay={ctx.week.doneByDay} todayIndex={state.todayIndex} todayTarget={ctx.todayTarget} goal={ctx.goal} />
             <span className="v num">{fmt(ctx.week.done)}<small>/{fmtGoal(ctx.goal)}</small></span>
           </div>
           <div className="summary-line">
             <span className="k">Today</span>
-            <div className="today-bar" aria-label={`${fmt(ctx.todayDone)} of ${fmt(ctx.todayTarget)} MET-hours today`}>
-              <span style={{ width: `${todayPct * 100}%` }} />
-            </div>
+            <TodayBar done={ctx.todayDone} target={ctx.todayTarget} />
             {state.plan[state.todayIndex] === "off" && ctx.todayTarget === 0
               ? <span className="v num">{fmt(ctx.todayDone)}<small> off</small></span>
               : <span className="v num">{fmt(ctx.todayDone)}<small>/{fmt(ctx.todayTarget)}</small></span>}
@@ -177,7 +174,7 @@ export function TodayScreen({ go, openPrefs }: { go: (s: Screen) => void; openPr
           </Bubbles>
         )}
         {t.step === "place" && (
-          <Bubbles label="Where are you">
+          <Bubbles label="Where you'll exercise">
             {PLACE_OPTIONS.map(([label, p]) => <button key={p} className="chip" onClick={() => dispatch({ type: "place", label, place: p })}>{label}</button>)}
           </Bubbles>
         )}

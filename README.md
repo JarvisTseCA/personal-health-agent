@@ -75,12 +75,12 @@ One tab for how activity adds up. It replaces the old Week tab, Medals tab and w
 Top to bottom:
 
 - **This week:** MET-hours done against the goal, the same legend and *This week* / *Today* bars as the
-  Today card, percent done and what's left, and the
-  streak (current and best). The line under the heading says where the goal came from (guideline, raised,
+  Today card (past days as one green block, then today, then the coming days), percent done and what's
+  left, and the streak (current and best). The line under the heading says where the goal came from (guideline, raised,
   stepping stone or clinician).
 - **Day by day:** each day's medal, target and workouts (from Fitbit or logged). *Update my goals* sets each
-  day to *Off* or 0, 5, 10, 30 or 45+ min (the same list as Today) at any point and re-splits what's left. *Log a workout Fitbit missed*
-  adds one by hand.
+  day to *Off* or 0, 5, 10, 30 or 45+ min (the same list as Today) at any point and re-splits what's left.
+  *Log a workout Fitbit missed* adds one by hand.
 - **Last week:** the recap: total, medals, a line of praise and the activity with the most time. Below it,
   the goal offer: raise, lower or keep, or type your own goal.
 - **Month by month:** pick a month with the *Year* and *Month* dropdowns (only months with data are listed;
@@ -91,7 +91,7 @@ Top to bottom:
   goal is highlighted gold. The demo personas have about six months of weeks.
 - **How medals work:** bronze, silver and gold rules, and what ends a streak.
 
-Code: `src/screens/ProgressScreen.tsx`
+Code: `src/screens/ProgressScreen.tsx`, `src/components/MedalCalendar.tsx`, `src/lib/periods.ts`
 
 ### Coach
 
@@ -329,7 +329,8 @@ the weekly goal turns every medal that week gold. A screen shows the streak as m
 - Light activity, such as a short walk or desk moves, counts toward bronze.
 - The streak counts days in a row with at least a bronze. Any day with no activity ends it, even a planned
   day off.
-- The Progress tab shows the streak and every week as a row of coins.
+- The Progress tab shows the streak, and *Month by month* shows past weeks as a medal calendar with a gold
+  row for every week that reached its goal.
 
 Code: `src/lib/medals.ts`, `src/screens/ProgressScreen.tsx`
 

@@ -228,7 +228,8 @@ Code: `src/lib/plan.ts`, `src/screens/ProgressScreen.tsx`
   exercise (home, office, outside), and how they feel (*Up for a challenge* or *Normal*).
 - There's no "what are you in the mood for?" question: the coach picks, to avoid decision fatigue.
 - Feeling tired isn't a button, to nudge toward moving, but typing it works and the pick gets easier.
-- *Up for a challenge* aims for 1.5× today's target; *Normal* aims for today's target.
+- *Up for a challenge* aims for 1.5× today's target, through a harder pace rather than a longer session;
+  *Normal* aims for today's target.
 - Answering *0 min* skips the rest and offers desk moves.
 
 Code: `src/state/today.ts`, `src/screens/TodayScreen.tsx`
@@ -296,8 +297,9 @@ bigger session and ask less of another day.
 
 - When a workout gets at least halfway to today's target, the coach sends one nudge: "8 more minutes
   finishes it."
-- *Up for a challenge* at check-in offers a bigger session (aiming for 1.5× today's target), and the rest of
-  the week's targets drop to match.
+- *Up for a challenge* at check-in offers a harder session (aiming for 1.5× today's target), and the rest of
+  the week's targets drop to match. The extra comes from intensity, not time: the session stays at its usual
+  length and the pace goes up (see the Today design decisions below).
 
 Code: `src/state/today.ts`
 
@@ -367,10 +369,40 @@ Add a guardrail to check calculation outputs. Describe each agent's task in natu
 
 Code: `src/lib/verify.ts`, `src/services/prompts.ts`
 
+### Today page: design decisions
+
+A running log of what we decided for the Today page and why, so the reasoning doesn't get lost. Add new
+decisions at the bottom with the date.
+
+| Date | Decision | Why |
+|---|---|---|
+| Oct 26, 2026 | The summary card has a legend: *Done* (green), *Left for today* (amber), *Upcoming days* (gray). | The bar's colors weren't explained anywhere. |
+| Oct 26, 2026 | The *This week* bar reads left to right: past days done, a gap, today (done + left), a gap, then what the coming days still need. The *Today* bar uses the same green and amber. | Today stands on its own, so it's clear how much is left now versus later in the week. Activity colors stay on the Progress tab. |
+| Oct 26, 2026 | Time options are 0, 5, 10, 30 and 45+ min. | 5 minutes still counts and is an easy yes on a busy day; 20 was dropped to keep five buttons. |
+| Oct 26, 2026 | The place question reads "Where will you be exercising?" with Home, Office and Outside. *Traveling* was removed. | Outside covers it. Typing "hotel" or "airport" still works. |
+| Oct 26, 2026 | "How do you feel?" offers only *Up for a challenge* and *Normal*. Feeling tired can be typed but isn't a button. | We don't want to make skipping the easy tap. Typing "tired" still gives a lighter pick. |
+| Oct 26, 2026 | *Normal* aims for today's target; *Up for a challenge* aims for 1.5× it, counting anything already done today. | Gives users a clear way to bank extra on a good day, which lowers the rest of the week. |
+| Oct 26, 2026 | No "What are you in the mood for?" question. After the check-in, the coach shows one pick. | Avoid decision fatigue: the user answers how they feel, the coach decides. |
+| Oct 26, 2026 | The pick has three buttons: *Let's start*, *Remind me later*, *Give me another option*. *Not today*, *Show other options* and *I want more today* were removed from the card. | One decision on screen. *Up for a challenge* replaces *I want more today*. |
+| Oct 26, 2026 | *Remind me later* asks when (in 30 min, in 1 hour, this evening, or a typed time), then brings the same pick back. | Keeps the plan instead of losing the day. In the demo, *Remind me now (demo)* stands in for the notification. |
+| Oct 26, 2026 | *Give me another option* swaps in the next pick without asking why, and cycles back to the first. | Asking for a reason every time is friction. A reason can still be typed, and is remembered. |
+| Oct 27, 2026 | A challenge earns its extra MET-hours with **intensity, not time**. The session keeps its usual length (the shortest that covers today's need at the activity's easiest pace) and uses the gentlest harder pace that reaches 1.5×. It gets shorter if that pace gets there sooner. It gets longer only if the activity has no pace hard enough. The app's ranker and the agent (Jev, `backend/app/challenge.py`) follow the same rule. | The aim is MET-hours, and a harder pace is the challenge the user asked for. Example (target 1.3): dancing goes from 20 min salsa (4.8 MET) to 20 min ballroom (6.0 MET), 154% of the target. Paces are steps, so some land above 1.5×: cycling has nothing between easy (4.3) and commute (6.8), so it lands at 174%. Yoga, Zumba and hiking have no pace hard enough, so they run longer. |
+
+Still open:
+
+- With *Not today* gone, a reason for turning a pick down has to be typed. That includes "something hurts",
+  which takes the safety path. Should *Something hurts* come back as a small one-tap option?
+- Should the question chips (*What's a MET?*, *Why this activity?*) stay under the pick, or would the card
+  read better with only the three buttons?
+
+Code: `src/state/today.ts`, `src/lib/suggest.ts` (`challengePlan`), `src/components/WeekBar.tsx`,
+`backend/app/challenge.py`
+
 ### Not built yet
 
 These are in the brief but not in the demo: importing the user's schedule, using location to know which
-activities are nearby, and using weather to swap in indoor options.
+activities are nearby, and using weather to swap in indoor options. *Remind me later* doesn't send a real
+notification yet.
 
 ### Questions for clinical review
 

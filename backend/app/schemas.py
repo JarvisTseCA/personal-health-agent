@@ -61,6 +61,7 @@ class SuggestRequest(BaseModel):
     day_name: str
     check_in: CheckIn
     needed_met_hours: float = Field(description="MET-hours still needed to reach today's target")
+    target_met_hours: Optional[float] = Field(default=None, description="Today's full target (a challenge aims for 1.5x this)")
     boost: bool = False  # "Up for a challenge" or "I want more today": aim for 1.5× today's need
     enjoyed: List[Enjoyed]
     options: List[Option]

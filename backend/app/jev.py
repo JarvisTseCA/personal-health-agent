@@ -13,6 +13,7 @@ from typing import Any, Dict, List, Tuple
 
 import httpx
 
+from . import challenge
 from .prompt import duration_question
 from .schemas import Option, SuggestRequest
 
@@ -79,16 +80,23 @@ def mock_activity(req: SuggestRequest) -> Dict[str, dict]:
             s -= 1.5
         if req.check_in.energy == "low":
             s -= max(0.0, o.met - 5) * 0.6
-        elif req.check_in.energy == "challenge":
-            s += 0.6 if o.met >= 6 else -0.3
+        if req.boost:
+            # A challenge: the pace that reaches 1.5x in the usual length, not a longer session.
+            plan = challenge.challenge_plan(req, o.family_id)
+            s += 1.5 if plan and plan[0].variant_id == o.variant_id else -0.5
         activity[o.variant_id] = s
     return {"activity": _choice(activity)}
 
 
 def mock_durations(req: SuggestRequest, picked: List[Option]) -> Dict[str, dict]:
-    """Mock of call 2: for each activity, the duration closest to covering today's need at its MET."""
+    """Mock of call 2: for each activity, the duration closest to covering today's need at its MET.
+    On a challenge, the usual length (the harder pace earns the extra), longer only if it must be."""
     answers = {}
     for o in picked:
-        want = req.needed_met_hours * (1.5 if req.boost else 1) * 60 / o.met if req.needed_met_hours > 0 else 20
+        fixed = challenge.minutes_for(req, o) if req.boost else None
+        if fixed is not None:
+            answers[duration_question(o)] = _choice({str(d): (5.0 if d == fixed else -abs(d - fixed) / 10) for d in req.durations})
+            continue
+        want = req.needed_met_hours * 60 / o.met if req.needed_met_hours > 0 else 20
         answers[duration_question(o)] = _choice({str(d): -abs(d - want) / 10 for d in req.durations})
     return answers

@@ -6,7 +6,7 @@
  * explainable ("Why this?") and the backend always has a safe fallback.
  */
 import { getFamily, settingOf, type ActivityFamily, type ActivityKind, type ActivityVariant } from "./activities";
-import { creditFor, metHours, VIGOROUS_MET } from "./met";
+import { countsTowardGoal, creditFor, metHours, VIGOROUS_MET } from "./met";
 
 export type Access = "have" | "sometimes" | "no";
 export type Place = "home" | "office" | "outside" | "traveling" | "other";
@@ -103,6 +103,46 @@ function aim(input: SuggestInput): number {
   if (target <= 0) return input.boost ? CHALLENGE_FACTOR : 0;
   const doneToday = Math.max(0, target - input.needed);
   return Math.max(0, target * CHALLENGE_FACTOR - doneToday);
+}
+
+export interface ChallengePlan {
+  variant: ActivityVariant;
+  durationMin: number;
+  /** Today's usual session length for this activity */
+  usualMin: number;
+  /** A harder pace than the easiest one */
+  harder: boolean;
+  /** Longer than usual, because even the hardest pace falls short */
+  longer: boolean;
+}
+
+/**
+ * "Up for a challenge" earns its extra MET-hours with intensity, not time.
+ *
+ * Usual length = the shortest allowed session that covers today's need at the
+ * activity's easiest pace that counts toward the goal. The challenge keeps
+ * that length and picks the gentlest pace that reaches the aim (1.5× today's
+ * target), trimming the session if that pace gets there sooner. Only if even
+ * the hardest pace falls short does it get longer.
+ */
+export function challengePlan(variants: ActivityVariant[], choices: number[], need: number, want: number): ChallengePlan | null {
+  const paces = variants.filter((v) => countsTowardGoal(v.met)).sort((a, b) => a.met - b.met);
+  if (paces.length === 0 || choices.length === 0) return null;
+  const easiest = paces[0];
+  const usualMin = need > 0
+    ? choices.find((d) => creditFor(easiest.met, d) + 1e-9 >= need) ?? choices[choices.length - 1]
+    : choices.filter((d) => d <= 20).at(-1) ?? choices[0];
+  const reaches = (v: ActivityVariant, d: number) => creditFor(v.met, d) + 1e-9 >= want;
+
+  const hit = paces.find((v) => reaches(v, usualMin));
+  if (hit) {
+    const d = choices.find((x) => x <= usualMin && reaches(hit, x)) ?? usualMin;
+    return { variant: hit, durationMin: d, usualMin, harder: hit.met > easiest.met, longer: false };
+  }
+
+  const hardest = paces[paces.length - 1];
+  const d = choices.find((x) => x >= usualMin && reaches(hardest, x)) ?? choices[choices.length - 1];
+  return { variant: hardest, durationMin: d, usualMin, harder: hardest.met > easiest.met, longer: d > usualMin };
 }
 
 function pickDuration(v: ActivityVariant, choices: number[], want: number): number {
@@ -203,8 +243,27 @@ export function suggest(input: SuggestInput): SuggestResult {
   const { options, durations: choices } = candidates(input);
   if (choices.length === 0) return deskOptions();
 
+  const want = aim(input);
+  const challenge = stretching(input) && want > 0;
   const best: Suggestion[] = [];
   for (const f of [...new Set(options.map((o) => o.family))]) {
+    if (challenge) {
+      const plan = challengePlan(options.filter((o) => o.family === f).map((o) => o.variant), choices, input.needed, want);
+      if (plan) {
+        const v = plan.variant;
+        const d = plan.durationMin;
+        const { score, reasons, credit } = scoreOne(f, v, d, input);
+        const pace = !plan.harder || plan.longer ? null : d < plan.usualMin ? "Harder pace, shorter than usual" : "Usual length, harder pace";
+        const why = pace ? [pace, ...reasons] : reasons;
+        best.push({
+          familyId: f.id, variantId: v.id, durationMin: d, met: v.met, credit, rawMetHours: metHours(v.met, d),
+          reasons: [...new Set(why)].slice(0, 3),
+          // Getting there by time instead of intensity is the fallback, so rank it lower.
+          score: score - (plan.longer ? 1.5 : 0),
+        });
+        continue;
+      }
+    }
     let top: Suggestion | null = null;
     for (const { variant: v } of options.filter((o) => o.family === f)) {
       const d = pickDuration(v, choices, aim(input));

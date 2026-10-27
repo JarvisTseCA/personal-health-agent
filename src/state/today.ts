@@ -85,7 +85,7 @@ export function answerPlace(state: AppState, label: string, place: Place): AppSt
 export function answerEnergy(state: AppState, label: string, energy: Energy): AppState {
   const s = setToday(push(state, user(label)), { checkIn: { ...state.today.checkIn, energy, mood: state.today.checkIn.mood ?? "surprise" } });
   const intro = energy === "challenge"
-    ? "Let's push a little. This one goes past today's target."
+    ? "Let's push a little: same time, harder pace."
     : energy === "low"
       ? "Let's keep it easy today. Here's my pick."
       : "Here's my pick for today.";

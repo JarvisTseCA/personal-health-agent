@@ -2,47 +2,43 @@
  * Onboarding, observe-first (workflow doc):
  *   Day 1: connect Fitbit, one health question.
  *   Days 1–7: observe a week; no suggestions yet, but medals already count.
- *   Day 8: confirm what the coach detected, then likes, access, usual time,
- *          and the first weekly plan.
+ *   Day 8: confirm what the coach detected, then likes and the first weekly plan.
  * "Don't want to wait?" skips the observing week and asks the day-8 questions now.
+ * Every page after the welcome has Back, which returns to the page the user came from.
+ * Access and usual weekly time aren't asked: everything starts as available
+ * ("Can't access it" on a pick fixes that later), and each day starts at 10 min.
  */
 import { useMemo, useState } from "react";
-import { WatchIcon } from "../components/Icons";
+import { BackIcon, WatchIcon } from "../components/Icons";
 import { OtherInput } from "../components/OtherInput";
-import { matchActivity, parseMinutes, parsePlanChanges, parseYesNo } from "../lib/freeText";
+import { matchActivity, parsePlanChanges, parseYesNo } from "../lib/freeText";
 import { MedalCoin } from "../components/Medal";
 import { PERSONAS } from "../data/mockFitbit";
 import { getFamily, getVariant, PICKABLE, searchFamilies } from "../lib/activities";
 import { DAY_NAMES_LONG } from "../lib/met";
-import { SLOT_LABEL, type WeekPlan } from "../lib/plan";
+import { SLOT_LABEL, SLOT_MINUTES, type WeekPlan } from "../lib/plan";
 import { TimeOptions } from "../components/TimeOptions";
 import type { Access } from "../lib/suggest";
 import { DEFAULT_PROFILE, useStore } from "../state/store";
-import type { UsualTime } from "../state/types";
 
-type Step = "welcome" | "fitbit" | "health" | "path" | "observing" | "confirm" | "enjoy" | "access" | "time" | "plan";
-const ORDER: Step[] = ["fitbit", "health", "path", "observing", "confirm", "enjoy", "access", "time", "plan"];
+type Step = "welcome" | "fitbit" | "health" | "path" | "observing" | "confirm" | "enjoy" | "plan";
+const ORDER: Step[] = ["fitbit", "health", "path", "observing", "confirm", "enjoy", "plan"];
 
-const TIME: Array<[UsualTime, string, WeekPlan]> = [
-  ["under1", "Under 1 hr", ["10", "off", "10", "off", "10", "off", "10"]],
-  ["1to2", "1 to 2 hrs", ["10", "off", "30", "off", "30", "45", "off"]],
-  ["2to3", "2 to 3 hrs", ["30", "30", "off", "30", "30", "45", "off"]],
-  ["3plus", "3+ hrs", ["30", "45", "30", "off", "30", "45", "30"]],
-];
-
-const ACCESS: Array<[Access, string]> = [["have", "Have what I need"], ["sometimes", "Sometimes"], ["no", "Not right now"]];
+/** Every day starts at 10 min; the user changes the days that differ. */
+const START_PLAN: WeekPlan = ["10", "10", "10", "10", "10", "10", "10"];
 
 export function Onboarding({ onDone }: { onDone: () => void }) {
   const { state, dispatch } = useStore();
   const [step, setStep] = useState<Step>("welcome");
   const [observed, setObserved] = useState(false);
-  const [health, setHealth] = useState<null | "none" | "yes" | "skip">(null);
+  const [health, setHealth] = useState<null | "none" | "skip">(null);
+  /** The large "anything we should know?" box */
+  const [about, setAbout] = useState("");
   const [connected, setConnected] = useState(false);
   const [connecting, setConnecting] = useState(false);
   const [enjoyed, setEnjoyed] = useState<string[]>([]);
   const [access, setAccess] = useState<Record<string, Access>>({});
-  const [usual, setUsual] = useState<UsualTime | null>(null);
-  const [plan, setPlan] = useState<WeekPlan>(TIME[1][2]);
+  const [plan, setPlan] = useState<WeekPlan>(START_PLAN);
   const [query, setQuery] = useState("");
   const [bout, setBout] = useState(0);
   const [fixing, setFixing] = useState(false);
@@ -61,16 +57,21 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
   }, [state.personaId]);
 
   const [hint, setHint] = useState<string | null>(null);
-  const go = (s: Step) => { setStep(s); setHint(null); };
+  /** Pages visited, so Back returns to the one the user came from */
+  const [trail, setTrail] = useState<Step[]>([]);
+  const go = (s: Step) => { setTrail((t) => [...t, step]); setStep(s); setHint(null); };
+  const back = () => {
+    setHint(null);
+    if (step === "confirm" && fixing) { setFixing(false); return; }
+    if (step === "confirm" && bout > 0) { setBout((b) => b - 1); return; }
+    const prev = trail.at(-1);
+    if (!prev) return;
+    setTrail(trail.slice(0, -1));
+    setStep(prev);
+  };
   const note = (text: string, where: string) => dispatch({ type: "addNote", text, where: `Onboarding: ${where}` });
 
   // ---- The "Other" box on each step: typed answers become the same choices the buttons make.
-  const typedHealth = (text: string) => {
-    if (/^(no|none|nope|nothing|all good|healthy)\b/i.test(text)) { setHealth("none"); setHint("Got it: no health conditions."); return; }
-    setHealth("yes");
-    note(text, "health");
-    setHint("Thanks, noted. I'll keep to moderate activity for now and suggest checking with a clinician before anything vigorous.");
-  };
   const typedBout = (text: string) => {
     const yn = parseYesNo(text);
     if (!fixing && yn === true) { confirmBout(getVariant(current.variantId).family.id); return; }
@@ -91,25 +92,6 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
     }
     note(`Enjoys "${text}"`, "activities");
     setHint(`I don't have "${text}" in my list yet, so I can't count it accurately. I've noted it for the team.`);
-  };
-  const typedAccess = (text: string) => {
-    const fam = matchActivity(text);
-    if (fam && enjoyed.includes(fam)) {
-      const a: Access = /\b(sometimes|some weeks|occasionally)\b/i.test(text) ? "sometimes" : /\b(no|not|can't|cannot|don't|dont|broken|closed|without)\b/i.test(text) ? "no" : "have";
-      setAccess((x) => ({ ...x, [fam]: a }));
-      setHint(`Set ${getFamily(fam).noun} to "${ACCESS.find(([k]) => k === a)![1]}".`);
-      return;
-    }
-    note(text, "access");
-    setHint("Noted. I'll keep that in mind when I suggest things.");
-  };
-  const typedTime = (text: string) => {
-    const m = parseMinutes(text);
-    if (m === null) { setHint("I didn't catch a time. Roughly how much a week, like 90 minutes or 2 hours?"); return; }
-    const row = m < 60 ? TIME[0] : m <= 120 ? TIME[1] : m <= 180 ? TIME[2] : TIME[3];
-    setUsual(row[0]);
-    setPlan(row[2]);
-    setHint(`About ${m >= 60 ? `${Math.round((m / 60) * 10) / 10} hr` : `${m} min`} a week, so I picked "${row[1]}".`);
   };
   const typedPlan = (text: string) => {
     const changes = parsePlanChanges(text);
@@ -135,10 +117,21 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
     setAccess((a) => ({ ...a, [id]: a[id] ?? "have" }));
   };
 
+  /**
+   * The health page. The box takes anything the coach should know and is kept
+   * as a note. Text without "No health conditions" is treated as a condition:
+   * moderate activity only, and check with a clinician before anything vigorous.
+   */
+  const healthFlag = health === "skip" || (health !== "none" && about.trim() !== "");
+  const continueHealth = () => {
+    if (about.trim()) note(about.trim(), "anything we should know");
+    go("path");
+  };
+
   const finish = () => {
     dispatch({
       type: "completeOnboarding",
-      profile: { ...DEFAULT_PROFILE, ...state.profile, enjoyed, access, usualTime: usual ?? "1to2", hasHealthCondition: health === "yes" || health === "skip", fitbitConnected: connected },
+      profile: { ...DEFAULT_PROFILE, ...state.profile, enjoyed, access, hasHealthCondition: healthFlag, fitbitConnected: connected },
       plan,
     });
     onDone();
@@ -150,8 +143,11 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
   return (
     <div className="onb">
       {step !== "welcome" && (
-        <div className="onb-progress" aria-label={`Step ${idx + 1} of ${ORDER.length}`}>
-          {ORDER.map((s, i) => <span key={s} className={i <= idx ? "on" : ""} />)}
+        <div className="onb-top">
+          <button className="onb-back" onClick={back} disabled={trail.length === 0}><BackIcon />Back</button>
+          <div className="onb-progress" aria-label={`Step ${idx + 1} of ${ORDER.length}`}>
+            {ORDER.map((s, i) => <span key={s} className={i <= idx ? "on" : ""} />)}
+          </div>
         </div>
       )}
 
@@ -194,7 +190,6 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
           </div>
           <div className="actions">
             <button className="btn btn-primary btn-block" onClick={() => go("health")} disabled={!connected}>Continue</button>
-            <button className="btn btn-ghost" onClick={() => go("welcome")}>Back</button>
           </div>
         </>
       )}
@@ -203,17 +198,26 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
         <>
           <div className="grow">
             <h1>Anything we should know?</h1>
-            <p className="lead">For example heart disease, high blood pressure, diabetes or pregnancy. If so, I'll skip vigorous suggestions and suggest checking with a clinician first.</p>
-            <div className="choice">
-              <button aria-pressed={health === "none"} onClick={() => setHealth("none")}><b>No health conditions</b></button>
-              <button aria-pressed={health === "yes"} onClick={() => setHealth("yes")}><b>I have a condition</b><span>Moderate activity only for now</span></button>
-              <button aria-pressed={health === "skip"} onClick={() => setHealth("skip")}><b>Prefer not to say</b><span>I'll play it safe with moderate activity</span></button>
+            <p className="lead">For example heart disease, high blood pressure, diabetes, pregnancy or an injury. If there's something, I'll skip vigorous suggestions and suggest checking with a clinician first.</p>
+            <label className="sr-only" htmlFor="about">Anything we should know</label>
+            <textarea
+              id="about"
+              className="about-box"
+              rows={6}
+              value={about}
+              onChange={(e) => setAbout(e.target.value)}
+              placeholder="Tell me anything that matters for your exercise: a condition, an injury, medication, or something you'd rather avoid."
+            />
+            {about.trim() && health !== "none" && (
+              <p className="small muted" role="status" style={{ marginTop: 8 }}>Thanks. I'll keep to moderate activity for now and suggest checking with a clinician before anything vigorous.</p>
+            )}
+            <div className="choice" style={{ marginTop: 16 }}>
+              <button aria-pressed={health === "none"} onClick={() => setHealth(health === "none" ? null : "none")}><b>No health conditions</b></button>
+              <button aria-pressed={health === "skip"} onClick={() => setHealth(health === "skip" ? null : "skip")}><b>Prefer not to say</b><span>I'll play it safe with moderate activity</span></button>
             </div>
-            <OtherInput placeholder="Other: describe it in your own words" onSubmit={typedHealth} hint={hint} />
           </div>
           <div className="actions">
-            <button className="btn btn-primary btn-block" onClick={() => go("path")} disabled={!health}>Continue</button>
-            <button className="btn btn-ghost" onClick={() => go("fitbit")}>Back</button>
+            <button className="btn btn-primary btn-block" onClick={continueHealth} disabled={!health && !about.trim()}>Continue</button>
           </div>
         </>
       )}
@@ -245,7 +249,6 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
           </div>
           <div className="actions">
             <button className="btn btn-primary btn-block" onClick={() => go("confirm")}>Skip ahead to day 8 (demo)</button>
-            <button className="btn btn-ghost" onClick={() => go("path")}>Back</button>
           </div>
         </>
       )}
@@ -273,9 +276,6 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
             )}
             <OtherInput key={`${bout}-${fixing}`} placeholder={fixing ? "Other: type what it was" : "Other: type your answer"} onSubmit={typedBout} hint={hint} />
           </div>
-          <div className="actions">
-            <button className="btn btn-ghost" onClick={() => go("observing")}>Back</button>
-          </div>
         </>
       )}
 
@@ -300,57 +300,7 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
             <OtherInput placeholder="Other: an activity not listed here" onSubmit={typedEnjoy} hint={hint} />
           </div>
           <div className="actions">
-            <button className="btn btn-primary btn-block" onClick={() => go("access")} disabled={enjoyed.length === 0}>{enjoyed.length ? "Continue" : "Pick at least one"}</button>
-            <button className="btn btn-ghost" onClick={() => go(observed ? "confirm" : "path")}>Back</button>
-          </div>
-        </>
-      )}
-
-      {step === "access" && (
-        <>
-          <div className="grow">
-            <h1>Which can you actually do this month?</h1>
-            <p className="lead">I won't suggest anything you can't get to.</p>
-            <ul className="access-list">
-              {enjoyed.map((id) => {
-                const f = getFamily(id);
-                return (
-                  <li key={id}>
-                    <b><span className="dot" style={{ background: f.color }} /> {f.name}</b>
-                    {f.needs && <span className="xs muted">{id === "basketball" ? "Is there a court near you?" : `Needs ${f.needs}`}</span>}
-                    <div className="slot-row" role="radiogroup" aria-label={`Access to ${f.name}`}>
-                      {ACCESS.map(([a, label]) => (
-                        <button key={a} role="radio" aria-checked={(access[id] ?? "have") === a} className="slot" onClick={() => setAccess((x) => ({ ...x, [id]: a }))}>{label}</button>
-                      ))}
-                    </div>
-                  </li>
-                );
-              })}
-            </ul>
-            <OtherInput placeholder="Other: e.g. my bike is in the shop" onSubmit={typedAccess} hint={hint} />
-          </div>
-          <div className="actions">
-            <button className="btn btn-primary btn-block" onClick={() => go("time")}>Continue</button>
-            <button className="btn btn-ghost" onClick={() => go("enjoy")}>Back</button>
-          </div>
-        </>
-      )}
-
-      {step === "time" && (
-        <>
-          <div className="grow">
-            <h1>Most weeks, how much time do you have?</h1>
-            <p className="lead">A rough guess is fine. Short blocks count.</p>
-            <div className="choice">
-              {TIME.map(([id, label, preset]) => (
-                <button key={id} aria-pressed={usual === id} onClick={() => { setUsual(id); setPlan(preset); setHint(null); }}><b>{label}</b></button>
-              ))}
-            </div>
-            <OtherInput placeholder="Other: e.g. about 90 minutes" onSubmit={typedTime} hint={hint} />
-          </div>
-          <div className="actions">
-            <button className="btn btn-primary btn-block" onClick={() => go("plan")} disabled={!usual}>Continue</button>
-            <button className="btn btn-ghost" onClick={() => go("access")}>Back</button>
+            <button className="btn btn-primary btn-block" onClick={() => go("plan")} disabled={enjoyed.length === 0}>{enjoyed.length ? "Continue" : "Pick at least one"}</button>
           </div>
         </>
       )}
@@ -359,22 +309,23 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
         <>
           <div className="grow">
             <h1>Plan this week</h1>
-            <p className="lead">Mark the days you can't exercise at all as Off. The weekly goal stays the same; the other days share it.</p>
+            <p className="lead">Every day starts at 10 min. Change the days that are different, and mark days you can't exercise at all as Off. The weekly goal stays the same; days with more time get more of it.</p>
             <ul className="plan-grid">
               {plan.map((slot, i) => (
                 <li key={i}>
-                  <span className="small"><b>{DAY_NAMES_LONG[i].slice(0, 3)}</b></span>
+                  <div className="plan-day">
+                    <b>{DAY_NAMES_LONG[i]}</b>
+                    {SLOT_MINUTES[slot] === 0 && <span className="xs muted">{slot === "off" ? "Day off" : "Desk moves only"}</span>}
+                  </div>
                   <TimeOptions variant="slot" label={`${DAY_NAMES_LONG[i]} time`} value={slot}
                     onPick={(s) => setPlan((p) => p.map((x, j) => (j === i ? s : x)))} />
                 </li>
               ))}
             </ul>
-            <p className="xs muted" style={{ marginTop: 8 }}>0 min means desk moves only. The days with more time get more of the goal.</p>
             <OtherInput placeholder="Other: e.g. Thu off, Sat 45 min" onSubmit={typedPlan} hint={hint} />
           </div>
           <div className="actions">
             <button className="btn btn-primary btn-block" onClick={finish} disabled={plan.every((s) => s === "off")}>Start today</button>
-            <button className="btn btn-ghost" onClick={() => go("time")}>Back</button>
           </div>
         </>
       )}

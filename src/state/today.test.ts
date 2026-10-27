@@ -271,3 +271,11 @@ describe("Off at the time question", () => {
     }
   });
 });
+
+it("a typed 'can't, my bike is broken' on a pick rules that activity out", () => {
+  let s = T.answerTime(onboarded(), "30 min", 30);
+  s = T.answerEnergy(T.answerPlace(s, "Home", "home"), "Normal", "normal");
+  const fam = s.today.current!.lead.familyId;
+  s = T.freeText(s, "can't, my bike is broken");
+  expect(s.profile.access[fam]).toBe("no");
+});

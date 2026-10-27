@@ -75,3 +75,6 @@ export const PencilIcon = (p: P) => (
     <path d="M14.5 5.5l4 4" /><path d="M4 20l1-4.5L16 4.5a1.4 1.4 0 0 1 2 0l1.5 1.5a1.4 1.4 0 0 1 0 2L8.5 19z" />
   </svg>
 );
+export const BackIcon = (p: P) => (
+  <svg viewBox="0 0 24 24" {...base} {...p} aria-hidden><path d="M15 5l-7 7 7 7" /></svg>
+);

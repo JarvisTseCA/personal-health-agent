@@ -45,8 +45,9 @@ them, and Preferences opens as a sheet from Today.
 
 ### Onboarding (runs once)
 
-**Observe first**: connect Fitbit, answer one health question, watch a week, then confirm what was detected,
-add liked activities (ranked), access, usual time and the first weekly plan. *Set up now* skips the week.
+**Observe first**: connect Fitbit, tell the coach anything it should know about your health, watch a week,
+then confirm what was detected, add liked activities (ranked) and plan the first week (every day starts at
+10 min). *Set up now* skips the week. Every page has *Back*.
 
 ### Today
 
@@ -172,8 +173,8 @@ flowchart TD
 ```
 
 1. **Onboarding (once).** The user connects Fitbit and answers one health question. The app then watches a
-   week of Fitbit data. On day 8 the user confirms the workouts the app detected and adds activities they
-   enjoy, what they can access, and their usual weekly time.
+   week of Fitbit data. On day 8 the user confirms the workouts the app detected, adds activities they
+   enjoy and plans the first week.
 2. **Weekly planning (every Sunday).** The user marks the days they can't exercise. The weekly goal is split
    over the other days by how much time each one has. The plan can change mid-week, and what's left is
    re-split.
@@ -196,15 +197,22 @@ records, and what the clinician sets (goal, limits, note, precautions) applies f
 **Instruction:** Learn what the user already does from a week of Fitbit data, then confirm it with them and
 ask for anything else they enjoy and can do.
 
-- Observe first is the default: connect Fitbit, answer one health question, then wear the Fitbit for a week
-  while the coach makes no suggestions. Medals still count during that week.
+- Observe first is the default: connect Fitbit, tell the coach anything it should know, then wear the Fitbit
+  for a week while the coach makes no suggestions. Medals still count during that week.
+- Every page after the welcome has *Back* at the top, which returns to the page the user came from.
 - On day 8 the coach shows each workout it detected ("Tuesday, 30 min, looks like cycling. Right?") and the
   user confirms, corrects or skips it.
-- Then the user adds activities they enjoy (in order of preference), says whether they can get to each one
-  ("Is there a court near you?"), gives their usual weekly time, and plans the first week.
+- Then the user adds activities they enjoy (in order of preference) and plans the first week. Every day
+  starts at 10 min; the user changes the days that differ (*Off*, 0, 5, 10, 30 or 45+ min).
+- There's no access page and no "how much time most weeks" page. Everything starts as available; if the user
+  can't do something, typing so when turning a pick down ("can't, my bike is broken") or setting it in Preferences
+  rules it out from then on.
 - *Don't want to wait? Set up now* skips the observation week.
-- Any health answer other than "No health conditions" turns off vigorous suggestions and suggests checking
-  with a clinician first.
+- The health page starts with a large text box for anything the coach should know (a condition, an
+  injury, medication, something to avoid), with *No health conditions* and *Prefer not to say* below it.
+  What's typed is kept as a note the coach remembers. Typing something without picking *No health
+  conditions*, or picking *Prefer not to say*, turns off vigorous suggestions and suggests checking with a
+  clinician first.
 
 Code: `src/screens/Onboarding.tsx`
 
@@ -396,6 +404,7 @@ decisions at the bottom with the date.
 | Oct 27, 2026 | Progress uses the same legend and *This week* / *Today* bars as the Today card, replacing the activity-colored goal strip. | One way to read progress across the app. Each workout's activity and color are still listed under *Day by day*. |
 | Oct 27, 2026 | The day options are the same everywhere: *Off*, 0, 5, 10, 30 and 45+ min, shown as three rows (*Off* / 0, 5, 10, 30 min / 45+ min) on Today, Progress and onboarding. On Progress the button reads *Update my goals*. Saved plans convert Short → 10, Medium → 30, Long → 45 min. | One vocabulary for time, so planning a day and checking in on it use the same words. Targets are now split by the actual minutes. *Off* (can't exercise) and *0 min* (desk moves) are different: only *Off* is a day off. |
 | Oct 27, 2026 | *Off* at Today's time question makes today a day off: its target moves to the rest of the week and the coach wraps up. Typing "sick" or "day off" does the same. Editing that answer puts the day back. | A sick day shouldn't need a trip to Progress. Whether an off day keeps the streak is still open (see Project Questions, "Off days"). |
+| Oct 27, 2026 | Onboarding is shorter: the access page ("Which can you actually do this month?") and the usual-time page ("Most weeks, how much time do you have?") are gone. The plan page starts every day at 10 min. Every page has *Back*. The health page leads with a large text box, with *No health conditions* and *Prefer not to say* below it. | Fewer choices before the first suggestion. Access is better learned as the user goes (a typed "can't access it"), and a flat 10 min a day is an easy starting point to adjust. A free-text box catches things the three buttons couldn't, like an injury or medication. |
 
 Still open:
 

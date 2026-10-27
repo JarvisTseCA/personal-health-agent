@@ -3,7 +3,7 @@
  * Past turns read as a conversation; the live question or card sits at the
  * bottom, so there's always exactly one decision in front of the user.
  */
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { TodayBar, WeekBar, WeekLegend } from "../components/WeekBar";
 import { SettingsIcon } from "../components/Icons";
 import { MedalCoin, WeekCoins } from "../components/Medal";
@@ -15,6 +15,8 @@ import { useStore } from "../state/store";
 import { CONFIRM_CHOICES, ENERGY_OPTIONS, PLACE_OPTIONS, REMIND_OPTIONS, TIME_OPTIONS } from "../state/today";
 import type { Screen, TodayStep } from "../state/types";
 import { OtherInput } from "../components/OtherInput";
+import { UserMessage } from "../components/UserMessage";
+import type { AppState } from "../state/types";
 
 /** What the Other box says at each step. Every step that asks something gets one. */
 const OTHER_PLACEHOLDER: Partial<Record<TodayStep, string>> = {
@@ -110,10 +112,29 @@ export function TodayScreen({ go, openPrefs }: { go: (s: Screen) => void; openPr
   const { state, ctx, dispatch } = useStore();
   const t = state.today;
   const end = useRef<HTMLDivElement>(null);
+  /** The answer whose actions row is open */
+  const [selected, setSelected] = useState<string | null>(null);
+  /** While editing an earlier answer: how to undo, and the old answer to start from */
+  const [editing, setEditing] = useState<{ backup: AppState; count: number; text: string } | null>(null);
 
   useEffect(() => {
     end.current?.scrollIntoView({ behavior: "smooth", block: "end" });
   }, [t.entries.length, t.step, t.current?.showBackups]);
+
+  // A new answer ends the edit: the conversation carries on from there.
+  useEffect(() => {
+    if (editing && t.entries.length !== editing.count) setEditing(null);
+  }, [t.entries.length, editing]);
+
+  const editFrom = (entryId: string, count: number, text: string) => {
+    setSelected(null);
+    setEditing({ backup: state, count, text });
+    dispatch({ type: "editAnswer", entryId });
+  };
+  const cancelEdit = () => {
+    if (editing) dispatch({ type: "hydrate", state: editing.backup });
+    setEditing(null);
+  };
 
   const pending = t.pendingSessionId ? state.sessions.find((s) => s.id === t.pendingSessionId) : undefined;
   const pendingFamily = pending ? getVariant(pending.variantId).family.id : undefined;
@@ -165,9 +186,25 @@ export function TodayScreen({ go, openPrefs }: { go: (s: Screen) => void; openPr
               <MedalCoin medal={e.medal!} size={56} />
               <p>{e.text}</p>
             </div>
+          ) : e.role === "user" ? (
+            <UserMessage
+              key={e.id}
+              text={e.text}
+              at={e.at}
+              selected={selected === e.id}
+              onSelect={() => setSelected(selected === e.id ? null : e.id)}
+              onEdit={e.rewind ? () => editFrom(e.id, e.rewind!.entryCount, e.text) : undefined}
+            />
           ) : (
             <div key={e.id} className={`msg ${e.role}`}>{e.text}</div>
           ),
+        )}
+
+        {editing && (
+          <div className="edit-banner" role="status">
+            <span><b>Editing your answer.</b> Pick again or change it below.</span>
+            <button className="btn btn-quiet" onClick={cancelEdit}>Cancel</button>
+          </div>
         )}
 
         {t.step === "time" && (
@@ -272,7 +309,13 @@ export function TodayScreen({ go, openPrefs }: { go: (s: Screen) => void; openPr
           </div>
         )}
         {OTHER_PLACEHOLDER[t.step] && (t.step !== "confirm" || pending) && (
-          <OtherInput key={t.step} placeholder={OTHER_PLACEHOLDER[t.step]} label="Type your own answer" onSubmit={(text) => dispatch({ type: "freeText", text })} />
+          <OtherInput
+            key={`${t.step}-${editing ? editing.count : ""}`}
+            placeholder={OTHER_PLACEHOLDER[t.step]}
+            label="Type your own answer"
+            initial={editing?.text}
+            onSubmit={(text) => dispatch({ type: "freeText", text })}
+          />
         )}
         <div ref={end} />
       </div>

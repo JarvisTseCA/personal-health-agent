@@ -353,8 +353,11 @@ Code: `src/screens/ClinicianScreen.tsx`
   hurts").
 - Anything the app can't place is saved as a note the coach remembers. An activity that isn't in the list
   keeps the user's name for it.
+- Tapping any answer the user sent shows when it was sent and a pencil, as in Claude's chat. On Today, the
+  pencil goes back to that question, with the options and the old answer in the Other box; *Cancel* undoes
+  it. On Coach, the message turns into an edit box with *Cancel* and *Save*, and Save resends it.
 
-Code: `src/lib/freeText.ts`, `src/components/OtherInput.tsx`
+Code: `src/lib/freeText.ts`, `src/components/OtherInput.tsx`, `src/components/UserMessage.tsx`
 
 ### Two agents and guardrails
 
@@ -387,6 +390,7 @@ decisions at the bottom with the date.
 | Oct 26, 2026 | *Remind me later* asks when (in 30 min, in 1 hour, this evening, or a typed time), then brings the same pick back. | Keeps the plan instead of losing the day. In the demo, *Remind me now (demo)* stands in for the notification. |
 | Oct 26, 2026 | *Give me another option* swaps in the next pick without asking why, and cycles back to the first. | Asking for a reason every time is friction. A reason can still be typed, and is remembered. |
 | Oct 27, 2026 | A challenge earns its extra MET-hours with **intensity, not time**. The session keeps its usual length (the shortest that covers today's need at the activity's easiest pace) and uses the gentlest harder pace that reaches 1.5×. It gets shorter if that pace gets there sooner. It gets longer only if the activity has no pace hard enough. The app's ranker and the agent (Jev, `backend/app/challenge.py`) follow the same rule. | The aim is MET-hours, and a harder pace is the challenge the user asked for. Example (target 1.3): dancing goes from 20 min salsa (4.8 MET) to 20 min ballroom (6.0 MET), 154% of the target. Paces are steps, so some land above 1.5×: cycling has nothing between easy (4.3) and commute (6.8), so it lands at 174%. Yoga, Zumba and hiking have no pace hard enough, so they run longer. |
+| Oct 27, 2026 | Tapping an answer you sent shows when you sent it and a pencil, modeled on Claude's chat. On Today, the pencil goes back to that question as things were then: later messages are dropped, along with anything they changed (a decline, a health flag, a synced workout). The options come back with the old answer in the Other box, and *Cancel* restores everything. On Coach, the message is edited in place (*Cancel* / *Save*) and the reply is regenerated. | People mis-tap, change their mind, or answer before they've thought about it. Going back should be one tap, not a restart of the day. Today goes back to the question, not an edit box, because most answers there are taps. Answers saved before this change can't be edited. |
 
 Still open:
 

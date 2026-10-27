@@ -199,3 +199,50 @@ describe("backend (Jev) suggestions", () => {
     expect(T.applyBackendSuggestion(accepted, s.today.current!.lead, r)).toBe(accepted);
   });
 });
+
+describe("editing an earlier answer", () => {
+  // The store runs withRewind after every action; do the same here.
+  const step = (s: AppState, f: (x: AppState) => AppState) => T.withRewind(s, f(s));
+
+  it("every answer gets a time and a way back to its question", () => {
+    let s = onboarded();
+    s = step(s, (x) => T.answerTime(x, "30 min", 30));
+    s = step(s, (x) => T.answerPlace(x, "Home", "home"));
+    const answers = s.today.entries.filter((e) => e.role === "user");
+    expect(answers.map((e) => e.text)).toEqual(["30 min", "Home"]);
+    for (const a of answers) {
+      expect(a.at).toBeTypeOf("number");
+      expect(a.rewind).toBeDefined();
+    }
+  });
+
+  it("the pencil goes back to that question and drops what came after", () => {
+    let s = onboarded();
+    s = step(s, (x) => T.answerTime(x, "30 min", 30));
+    s = step(s, (x) => T.answerPlace(x, "Home", "home"));
+    s = step(s, (x) => T.answerEnergy(x, "Normal", "normal"));
+    expect(s.today.step).toBe("suggested");
+    const time = s.today.entries.find((e) => e.text === "30 min")!;
+    const back = T.editAnswer(s, time.id);
+    expect(back.today.step).toBe("time");
+    expect(back.today.entries).toHaveLength(1); // just the coach's opening question
+    expect(back.today.checkIn.minutes).toBeUndefined();
+    // A new answer carries on from there.
+    const redone = step(back, (x) => T.answerTime(x, "10 min", 10));
+    expect(redone.today.checkIn.minutes).toBe(10);
+    expect(redone.today.entries.at(-1)?.text).toBe("Where will you be exercising?");
+  });
+
+  it("going back also undoes what that answer changed", () => {
+    let s = checkIn(onboarded());
+    s = step(s, (x) => T.decline(x));
+    s = step(s, (x) => T.chooseReason(x, "hurts"));
+    expect(s.profile.hasHealthCondition).toBe(true);
+    const hurts = s.today.entries.find((e) => e.role === "user" && e.text === "Something hurts")!;
+    const back = T.editAnswer(s, hurts.id);
+    expect(back.today.step).toBe("reason");
+    expect(back.profile.hasHealthCondition).toBe(false);
+    expect(back.painReports).toBe(0);
+    expect(back.declines.length).toBe(s.declines.length - 1);
+  });
+});

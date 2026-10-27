@@ -323,6 +323,28 @@ p { margin: 0; }
 .msg { max-width: 86%; padding: 10px 14px; border-radius: 18px; font-size: var(--t-md); white-space: pre-wrap; }
 .msg.user { align-self: flex-end; background: var(--ink); color: #fff; border-bottom-right-radius: 6px; }
 .msg.agent { align-self: flex-start; background: var(--surface); border: 1px solid var(--line); border-bottom-left-radius: 6px; }
+/* A message the user sent: tap for when it was sent and a pencil (modeled on Claude's chat) */
+.umsg { align-self: flex-end; display: flex; flex-direction: column; align-items: flex-end; gap: 4px; max-width: 86%; }
+.umsg .msg.user { max-width: 100%; border: 0; font: inherit; text-align: left; cursor: pointer; }
+.feed .umsg .msg.user { font-size: var(--t-sm); }
+.umsg .msg.user[aria-expanded="true"] { box-shadow: 0 0 0 3px var(--wash); }
+.msg-actions { display: flex; align-items: center; gap: 2px; animation: fade-in .15s ease-out; }
+.msg-time { font-size: var(--t-xs); color: var(--ink-3); margin-right: 6px; }
+.msg-act { position: relative; width: 36px; height: 36px; display: grid; place-items: center; border: 0; border-radius: 10px; background: none; color: var(--ink-2); }
+.msg-act:hover, .msg-act:focus-visible { background: var(--wash); color: var(--ink); }
+.msg-act svg { width: 18px; height: 18px; }
+.msg-act[data-tip]:hover::after, .msg-act[data-tip]:focus-visible::after {
+  content: attr(data-tip); position: absolute; top: calc(100% + 6px); z-index: 5; left: 50%; transform: translateX(-50%);
+  background: var(--ink); color: #fff; font-size: var(--t-xs); font-weight: 700; padding: 4px 8px; border-radius: 8px; white-space: nowrap; pointer-events: none;
+}
+@keyframes fade-in { from { opacity: 0; transform: translateY(-2px); } }
+.msg-edit { align-self: stretch; display: flex; flex-direction: column; gap: 8px; padding: 10px; border-radius: 18px; background: var(--surface); border: 1.5px solid var(--ink); }
+.msg-edit textarea { width: 100%; border: 0; resize: none; background: none; font-size: var(--t-md); line-height: 1.45; padding: 4px 6px; outline: none; }
+.msg-edit-actions { display: flex; justify-content: flex-end; gap: 8px; }
+.msg-edit-actions .btn { min-height: 38px; padding: 0 16px; }
+.edit-banner { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 8px 8px 14px; border-radius: 12px; background: var(--wash); font-size: var(--t-sm); color: var(--ink-2); }
+.edit-banner b { color: var(--ink); }
+.edit-banner .btn { min-height: 34px; padding: 0 12px; font-size: var(--t-sm); }
 .msg-suggestions { display: flex; flex-wrap: wrap; gap: 6px; align-self: flex-start; }
 .msg-suggestions .chip { min-height: 34px; font-size: var(--t-xs); }
 .typing { display: inline-flex; gap: 4px; padding: 4px 0; }

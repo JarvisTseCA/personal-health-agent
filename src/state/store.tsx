@@ -84,6 +84,8 @@ export type Action =
   | { type: "showBackups" }
   | { type: "accept"; suggestion: Suggestion }
   | { type: "decline" }
+  | { type: "editAnswer"; entryId: string }
+  | { type: "editChat"; id: string }
   | { type: "another" }
   | { type: "remindLater" }
   | { type: "setReminder"; when: string }
@@ -109,6 +111,12 @@ export type Action =
   | { type: "reset" };
 
 function reducer(state: AppState, action: Action): AppState {
+  const next = reduce(state, action);
+  // Loading a save (or undoing an edit) restores answers as they were; only new answers get a rewind point.
+  return next === state || action.type === "hydrate" ? next : Today.withRewind(state, next);
+}
+
+function reduce(state: AppState, action: Action): AppState {
   switch (action.type) {
     case "hydrate":
       return action.state;
@@ -162,6 +170,12 @@ function reducer(state: AppState, action: Action): AppState {
     case "showBackups": return Today.showBackups(state);
     case "accept": return Today.accept(state, action.suggestion);
     case "decline": return Today.decline(state);
+    case "editAnswer": return Today.editAnswer(state, action.entryId);
+    case "editChat": {
+      // Editing a Coach message drops it and everything after; the screen resends the new text.
+      const i = state.chat.findIndex((m) => m.id === action.id);
+      return i < 0 ? state : { ...state, chat: state.chat.slice(0, i) };
+    }
     case "another": return Today.anotherOption(state);
     case "remindLater": return Today.remindLater(state);
     case "setReminder": return Today.setReminder(state, action.when);

@@ -20,13 +20,13 @@ import { answer, QUESTIONS, type QuestionId } from "../services/answers";
 import { SCRIPTED_REPLIES } from "../services/mockResponses";
 import type { BackendSuggestion } from "../services/backend";
 import { buildAgentContext, buildSuggestInput } from "../services/context";
-import type { AppState, TodayEntry, TodayState } from "./types";
+import type { AppState, TodayEntry, TodayRewind, TodayState } from "./types";
 
 let seq = 0;
 export const newId = (prefix: string) => `${prefix}-${Date.now().toString(36)}-${(seq++).toString(36)}`;
 
 const agent = (text: string): TodayEntry => ({ id: newId("a"), role: "agent", text });
-const user = (text: string): TodayEntry => ({ id: newId("u"), role: "user", text });
+const user = (text: string): TodayEntry => ({ id: newId("u"), role: "user", text, at: Date.now() });
 
 function push(state: AppState, ...entries: TodayEntry[]): AppState {
   return { ...state, today: { ...state.today, entries: [...state.today.entries, ...entries] } };
@@ -445,4 +445,36 @@ export function freeText(state: AppState, text: string): AppState {
     case "wrap":
       return coachReply(state, text);
   }
+}
+
+/**
+ * Attach a rewind point to any answer this action added, so the pencil can
+ * bring the user back to that question. Runs after every action; it only
+ * acts when the conversation grew by appending.
+ */
+export function withRewind(prev: AppState, next: AppState): AppState {
+  const before = prev.today.entries;
+  const after = next.today.entries;
+  const n = before.length;
+  if (next.today.dayKey !== prev.today.dayKey || after.length <= n || (n > 0 && after[n - 1] !== before[n - 1])) return next;
+  if (!after.slice(n).some((e) => e.role === "user" && !e.rewind)) return next;
+  const { entries: _drop, ...today } = prev.today;
+  const rewind: TodayRewind = {
+    entryCount: n, today, sessions: prev.sessions, declines: prev.declines, profile: prev.profile,
+    notes: prev.notes, painReports: prev.painReports, syncCount: prev.syncCount,
+  };
+  const entries = after.map((e, i) => (i >= n && e.role === "user" && !e.rewind ? { ...e, rewind } : e));
+  return { ...next, today: { ...next.today, entries } };
+}
+
+/** The pencil on an answer: go back to that question, as things were then. */
+export function editAnswer(state: AppState, entryId: string): AppState {
+  const e = state.today.entries.find((x) => x.id === entryId);
+  const r = e?.rewind;
+  if (!r) return state;
+  return {
+    ...state,
+    sessions: r.sessions, declines: r.declines, profile: r.profile, notes: r.notes, painReports: r.painReports, syncCount: r.syncCount,
+    today: { ...r.today, entries: state.today.entries.slice(0, r.entryCount) },
+  };
 }

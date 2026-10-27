@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { weekStart } from "../services/context";
 import { buildAgentContext } from "../services/context";
 import { initialState, personaProfile } from "../state/store";
-import { groupWeeks, type WeekIn } from "./periods";
+import { groupWeeks, weekMonth, type WeekIn } from "./periods";
 import type { Medal } from "./medals";
 
 const mon = (y: number, m: number, d: number) => new Date(y, m, d);
@@ -16,6 +16,12 @@ describe("earlier weeks by month and 4-month period", () => {
     // Mon Sep 28 2026: its Thursday is Oct 1, so it's an October week.
     const p = groupWeeks([wk(mon(2026, 8, 21), 5), wk(mon(2026, 8, 28), 8)], "month", mon(2026, 9, 26));
     expect(p.map((x) => [x.key, x.weeks.length])).toEqual([["2026-9", 1], ["2026-8", 1]]);
+  });
+
+  it("a week's calendar month is the month of its Thursday", () => {
+    expect(weekMonth(mon(2026, 7, 31))).toEqual({ year: 2026, month: 8 }); // Aug 31 → September
+    expect(weekMonth(mon(2026, 8, 28))).toEqual({ year: 2026, month: 9 }); // Sep 28 → October
+    expect(weekMonth(mon(2026, 9, 26))).toEqual({ year: 2026, month: 9 }); // Oct 26 → October
   });
 
   it("adds up MET-hours, goals, gold weeks and medals, newest first", () => {

@@ -83,10 +83,12 @@ Top to bottom:
   adds one by hand.
 - **Last week:** the recap: total, medals, a line of praise and the activity with the most time. Below it,
   the goal offer: raise, lower or keep, or type your own goal.
-- **Earlier weeks:** switch between *Weekly*, *Monthly* and *Quarterly*. Weekly lists every week before
-  last as a row of medals (the latest 6, then *Show all*); gold weeks are highlighted. Monthly and Quarterly
-  roll all past weeks into one card each: MET-hours against the summed weekly goals, how many weeks were
-  gold, active days, a bar per week against its goal, and gold/silver/bronze counts. A "quarter" here is 4
+- **Earlier weeks:** switch between *Weekly*, *Monthly* and *Quarterly*. Every view is a medal calendar: a
+  row per week (Monday to Sunday), a medal for each day with activity, an empty circle for each day without
+  (a dash on a planned day off), and the week's MET-hours. A week that reached its goal is highlighted gold.
+  Weekly shows the weeks before last (the latest 6, then *Show all*). Monthly and Quarterly add one card per
+  period with MET-hours against the summed weekly goals, gold weeks, active days and medal counts, then the
+  calendar: Monthly with day numbers (days outside the month dimmed), Quarterly with a label for each month. A "quarter" here is 4
   months (Jan–Apr, May–Aug, Sep–Dec), as the team asked; a week counts in the month its Thursday falls in.
   The demo personas have about six months of weeks so these views have something to show.
 - **How medals work:** bronze, silver and gold rules, and what ends a streak.
@@ -416,6 +418,7 @@ later decision changes an earlier one, the earlier row says so instead of being 
 | Oct 27, 2026 | Onboarding | Onboarding is shorter: the access page ("Which can you actually do this month?") and the usual-time page ("Most weeks, how much time do you have?") are gone. The plan page starts every day at 10 min. Every page has *Back*. The health page leads with a large text box, with *No health conditions* and *Prefer not to say* below it. | Fewer choices before the first suggestion. Access is better learned as the user goes (a typed "can't access it"), and a flat 10 min a day is an easy starting point to adjust. A free-text box catches things the three buttons couldn't, like an injury or medication. |
 | Oct 27, 2026 | Today, Progress | In the *This week* bar, all past days' MET-hours form one solid green block, with no line between days. | Lines between days read as extra gaps and made the bar hard to follow. The bar now has exactly three parts (done so far / today / coming days) separated by the two gaps. The day-by-day split is on Progress. |
 | Oct 27, 2026 | Progress | *Earlier weeks* can be viewed by week, month or quarter. A quarter is 4 months (Jan–Apr, May–Aug, Sep–Dec). Each month or quarter is one card: total against the summed goals, gold weeks, active days, a bar per week, medal counts. A week belongs to the month its Thursday falls in. The demo history grew from 4 weeks to about 6 months (same days of the week as before, so streaks and goal offers are unchanged). | Weeks alone get long and hide the trend; months and quarters show whether things are building up or slipping. Counting a week in its Thursday's month keeps every week whole. The period length is one setting (`QUARTER_MONTHS` in `src/lib/periods.ts`) if the team settles on calendar quarters (3 months). |
+| Oct 27, 2026 | Progress | All three *Earlier weeks* views are a medal calendar: one row per week, a medal or an empty circle for each day, the week's MET-hours at the end, and a gold row for each week that reached its goal. Monthly shows day numbers and dims days from the next or previous month; Quarterly labels each month. This replaces the bar per week in the month and quarter cards. | A calendar shows the pattern at a glance (which days, which weeks) and the empty circles make missed days visible without scolding. Gold rows tie straight back to the medal rule: reach the weekly goal and the whole week turns gold. |
 
 Still open:
 
@@ -432,7 +435,8 @@ Still open:
 Code: `src/state/today.ts`, `src/lib/suggest.ts` (`challengePlan`), `src/lib/plan.ts`,
 `src/components/WeekBar.tsx`, `src/components/TimeOptions.tsx`, `src/components/UserMessage.tsx`,
 `src/screens/TodayScreen.tsx`, `src/screens/ProgressScreen.tsx`, `src/screens/CoachScreen.tsx`,
-`src/screens/Onboarding.tsx`, `src/lib/periods.ts`, `backend/app/challenge.py`
+`src/screens/Onboarding.tsx`, `src/lib/periods.ts`, `src/components/MedalCalendar.tsx`,
+`backend/app/challenge.py`
 
 ### Not built yet
 
@@ -479,7 +483,7 @@ src/
     store.ts        Persistence; localStorage today, swap for a database later
   state/          App state (React context + reducer), the Today flow (today.ts), shared types
   screens/        One file per screen / bottom sheet
-  components/     Medal coins, week bars, time options, icons, sheet, demo panel
+  components/     Medal coins and calendar, week bars, time options, icons, sheet, demo panel
 docs/architecture.md   How to add the LLM and database
 ```
 

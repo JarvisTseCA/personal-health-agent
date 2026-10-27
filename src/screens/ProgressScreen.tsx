@@ -15,7 +15,8 @@ import { RAISE_STEP } from "../lib/goal";
 import { DAY_NAMES_LONG, fmt, fmtGoal } from "../lib/met";
 import { SLOT_HINT, SLOT_LABEL, SLOT_MINUTES } from "../lib/plan";
 import { useStore } from "../state/store";
-import { groupWeeks, type Period, type PeriodView } from "../lib/periods";
+import { groupWeeks, weekMonth, type Period, type PeriodView, type WeekIn } from "../lib/periods";
+import { CalendarKey, MedalCalendar } from "../components/MedalCalendar";
 import { weekStart } from "../services/context";
 import { LogWorkoutSheet } from "./LogWorkoutSheet";
 
@@ -260,9 +261,11 @@ const VIEWS: Array<[PeriodView, string]> = [["week", "Weekly"], ["month", "Month
 const WEEKS_SHOWN = 6;
 
 /**
- * Earlier weeks, newest first, switchable between weeks, months and
- * 4-month periods. Weekly lists every week before last as a row of medals;
- * the other views roll all past weeks (last week included) into one card each.
+ * Earlier weeks as a medal calendar, switchable between weeks, months and
+ * 4-month periods. Every view shows a row per week with a medal (or an empty
+ * circle) for each day, and a gold row for each week that reached its goal.
+ * Weekly covers the weeks before last; Monthly and Quarterly include last
+ * week too, so each period is complete.
  */
 function EarlierWeeks() {
   const { ctx } = useStore();
@@ -270,12 +273,10 @@ function EarlierWeeks() {
   const [all, setAll] = useState(false);
   if (!ctx.past.length) return null;
 
-  const weeks = ctx.past.slice(0, -1).reverse();
-  const periods = view === "week" ? [] : groupWeeks(
-    ctx.past.map((w) => ({ start: w.start, label: w.label, done: w.totals.done, goal: w.goal, medals: w.medals })),
-    view,
-    weekStart(0),
-  );
+  const toWeek = (w: (typeof ctx.past)[number]): WeekIn => ({ start: w.start, label: w.label, done: w.totals.done, goal: w.goal, medals: w.medals, plan: w.plan });
+  const earlier = ctx.past.slice(0, -1).map(toWeek);
+  const shown = all ? earlier : earlier.slice(-WEEKS_SHOWN);
+  const periods = view === "week" ? [] : groupWeeks(ctx.past.map(toWeek), view, weekStart(0));
 
   return (
     <section className="section">
@@ -285,62 +286,44 @@ function EarlierWeeks() {
           <button key={v} aria-pressed={view === v} onClick={() => setView(v)}>{label}</button>
         ))}
       </div>
+      <CalendarKey />
 
       {view === "week" ? (
-        weeks.length === 0 ? <p className="small muted" style={{ marginTop: 12 }}>Only last week so far; it's shown above.</p> : (
-          <>
-            <ul className="week-list" style={{ marginTop: 12 }}>
-              {(all ? weeks : weeks.slice(0, WEEKS_SHOWN)).map((w) => (
-                <li key={w.label} className={w.gold ? "is-gold" : undefined}>
-                  <div className="week-list-head">
-                    <b>Week of {w.label}</b>
-                    <span className="small"><span className="num">{fmt(w.totals.done)}</span><span className="muted"> of {fmtGoal(w.goal)}</span></span>
-                  </div>
-                  <WeekCoins medals={w.medals} todayIndex={7} size={26} showToday={false} />
-                </li>
-              ))}
-            </ul>
-            {weeks.length > WEEKS_SHOWN && (
-              <button className="btn btn-ghost btn-block" onClick={() => setAll((a) => !a)}>
-                {all ? "Show fewer weeks" : `Show all ${weeks.length} weeks`}
+        earlier.length === 0 ? <p className="small muted" style={{ marginTop: 12 }}>Only last week so far; it's shown above.</p> : (
+          <div className="pg-cal-card">
+            {earlier.length > WEEKS_SHOWN && (
+              <button className="link-btn cal-more" onClick={() => setAll((a) => !a)}>
+                {all ? "Show the latest 6 weeks" : `Show all ${earlier.length} weeks`}
               </button>
             )}
-          </>
+            <MedalCalendar weeks={shown} />
+          </div>
         )
       ) : (
         <ul className="week-list" style={{ marginTop: 12 }}>
-          {periods.map((p) => <PeriodCard key={p.key} p={p} />)}
+          {periods.map((p) => <PeriodCard key={p.key} p={p} view={view} />)}
         </ul>
       )}
     </section>
   );
 }
 
-/** One month or 4-month period: total against the summed goals, gold weeks, a bar per week, medal counts. */
-function PeriodCard({ p }: { p: Period }) {
-  const allGold = p.goldWeeks === p.weeks.length;
-  const top = Math.max(1.5, ...p.weeks.map((w) => (w.goal > 0 ? w.done / w.goal : 0)));
+/** One month or 4-month period: the totals, then its weeks as a medal calendar. */
+function PeriodCard({ p, view }: { p: Period; view: Exclude<PeriodView, "week"> }) {
   const ordered = [...p.weeks].sort((a, b) => a.start.getTime() - b.start.getTime());
   return (
-    <li className={allGold ? "is-gold" : undefined}>
+    <li>
       <div className="week-list-head">
         <b>{p.label}{p.partial && <span className="muted" style={{ fontWeight: 400 }}> · so far</span>}</b>
         <span className="small"><span className="num">{fmt(p.done)}</span><span className="muted"> of {fmtGoal(p.goal)}</span></span>
       </div>
       <p className="xs muted">
         {p.goldWeeks} of {p.weeks.length} {p.weeks.length === 1 ? "week" : "weeks"} gold · {p.activeDays} active {p.activeDays === 1 ? "day" : "days"}
+        {" · "}{p.medals.gold} gold, {p.medals.silver} silver, {p.medals.bronze} bronze
       </p>
-      <div className="period-bars" role="img" aria-label={ordered.map((w) => `Week of ${w.label}: ${fmt(w.done)} of ${fmtGoal(w.goal)}`).join("; ")}>
-        {ordered.map((w) => (
-          <span key={w.label} className={w.done + 1e-9 >= w.goal ? "met" : undefined} style={{ height: `${Math.max(6, (Math.min(w.done / w.goal, top) / top) * 100)}%` }} />
-        ))}
-        <i className="period-goal" style={{ bottom: `${(1 / top) * 100}%` }} aria-hidden />
-      </div>
-      <div className="period-medals">
-        {(["gold", "silver", "bronze"] as const).map((m) => (
-          <span key={m}><MedalCoin medal={m} size={20} /> <b className="num">{p.medals[m]}</b> <span className="xs muted">{m}</span></span>
-        ))}
-      </div>
+      {view === "month"
+        ? <MedalCalendar weeks={ordered} month={weekMonth(ordered[0].start)} />
+        : <MedalCalendar weeks={ordered} monthLabels size={20} />}
     </li>
   );
 }

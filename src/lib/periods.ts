@@ -17,6 +17,14 @@ export interface WeekIn {
   done: number;
   goal: number;
   medals: Medal[];
+  /** Planned days off ("off"), for the calendar */
+  plan?: readonly string[];
+}
+
+/** The month (0–11) a week counts in: the month its Thursday falls in. */
+export function weekMonth(start: Date): { year: number; month: number } {
+  const th = thursday(start);
+  return { year: th.getFullYear(), month: th.getMonth() };
 }
 
 export interface Period {
@@ -35,7 +43,7 @@ export interface Period {
 const EPS = 1e-9;
 const MONTHS_SHORT = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
-function thursday(d: Date): Date {
+export function thursday(d: Date): Date {
   const t = new Date(d);
   t.setDate(t.getDate() + 3);
   return t;

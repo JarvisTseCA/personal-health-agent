@@ -104,15 +104,27 @@ const DAYS: Array<[RegExp, number[]]> = [
   [/\bsun(day)?s?\b/, [6]],
 ];
 
+/** A number of minutes → the nearest option at or below it (45+ for anything 45 and up). */
+export function slotForMinutes(m: number): DaySlot {
+  if (m >= 45) return "45";
+  if (m >= 30) return "30";
+  if (m >= 10) return "10";
+  if (m >= 5) return "5";
+  return "0";
+}
+
 function slotIn(t: string): DaySlot | null {
-  if (hasAny(t, ["off", "busy", "can't", "cannot", "no time", "unavailable", "away", "not free", "nothing"])) return "off";
-  if (hasAny(t, ["long", "45", "an hour", "60", "hour", "lots", "free all", "plenty"])) return "long";
-  if (hasAny(t, ["short", "quick", "little", "10", "15", "20", "few min"])) return "short";
-  if (hasAny(t, ["medium", "30", "half", "some time", "free"])) return "medium";
+  if (hasAny(t, ["off", "sick", "rest", "busy", "can't", "cannot", "unavailable", "away", "not free", "nothing"])) return "off";
+  if (hasAny(t, ["desk", "no time"])) return "0";
+  const m = t.match(/\b(\d+)\s*\+?\s*(m|min|mins|minutes?)?\b/);
+  if (m) return slotForMinutes(parseInt(m[1], 10));
+  if (hasAny(t, ["long", "an hour", "hour", "lots", "free all", "plenty"])) return "45";
+  if (hasAny(t, ["medium", "half", "some time", "free"])) return "30";
+  if (hasAny(t, ["short", "quick", "little", "few min"])) return "10";
   return null;
 }
 
-/** "Thursday off, Saturday long" → { 3: "off", 5: "long" }. Empty when nothing is understood. */
+/** "Thursday off, Saturday 45 min" → { 3: "off", 5: "45" }. Empty when nothing is understood. */
 export function parsePlanChanges(text: string): Record<number, DaySlot> {
   const out: Record<number, DaySlot> = {};
   for (const clause of norm(text).split(/[,;.]|\band\b|\bbut\b/)) {

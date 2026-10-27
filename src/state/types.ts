@@ -91,6 +91,8 @@ export interface TodayRewind {
   /** How many conversation entries came before the answer */
   entryCount: number;
   today: Omit<TodayState, "entries">;
+  /** Missing on rewind points saved before "Off" could change the plan */
+  plan?: WeekPlan;
   sessions: Session[];
   declines: DeclineRecord[];
   profile: UserProfile;

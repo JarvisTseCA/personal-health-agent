@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useMemo, useReducer, useRef, type ReactNode } from "react";
 import { PERSONAS } from "../data/mockFitbit";
 import { fmt, withCredit, type Session } from "../lib/met";
-import type { DaySlot, WeekPlan } from "../lib/plan";
+import { migratePlan, type DaySlot, type WeekPlan } from "../lib/plan";
 import type { Access, DeclineReason, Energy, Place, Suggestion } from "../lib/suggest";
 import type { QuestionId } from "../services/answers";
 import { buildAgentContext, type AgentContext } from "../services/context";
@@ -78,6 +78,7 @@ export type Action =
   | { type: "setToday"; index: number }
   | { type: "loadPersona"; personaId: string }
   | { type: "time"; label: string; minutes: number }
+  | { type: "dayOff" }
   | { type: "place"; label: string; place: Place }
   | { type: "energy"; label: string; energy: Energy }
   | { type: "mood"; label: string; mood: string }
@@ -164,6 +165,7 @@ function reduce(state: AppState, action: Action): AppState {
       return Today.startDay(state.onboarded ? { ...next, profile: personaProfile(next) } : next);
     }
     case "time": return Today.answerTime(state, action.label, action.minutes);
+    case "dayOff": return Today.takeDayOff(state);
     case "place": return Today.answerPlace(state, action.label, action.place);
     case "energy": return Today.answerEnergy(state, action.label, action.energy);
     case "mood": return Today.answerMood(state, action.label, action.mood);
@@ -231,7 +233,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     repository.load().then((saved) => {
       // Older saves (version 1, guideline minutes) don't fit the new model; start fresh.
-      if (saved && (saved as AppState).version === 2) dispatch({ type: "hydrate", state: { ...initialState(), ...saved, overlay: null, toast: null } });
+      if (saved && (saved as AppState).version === 2) {
+        const s = saved as AppState;
+        // Plans saved as Short/Medium/Long become 10/30/45 min.
+        const plans = { plan: migratePlan(s.plan), history: (s.history ?? []).map((w) => ({ ...w, plan: migratePlan(w.plan) })) };
+        dispatch({ type: "hydrate", state: { ...initialState(), ...s, ...plans, overlay: null, toast: null } });
+      }
       hydrated.current = true;
     });
   }, []);

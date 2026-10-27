@@ -43,7 +43,7 @@ const s = (dayIndex: number, variantId: string, durationMin: number, startTime =
 });
 const week = (goal: number, plan: WeekPlan, sessions: Session[]): WeekRecord => ({ goal, plan, sessions });
 
-const USUAL: WeekPlan = ["short", "medium", "medium", "off", "short", "long", "short"];
+const USUAL: WeekPlan = ["10", "30", "30", "off", "10", "45", "10"];
 
 export const PERSONAS: DemoPersona[] = [
   {
@@ -73,7 +73,7 @@ export const PERSONAS: DemoPersona[] = [
     goal: 7.5,
     enjoyed: ["cycling", "hiit", "running"],
     access: { cycling: "have", hiit: "have", running: "have" },
-    plan: ["medium", "medium", "medium", "off", "medium", "long", "off"],
+    plan: ["30", "30", "30", "off", "30", "45", "off"],
     history: [
       week(7.5, USUAL, [s(0, "cycling-commute", 30), s(2, "hiit-moderate", 25), s(4, "running-jog", 30), s(5, "cycling-steady", 30)]),
       week(7.5, USUAL, [s(1, "cycling-commute", 40), s(2, "hiit-moderate", 30), s(4, "running-jog", 30), s(6, "walking-brisk", 30)]),
@@ -90,7 +90,7 @@ export const PERSONAS: DemoPersona[] = [
     goal: 7.5,
     enjoyed: ["walking", "dancing", "yoga"],
     access: { walking: "have", dancing: "sometimes", yoga: "have" },
-    plan: ["short", "off", "medium", "off", "short", "medium", "off"],
+    plan: ["10", "off", "30", "off", "10", "30", "off"],
     history: [
       week(7.5, USUAL, [s(0, "walking-brisk", 30), s(2, "dancing-salsa", 30), s(5, "walking-moderate", 40)]),
       week(7.5, USUAL, [s(1, "walking-moderate", 25), s(5, "dancing-salsa", 20)]),

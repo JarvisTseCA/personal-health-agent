@@ -208,39 +208,7 @@ p { margin: 0; }
 /* ------------------------------------------------------------------
    The goal strip: the one loud element
 ------------------------------------------------------------------- */
-.strip-wrap { position: relative; }
-.strip {
-  position: relative;
-  height: 44px;
-  border-radius: 12px;
-  background: var(--gap);
-  display: flex;
-  overflow: hidden;
-}
-.strip.compact { height: 22px; border-radius: 7px; }
-.seg {
-  height: 100%;
-  border-right: 2px solid var(--paper);
-  transition: flex-basis 500ms cubic-bezier(.2,.8,.2,1);
-  position: relative;
-}
-.seg.vigorous {
-  background-image: repeating-linear-gradient(135deg, rgba(255,255,255,.22) 0 4px, transparent 4px 9px);
-}
-.seg.planned {
-  background-color: transparent !important;
-  background-image: repeating-linear-gradient(135deg, var(--seg-color) 0 2px, transparent 2px 7px);
-  opacity: .55;
-}
-.seg.new { animation: seg-in 700ms cubic-bezier(.2,.8,.2,1); }
-@keyframes seg-in { from { flex-basis: 0 !important; filter: brightness(1.4); } }
-.strip-scale {
-  position: relative; height: 18px; margin-top: 6px;
-  font-size: var(--t-xs); color: var(--ink-3);
-}
-.strip-over {
-  position: absolute; top: -6px; bottom: -6px; width: 2px; background: var(--ink);
-}
+
 
 .hero-number { display: flex; align-items: baseline; gap: 8px; margin-bottom: 14px; }
 .hero-number .big { font-size: 64px; font-weight: 800; line-height: .9; letter-spacing: -0.03em; }
@@ -482,7 +450,6 @@ input[type="range"] { width: 100%; accent-color: var(--ink); height: 32px; }
 .summary-line .k { font-size: var(--t-xs); font-weight: 700; color: var(--ink-2); }
 .summary-line .v { text-align: right; font-weight: 800; font-size: var(--t-md); }
 .summary-line .v small { font-weight: 500; color: var(--ink-3); font-size: var(--t-xs); }
-.summary-line .strip-wrap { min-width: 0; }
 
 /* Week bar on the Today card: past (green) | today (green + amber) | coming days (gray) */
 .week-bar { display: flex; gap: 4px; height: 22px; min-width: 0; }
@@ -554,10 +521,19 @@ input[type="range"] { width: 100%; accent-color: var(--ink); height: 32px; }
 .day-top .day-name { padding-top: 6px; }
 .day-target .num { font-weight: 800; }
 .slot-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+/* Time options: Off / 0, 5, 10, 30 min / 45+ min, one row each */
+.opt-rows { display: flex; flex-direction: column; gap: 8px; }
+.opt-row { display: flex; gap: 8px; }
+.opt-rows.is-chip { align-items: flex-end; }
+.opt-rows.is-chip .opt-row { justify-content: flex-end; }
+.opt-rows.is-chip .chip { min-height: 38px; padding-left: 14px; padding-right: 14px; white-space: nowrap; }
+.opt-rows.is-slot, .opt-rows.is-slot .opt-row { gap: 6px; }
+.opt-rows.is-slot .slot { white-space: nowrap; }
+.slot-pick { display: flex; flex-direction: column; gap: 6px; margin-top: 6px; }
+.pg-bars { display: flex; flex-direction: column; gap: 12px; margin-top: 12px; padding: 14px; background: var(--surface); border: 1px solid var(--line); border-radius: 20px; }
 .slot { min-height: 34px; padding: 0 11px; border-radius: 10px; border: 1.5px solid var(--line-strong); background: var(--surface); font-size: var(--t-xs); font-weight: 700; }
 .slot[aria-checked="true"] { background: var(--ink); color: #fff; border-color: var(--ink); }
 .slot-target { margin-left: auto; }
-.seg.unconfirmed { background-color: transparent; background-image: repeating-linear-gradient(135deg, var(--seg-color) 0 3px, transparent 3px 6px); }
 
 /* ------------------------------------------------------------------
    Medals

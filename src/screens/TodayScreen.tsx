@@ -4,15 +4,17 @@
  * bottom, so there's always exactly one decision in front of the user.
  */
 import { useEffect, useRef, useState } from "react";
-import { TodayBar, WeekBar, WeekLegend } from "../components/WeekBar";
+import { WeekBars, WeekLegend } from "../components/WeekBar";
 import { SettingsIcon } from "../components/Icons";
 import { MedalCoin, WeekCoins } from "../components/Medal";
 import { getFamily, getVariant } from "../lib/activities";
-import { countsTowardGoal, fmt, fmtGoal, intensityOf } from "../lib/met";
+import { countsTowardGoal, fmt, intensityOf } from "../lib/met";
 import { DECLINE_LABEL, type DeclineReason, type Suggestion } from "../lib/suggest";
 import { QUESTIONS, type QuestionId } from "../services/answers";
 import { useStore } from "../state/store";
-import { CONFIRM_CHOICES, ENERGY_OPTIONS, PLACE_OPTIONS, REMIND_OPTIONS, TIME_OPTIONS } from "../state/today";
+import { CONFIRM_CHOICES, ENERGY_OPTIONS, PLACE_OPTIONS, REMIND_OPTIONS } from "../state/today";
+import { TimeOptions } from "../components/TimeOptions";
+import { SLOT_LABEL, SLOT_MINUTES } from "../lib/plan";
 import type { Screen, TodayStep } from "../state/types";
 import { OtherInput } from "../components/OtherInput";
 import { UserMessage } from "../components/UserMessage";
@@ -153,20 +155,10 @@ export function TodayScreen({ go, openPrefs }: { go: (s: Screen) => void; openPr
       <section className="today-summary" aria-label="Progress">
         <WeekLegend />
         <WeekCoins medals={ctx.medals} todayIndex={state.todayIndex} plan={state.plan} />
-        <div className="summary-lines">
-          <div className="summary-line">
-            <span className="k">This week</span>
-            <WeekBar doneByDay={ctx.week.doneByDay} todayIndex={state.todayIndex} todayTarget={ctx.todayTarget} goal={ctx.goal} />
-            <span className="v num">{fmt(ctx.week.done)}<small>/{fmtGoal(ctx.goal)}</small></span>
-          </div>
-          <div className="summary-line">
-            <span className="k">Today</span>
-            <TodayBar done={ctx.todayDone} target={ctx.todayTarget} />
-            {state.plan[state.todayIndex] === "off" && ctx.todayTarget === 0
-              ? <span className="v num">{fmt(ctx.todayDone)}<small> off</small></span>
-              : <span className="v num">{fmt(ctx.todayDone)}<small>/{fmt(ctx.todayTarget)}</small></span>}
-          </div>
-        </div>
+        <WeekBars
+          doneByDay={ctx.week.doneByDay} todayIndex={state.todayIndex} todayTarget={ctx.todayTarget} todayDone={ctx.todayDone}
+          weekDone={ctx.week.done} goal={ctx.goal} todayOff={state.plan[state.todayIndex] === "off" && ctx.todayTarget === 0}
+        />
         <button className="streak" onClick={() => go("progress")}>
           <b className="num">{ctx.streak.current}</b>-day streak{ctx.streak.todayPending ? ", keep it going today" : ""}
         </button>
@@ -208,9 +200,10 @@ export function TodayScreen({ go, openPrefs }: { go: (s: Screen) => void; openPr
         )}
 
         {t.step === "time" && (
-          <Bubbles label="Time today">
-            {TIME_OPTIONS.map(([label, m]) => <button key={label} className="chip" onClick={() => dispatch({ type: "time", label, minutes: m })}>{label}</button>)}
-          </Bubbles>
+          <TimeOptions
+            label="Time today"
+            onPick={(s) => dispatch(s === "off" ? { type: "dayOff" } : { type: "time", label: SLOT_LABEL[s], minutes: SLOT_MINUTES[s] })}
+          />
         )}
         {t.step === "place" && (
           <Bubbles label="Where you'll exercise">

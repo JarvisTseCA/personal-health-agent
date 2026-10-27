@@ -14,7 +14,8 @@ import { MedalCoin } from "../components/Medal";
 import { PERSONAS } from "../data/mockFitbit";
 import { getFamily, getVariant, PICKABLE, searchFamilies } from "../lib/activities";
 import { DAY_NAMES_LONG } from "../lib/met";
-import { SLOT_HINT, SLOT_LABEL, SLOTS, type WeekPlan } from "../lib/plan";
+import { SLOT_LABEL, type WeekPlan } from "../lib/plan";
+import { TimeOptions } from "../components/TimeOptions";
 import type { Access } from "../lib/suggest";
 import { DEFAULT_PROFILE, useStore } from "../state/store";
 import type { UsualTime } from "../state/types";
@@ -23,10 +24,10 @@ type Step = "welcome" | "fitbit" | "health" | "path" | "observing" | "confirm" |
 const ORDER: Step[] = ["fitbit", "health", "path", "observing", "confirm", "enjoy", "access", "time", "plan"];
 
 const TIME: Array<[UsualTime, string, WeekPlan]> = [
-  ["under1", "Under 1 hr", ["short", "off", "short", "off", "short", "off", "short"]],
-  ["1to2", "1 to 2 hrs", ["short", "off", "medium", "off", "medium", "long", "off"]],
-  ["2to3", "2 to 3 hrs", ["medium", "medium", "off", "medium", "medium", "long", "off"]],
-  ["3plus", "3+ hrs", ["medium", "long", "medium", "off", "medium", "long", "medium"]],
+  ["under1", "Under 1 hr", ["10", "off", "10", "off", "10", "off", "10"]],
+  ["1to2", "1 to 2 hrs", ["10", "off", "30", "off", "30", "45", "off"]],
+  ["2to3", "2 to 3 hrs", ["30", "30", "off", "30", "30", "45", "off"]],
+  ["3plus", "3+ hrs", ["30", "45", "30", "off", "30", "45", "30"]],
 ];
 
 const ACCESS: Array<[Access, string]> = [["have", "Have what I need"], ["sometimes", "Sometimes"], ["no", "Not right now"]];
@@ -113,7 +114,7 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
   const typedPlan = (text: string) => {
     const changes = parsePlanChanges(text);
     const days = Object.keys(changes).map(Number);
-    if (!days.length) { note(text, "plan"); setHint('Noted. To change a day, try something like "Thursday off, Saturday long".'); return; }
+    if (!days.length) { note(text, "plan"); setHint('Noted. To change a day, try something like "Thursday off, Saturday 45 min".'); return; }
     setPlan((p) => p.map((x, i) => changes[i] ?? x));
     setHint(`Updated ${days.map((d) => `${DAY_NAMES_LONG[d]} to ${SLOT_LABEL[changes[d]]}`).join(", ")}.`);
   };
@@ -363,17 +364,13 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
               {plan.map((slot, i) => (
                 <li key={i}>
                   <span className="small"><b>{DAY_NAMES_LONG[i].slice(0, 3)}</b></span>
-                  <div className="slot-row" role="radiogroup" aria-label={`${DAY_NAMES_LONG[i]} time`}>
-                    {SLOTS.map((s) => (
-                      <button key={s} role="radio" aria-checked={slot === s} className="slot" title={SLOT_HINT[s]}
-                        onClick={() => setPlan((p) => p.map((x, j) => (j === i ? s : x)))}>{SLOT_LABEL[s]}</button>
-                    ))}
-                  </div>
+                  <TimeOptions variant="slot" label={`${DAY_NAMES_LONG[i]} time`} value={slot}
+                    onPick={(s) => setPlan((p) => p.map((x, j) => (j === i ? s : x)))} />
                 </li>
               ))}
             </ul>
-            <p className="xs muted" style={{ marginTop: 8 }}>Short is 10–20 min, Medium about 30, Long 45 or more.</p>
-            <OtherInput placeholder="Other: e.g. Thu off, Sat long" onSubmit={typedPlan} hint={hint} />
+            <p className="xs muted" style={{ marginTop: 8 }}>0 min means desk moves only. The days with more time get more of the goal.</p>
+            <OtherInput placeholder="Other: e.g. Thu off, Sat 45 min" onSubmit={typedPlan} hint={hint} />
           </div>
           <div className="actions">
             <button className="btn btn-primary btn-block" onClick={finish} disabled={plan.every((s) => s === "off")}>Start today</button>

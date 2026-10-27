@@ -71,11 +71,12 @@ Code: `src/screens/TodayScreen.tsx`, `src/state/today.ts`, `src/screens/Preferen
 One tab for how activity adds up. It replaces the old Week tab, Medals tab and weekly recap sheet.
 Top to bottom:
 
-- **This week:** MET-hours done against the goal, the goal strip, percent done and what's left, and the
+- **This week:** MET-hours done against the goal, the same legend and *This week* / *Today* bars as the
+  Today card, percent done and what's left, and the
   streak (current and best). The line under the heading says where the goal came from (guideline, raised,
   stepping stone or clinician).
-- **Day by day:** each day's medal, target and workouts (from Fitbit or logged). *Change my week* marks days
-  *Off*, *Short*, *Medium* or *Long* at any point and re-splits what's left. *Log a workout Fitbit missed*
+- **Day by day:** each day's medal, target and workouts (from Fitbit or logged). *Update my goals* sets each
+  day to *Off* or 0, 5, 10, 30 or 45+ min (the same list as Today) at any point and re-splits what's left. *Log a workout Fitbit missed*
   adds one by hand.
 - **Last week:** the recap: total, medals, a line of praise and the activity with the most time. Below it,
   the goal offer: raise, lower or keep, or type your own goal.
@@ -212,9 +213,10 @@ Code: `src/screens/Onboarding.tsx`
 **Instruction:** Split the weekly goal across the days the user can exercise. Let them mark days they can't
 exercise at all, and let them change the plan mid-week, with the remaining goal split over the remaining days.
 
-- Each day is *Off*, *Short* (10–20 min), *Medium* (about 30) or *Long* (45+).
-- The weekly goal never drops because of off days; their share moves to the other days, weighted by time.
-- *Change my week* works at any point. Every change, and every Fitbit sync, re-splits what's left.
+- Each day is *Off* or 0, 5, 10, 30 or 45+ min, the same list as Today's time question. *0 min* means desk
+  moves only, so it has no target but isn't a day off.
+- The weekly goal never drops because of off days; their share moves to the other days, weighted by minutes.
+- *Update my goals* works at any point; so does tapping *Off* at Today's time question. Every change, and every Fitbit sync, re-splits what's left.
 - Today's target is fixed at the start of the day, so silver is judged against a number that doesn't move
   during a workout.
 
@@ -224,7 +226,7 @@ Code: `src/lib/plan.ts`, `src/screens/ProgressScreen.tsx`
 
 **Instruction:** Ask for the user's preferences and availability each day.
 
-- Three quick questions, each answered with one tap: time today (0, 5, 10, 30 or 45+ min), where they'll
+- Three quick questions, each answered with one tap: time today (*Off*, or 0, 5, 10, 30 or 45+ min), where they'll
   exercise (home, office, outside), and how they feel (*Up for a challenge* or *Normal*).
 - There's no "what are you in the mood for?" question: the coach picks, to avoid decision fatigue.
 - Feeling tired isn't a button, to nudge toward moving, but typing it works and the pick gets easier.
@@ -380,7 +382,7 @@ decisions at the bottom with the date.
 | Date | Decision | Why |
 |---|---|---|
 | Oct 26, 2026 | The summary card has a legend: *Done* (green), *Left for today* (amber), *Upcoming days* (gray). | The bar's colors weren't explained anywhere. |
-| Oct 26, 2026 | The *This week* bar reads left to right: past days done, a gap, today (done + left), a gap, then what the coming days still need. The *Today* bar uses the same green and amber. | Today stands on its own, so it's clear how much is left now versus later in the week. Activity colors stay on the Progress tab. |
+| Oct 26, 2026 | The *This week* bar reads left to right: past days done, a gap, today (done + left), a gap, then what the coming days still need. The *Today* bar uses the same green and amber. | Today stands on its own, so it's clear how much is left now versus later in the week. Activity colors stay on the Progress tab (until Oct 27, below). |
 | Oct 26, 2026 | Time options are 0, 5, 10, 30 and 45+ min. | 5 minutes still counts and is an easy yes on a busy day; 20 was dropped to keep five buttons. |
 | Oct 26, 2026 | The place question reads "Where will you be exercising?" with Home, Office and Outside. *Traveling* was removed. | Outside covers it. Typing "hotel" or "airport" still works. |
 | Oct 26, 2026 | "How do you feel?" offers only *Up for a challenge* and *Normal*. Feeling tired can be typed but isn't a button. | We don't want to make skipping the easy tap. Typing "tired" still gives a lighter pick. |
@@ -391,6 +393,9 @@ decisions at the bottom with the date.
 | Oct 26, 2026 | *Give me another option* swaps in the next pick without asking why, and cycles back to the first. | Asking for a reason every time is friction. A reason can still be typed, and is remembered. |
 | Oct 27, 2026 | A challenge earns its extra MET-hours with **intensity, not time**. The session keeps its usual length (the shortest that covers today's need at the activity's easiest pace) and uses the gentlest harder pace that reaches 1.5×. It gets shorter if that pace gets there sooner. It gets longer only if the activity has no pace hard enough. The app's ranker and the agent (Jev, `backend/app/challenge.py`) follow the same rule. | The aim is MET-hours, and a harder pace is the challenge the user asked for. Example (target 1.3): dancing goes from 20 min salsa (4.8 MET) to 20 min ballroom (6.0 MET), 154% of the target. Paces are steps, so some land above 1.5×: cycling has nothing between easy (4.3) and commute (6.8), so it lands at 174%. Yoga, Zumba and hiking have no pace hard enough, so they run longer. |
 | Oct 27, 2026 | Tapping an answer you sent shows when you sent it and a pencil, modeled on Claude's chat. On Today, the pencil goes back to that question as things were then: later messages are dropped, along with anything they changed (a decline, a health flag, a synced workout). The options come back with the old answer in the Other box, and *Cancel* restores everything. On Coach, the message is edited in place (*Cancel* / *Save*) and the reply is regenerated. | People mis-tap, change their mind, or answer before they've thought about it. Going back should be one tap, not a restart of the day. Today goes back to the question, not an edit box, because most answers there are taps. Answers saved before this change can't be edited. |
+| Oct 27, 2026 | Progress uses the same legend and *This week* / *Today* bars as the Today card, replacing the activity-colored goal strip. | One way to read progress across the app. Each workout's activity and color are still listed under *Day by day*. |
+| Oct 27, 2026 | The day options are the same everywhere: *Off*, 0, 5, 10, 30 and 45+ min, shown as three rows (*Off* / 0, 5, 10, 30 min / 45+ min) on Today, Progress and onboarding. On Progress the button reads *Update my goals*. Saved plans convert Short → 10, Medium → 30, Long → 45 min. | One vocabulary for time, so planning a day and checking in on it use the same words. Targets are now split by the actual minutes. *Off* (can't exercise) and *0 min* (desk moves) are different: only *Off* is a day off. |
+| Oct 27, 2026 | *Off* at Today's time question makes today a day off: its target moves to the rest of the week and the coach wraps up. Typing "sick" or "day off" does the same. Editing that answer puts the day back. | A sick day shouldn't need a trip to Progress. Whether an off day keeps the streak is still open (see Project Questions, "Off days"). |
 
 Still open:
 
@@ -398,6 +403,8 @@ Still open:
   which takes the safety path. Should *Something hurts* come back as a small one-tap option?
 - Should the question chips (*What's a MET?*, *Why this activity?*) stay under the pick, or would the card
   read better with only the three buttons?
+- Changing a day's plan re-splits every day's target, including past days, so marking today *Off* can turn
+  yesterday's silver into bronze. Should past days keep the target they had?
 
 Code: `src/state/today.ts`, `src/lib/suggest.ts` (`challengePlan`), `src/components/WeekBar.tsx`,
 `backend/app/challenge.py`
@@ -446,7 +453,7 @@ src/
     store.ts        Persistence; localStorage today, swap for a database later
   state/          App state (React context + reducer), the Today flow (today.ts), shared types
   screens/        One file per screen / bottom sheet
-  components/     Medal coins, goal strip, icons, sheet, demo panel
+  components/     Medal coins, week bars, time options, icons, sheet, demo panel
 docs/architecture.md   How to add the LLM and database
 ```
 

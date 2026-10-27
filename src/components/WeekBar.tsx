@@ -66,3 +66,34 @@ export function WeekLegend() {
     </ul>
   );
 }
+
+interface BarsProps {
+  doneByDay: number[];
+  todayIndex: number;
+  todayTarget: number;
+  todayDone: number;
+  weekDone: number;
+  goal: number;
+  /** Today is marked off with nothing left to do */
+  todayOff: boolean;
+}
+
+/** The two bars as they appear on Today and Progress: this week, then today. */
+export function WeekBars({ doneByDay, todayIndex, todayTarget, todayDone, weekDone, goal, todayOff }: BarsProps) {
+  return (
+    <div className="summary-lines">
+      <div className="summary-line">
+        <span className="k">This week</span>
+        <WeekBar doneByDay={doneByDay} todayIndex={todayIndex} todayTarget={todayTarget} goal={goal} />
+        <span className="v num">{fmt(weekDone)}<small>/{fmtGoal(goal)}</small></span>
+      </div>
+      <div className="summary-line">
+        <span className="k">Today</span>
+        <TodayBar done={todayDone} target={todayTarget} />
+        {todayOff
+          ? <span className="v num">{fmt(todayDone)}<small> off</small></span>
+          : <span className="v num">{fmt(todayDone)}<small>/{fmt(todayTarget)}</small></span>}
+      </div>
+    </div>
+  );
+}

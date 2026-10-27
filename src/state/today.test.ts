@@ -246,3 +246,28 @@ describe("editing an earlier answer", () => {
     expect(back.declines.length).toBe(s.declines.length - 1);
   });
 });
+
+describe("Off at the time question", () => {
+  it("makes today a day off and moves its target to the other days", () => {
+    const s0 = onboarded();
+    const before = buildAgentContext(s0);
+    expect(before.todayTarget).toBeGreaterThan(0);
+    const s = T.withRewind(s0, T.takeDayOff(s0));
+    expect(s.plan[s.todayIndex]).toBe("off");
+    expect(s.today.step).toBe("wrap");
+    const after = buildAgentContext(s);
+    expect(after.todayTarget).toBe(0);
+    const later = (c: typeof after) => c.targets.slice(s.todayIndex + 1).reduce((a, b) => a + b, 0);
+    expect(later(after)).toBeGreaterThan(later(before));
+    // Editing the answer puts the day back.
+    const off = s.today.entries.find((e) => e.role === "user" && e.text === "Off")!;
+    expect(T.editAnswer(s, off.id).plan[s.todayIndex]).toBe(s0.plan[s0.todayIndex]);
+  });
+
+  it("understands a typed day off", () => {
+    for (const text of ["I'm sick today", "taking the day off", "rest day"]) {
+      const s = T.freeText(onboarded(), text);
+      expect(s.plan[s.todayIndex]).toBe("off");
+    }
+  });
+});

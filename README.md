@@ -75,18 +75,23 @@ One tab for how activity adds up. It replaces the old Week tab, Medals tab and w
 Top to bottom:
 
 - **This week:** MET-hours done against the goal, the same legend and *This week* / *Today* bars as the
-  Today card, percent done and what's left, and the
-  streak (current and best). The line under the heading says where the goal came from (guideline, raised,
+  Today card (past days as one green block, then today, then the coming days), percent done and what's
+  left, and the streak (current and best). The line under the heading says where the goal came from (guideline, raised,
   stepping stone or clinician).
 - **Day by day:** each day's medal, target and workouts (from Fitbit or logged). *Update my goals* sets each
-  day to *Off* or 0, 5, 10, 30 or 45+ min (the same list as Today) at any point and re-splits what's left. *Log a workout Fitbit missed*
-  adds one by hand.
+  day to *Off* or 0, 5, 10, 30 or 45+ min (the same list as Today) at any point and re-splits what's left.
+  *Log a workout Fitbit missed* adds one by hand.
 - **Last week:** the recap: total, medals, a line of praise and the activity with the most time. Below it,
   the goal offer: raise, lower or keep, or type your own goal.
-- **Earlier weeks:** every week before that as a row of medals; gold weeks are highlighted.
+- **Month by month:** pick a month with the *Year* and *Month* dropdowns (only months with data are listed;
+  it opens on the latest). The month shows MET-hours against its weeks' goals added up, gold weeks, active
+  days and medal counts, then a medal calendar: a row per week, a medal for each day with activity, an empty
+  circle for each day without (a dash on a planned day off), day numbers, and the week's MET-hours. Days from
+  the neighboring month are dimmed: a week counts in the month its Thursday falls in. A week that reached its
+  goal is highlighted gold. The demo personas have about six months of weeks.
 - **How medals work:** bronze, silver and gold rules, and what ends a streak.
 
-Code: `src/screens/ProgressScreen.tsx`
+Code: `src/screens/ProgressScreen.tsx`, `src/components/MedalCalendar.tsx`, `src/lib/periods.ts`
 
 ### Coach
 
@@ -324,7 +329,8 @@ the weekly goal turns every medal that week gold. A screen shows the streak as m
 - Light activity, such as a short walk or desk moves, counts toward bronze.
 - The streak counts days in a row with at least a bronze. Any day with no activity ends it, even a planned
   day off.
-- The Progress tab shows the streak and every week as a row of coins.
+- The Progress tab shows the streak, and *Month by month* shows past weeks as a medal calendar with a gold
+  row for every week that reached its goal.
 
 Code: `src/lib/medals.ts`, `src/screens/ProgressScreen.tsx`
 
@@ -394,7 +400,7 @@ later decision changes an earlier one, the earlier row says so instead of being 
 | Date | Page | Decision | Why |
 |---|---|---|---|
 | Oct 26, 2026 | Today | The summary card has a legend: *Done* (green), *Left for today* (amber), *Upcoming days* (gray). | The bar's colors weren't explained anywhere. |
-| Oct 26, 2026 | Today | The *This week* bar reads left to right: past days done, a gap, today (done + left), a gap, then what the coming days still need. The *Today* bar uses the same green and amber. | Today stands on its own, so it's clear how much is left now versus later in the week. Activity colors stay on the Progress tab (until Oct 27, below). |
+| Oct 26, 2026 | Today | The *This week* bar reads left to right: past days done, a gap, today (done + left), a gap, then what the coming days still need. The *Today* bar uses the same green and amber. | Today stands on its own, so it's clear how much is left now versus later in the week. Activity colors stay on the Progress tab (until Oct 27, below). Past days are one block (Oct 27, below). |
 | Oct 26, 2026 | Today | Time options are 0, 5, 10, 30 and 45+ min (*Off* added on Oct 27, below). | 5 minutes still counts and is an easy yes on a busy day; 20 was dropped to keep five buttons. |
 | Oct 26, 2026 | Today | The place question reads "Where will you be exercising?" with Home, Office and Outside. *Traveling* was removed. | Outside covers it. Typing "hotel" or "airport" still works. |
 | Oct 26, 2026 | Today | "How do you feel?" offers only *Up for a challenge* and *Normal*. Feeling tired can be typed but isn't a button. | We don't want to make skipping the easy tap. Typing "tired" still gives a lighter pick. |
@@ -409,6 +415,10 @@ later decision changes an earlier one, the earlier row says so instead of being 
 | Oct 27, 2026 | Today, Progress, onboarding | The day options are the same everywhere: *Off*, 0, 5, 10, 30 and 45+ min, shown as three rows (*Off* / 0, 5, 10, 30 min / 45+ min) on Today, Progress and onboarding. On Progress the button reads *Update my goals*. Saved plans convert Short → 10, Medium → 30, Long → 45 min. | One vocabulary for time, so planning a day and checking in on it use the same words. Targets are now split by the actual minutes. *Off* (can't exercise) and *0 min* (desk moves) are different: only *Off* is a day off. |
 | Oct 27, 2026 | Today | *Off* at Today's time question makes today a day off: its target moves to the rest of the week and the coach wraps up. Typing "sick" or "day off" does the same. Editing that answer puts the day back. | A sick day shouldn't need a trip to Progress. Whether an off day keeps the streak is still open (see Project Questions, "Off days"). |
 | Oct 27, 2026 | Onboarding | Onboarding is shorter: the access page ("Which can you actually do this month?") and the usual-time page ("Most weeks, how much time do you have?") are gone. The plan page starts every day at 10 min. Every page has *Back*. The health page leads with a large text box, with *No health conditions* and *Prefer not to say* below it. | Fewer choices before the first suggestion. Access is better learned as the user goes (a typed "can't access it"), and a flat 10 min a day is an easy starting point to adjust. A free-text box catches things the three buttons couldn't, like an injury or medication. |
+| Oct 27, 2026 | Today, Progress | In the *This week* bar, all past days' MET-hours form one solid green block, with no line between days. | Lines between days read as extra gaps and made the bar hard to follow. The bar now has exactly three parts (done so far / today / coming days) separated by the two gaps. The day-by-day split is on Progress. |
+| Oct 27, 2026 | Progress | *(Replaced below by a single month view.)* *Earlier weeks* can be viewed by week, month or quarter. A quarter is 4 months (Jan–Apr, May–Aug, Sep–Dec). Each month or quarter is one card: total against the summed goals, gold weeks, active days, a bar per week, medal counts. A week belongs to the month its Thursday falls in. The demo history grew from 4 weeks to about 6 months (same days of the week as before, so streaks and goal offers are unchanged). | Weeks alone get long and hide the trend; months and quarters show whether things are building up or slipping. Counting a week in its Thursday's month keeps every week whole. |
+| Oct 27, 2026 | Progress | *(Kept for the month view below.)* All three *Earlier weeks* views are a medal calendar: one row per week, a medal or an empty circle for each day, the week's MET-hours at the end, and a gold row for each week that reached its goal. Monthly shows day numbers and dims days from the next or previous month; Quarterly labels each month. This replaces the bar per week in the month and quarter cards. | A calendar shows the pattern at a glance (which days, which weeks) and the empty circles make missed days visible without scolding. Gold rows tie straight back to the medal rule: reach the weekly goal and the whole week turns gold. |
+| Oct 27, 2026 | Progress | Past weeks are shown one month at a time, picked with *Year* and *Month* dropdowns, instead of a Weekly / Monthly / Quarterly switch. It opens on the latest month; only months with data are listed. The section is called *Month by month*. | One view is simpler than three, and a month is the right size for a calendar: big enough to see a pattern, small enough to read. The dropdowns jump straight to any month instead of scrolling through all of them. |
 
 Still open:
 
@@ -425,7 +435,8 @@ Still open:
 Code: `src/state/today.ts`, `src/lib/suggest.ts` (`challengePlan`), `src/lib/plan.ts`,
 `src/components/WeekBar.tsx`, `src/components/TimeOptions.tsx`, `src/components/UserMessage.tsx`,
 `src/screens/TodayScreen.tsx`, `src/screens/ProgressScreen.tsx`, `src/screens/CoachScreen.tsx`,
-`src/screens/Onboarding.tsx`, `backend/app/challenge.py`
+`src/screens/Onboarding.tsx`, `src/lib/periods.ts`, `src/components/MedalCalendar.tsx`,
+`backend/app/challenge.py`
 
 ### Not built yet
 
@@ -460,8 +471,9 @@ The same list is at the end of the *PHA App Workflow* doc.
 ```
 src/
   lib/            Pure logic, unit-tested: activities + MET values, MET-hours, daily targets,
-                  medals, goal rules, suggestion ranker, verifier checks
-  data/           Demo scenarios: 4 past weeks + this week each (shaped like PMData exercise logs)
+                  medals, goal rules, suggestion ranker, verifier checks, weeks by month
+  data/           Demo scenarios: about 6 months of past weeks + this week each (shaped like PMData
+                  exercise logs)
   services/
     agent.ts        Agent interface; MockAgent (today) and HttpAgent (example for later)
     answers.ts      Grounded answers to the one-tap questions
@@ -471,7 +483,7 @@ src/
     store.ts        Persistence; localStorage today, swap for a database later
   state/          App state (React context + reducer), the Today flow (today.ts), shared types
   screens/        One file per screen / bottom sheet
-  components/     Medal coins, week bars, time options, icons, sheet, demo panel
+  components/     Medal coins and calendar, week bars, time options, icons, sheet, demo panel
 docs/architecture.md   How to add the LLM and database
 ```
 

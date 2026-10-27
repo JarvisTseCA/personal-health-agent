@@ -8,12 +8,16 @@ import { getFamily } from "../lib/activities";
 import { goalOffer, type GoalOffer } from "../lib/goal";
 import { streakOf, weekMedals, type Medal, type Streak } from "../lib/medals";
 import { DAY_NAMES, DAY_NAMES_LONG, totalsFor, type WeekTotals } from "../lib/met";
-import { dailyTargets, unplannedLeft } from "../lib/plan";
+import { dailyTargets, unplannedLeft, type WeekPlan } from "../lib/plan";
 import type { SuggestInput } from "../lib/suggest";
 import type { AppState } from "../state/types";
 
 export interface PastWeek {
   label: string;
+  /** That week's Monday */
+  start: Date;
+  /** That week's plan, for showing planned days off */
+  plan: WeekPlan;
   goal: number;
   totals: WeekTotals;
   medals: Medal[];
@@ -42,12 +46,16 @@ export interface AgentContext {
   state: AppState;
 }
 
+/** Monday of the current week, shifted back by `weeksAgo`. */
+export function weekStart(weeksAgo: number, now = new Date()): Date {
+  const monday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  monday.setDate(monday.getDate() - ((monday.getDay() + 6) % 7) - 7 * weeksAgo);
+  return monday;
+}
+
 /** Monday of the current week, shifted by `weeksAgo`, as "Oct 12". */
 export function weekLabel(weeksAgo: number): string {
-  const now = new Date();
-  const monday = new Date(now);
-  monday.setDate(now.getDate() - ((now.getDay() + 6) % 7) - 7 * weeksAgo);
-  return monday.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+  return weekStart(weeksAgo).toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
 
 export function buildAgentContext(state: AppState): AgentContext {
@@ -62,6 +70,8 @@ export function buildAgentContext(state: AppState): AgentContext {
     const tg = dailyTargets(w.goal, w.plan, totals.doneByDay, 6);
     return {
       label: weekLabel(state.history.length - i),
+      start: weekStart(state.history.length - i),
+      plan: w.plan,
       goal: w.goal,
       totals,
       medals: weekMedals(totals.activeByDay, totals.doneByDay, tg, totals.done, w.goal),

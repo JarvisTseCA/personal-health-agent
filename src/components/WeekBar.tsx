@@ -15,8 +15,7 @@ interface Props {
  * separate past, today and the coming days so today stands on its own.
  */
 export function WeekBar({ doneByDay, todayIndex, todayTarget, goal }: Props) {
-  const pastDays = doneByDay.slice(0, todayIndex).filter((d) => d > 0);
-  const past = pastDays.reduce((a, b) => a + b, 0);
+  const past = doneByDay.slice(0, todayIndex).reduce((a, b) => a + b, 0);
   const todayDone = doneByDay[todayIndex] ?? 0;
   const todayLeft = Math.max(0, todayTarget - todayDone);
   const upcoming = Math.max(0, goal - past - todayDone - todayLeft);
@@ -28,8 +27,9 @@ export function WeekBar({ doneByDay, todayIndex, todayTarget, goal }: Props) {
   return (
     <div className="week-bar" role="img" aria-label={label}>
       {past > 0 && (
+        // Every past day's MET-hours as one block: the week so far, not day by day.
         <div className="wb-group" style={{ flexGrow: past }}>
-          {pastDays.map((d, i) => <span key={i} className="wb-done" style={{ flexGrow: d }} />)}
+          <span className="wb-done" style={{ flexGrow: 1 }} />
         </div>
       )}
       {todayDone + todayLeft > 0 && (

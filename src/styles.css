@@ -622,6 +622,30 @@ input[type="range"] { width: 100%; accent-color: var(--ink); height: 32px; }
 .seg-toggle { display: grid; grid-template-columns: 1fr 1fr; border: 1.5px solid var(--line-strong); border-radius: 10px; overflow: hidden; }
 .seg-toggle button { border: 0; background: var(--surface); min-height: 38px; font-size: var(--t-xs); font-weight: 700; }
 .seg-toggle button + button { border-left: 1.5px solid var(--line-strong); }
+/* Medal calendar: a row per week, a coin per day, gold rows for weeks that met the goal */
+.pg-cal-card { margin-top: 12px; background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 12px 8px 10px; display: flex; flex-direction: column; gap: 6px; }
+.pg-cal-card > .week-list-head, .pg-cal-card > p { padding: 0 6px; }
+.pg-month-pick { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 3fr); gap: 10px; }
+.pg-month-pick label { display: flex; flex-direction: column; gap: 6px; }
+.pg-month-pick .cl-select { background-color: var(--surface); }
+.cal { display: flex; flex-direction: column; gap: 2px; }
+.cal-head, .cal-row { display: grid; grid-template-columns: 52px repeat(7, minmax(0, 1fr)) 40px; align-items: center; column-gap: 2px; }
+.cal.with-dates .cal-head, .cal.with-dates .cal-row { grid-template-columns: repeat(7, minmax(0, 1fr)) 40px; }
+.cal-head { font-family: var(--font-display); font-size: 11px; font-weight: 700; color: var(--ink-3); text-align: center; padding: 0 6px 2px; }
+.cal-rows { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 3px; }
+.cal-item { display: flex; flex-direction: column; gap: 3px; }
+.cal-row { padding: 4px 6px; border-radius: 12px; }
+.cal-row.is-gold { background: var(--gold-wash); box-shadow: inset 0 0 0 1px #EBD48E; }
+.cal-week { font-size: var(--t-xs); font-weight: 700; color: var(--ink-2); white-space: nowrap; text-align: left; }
+.cal-day { display: flex; flex-direction: column; align-items: center; gap: 1px; }
+.cal-day i { font-style: normal; font-size: 10px; line-height: 1; color: var(--ink-3); font-variant-numeric: tabular-nums; }
+.cal-day.outside { opacity: .35; }
+.cal-total { text-align: right; font-size: var(--t-xs); font-weight: 700; color: var(--ink-2); }
+.cal-row.is-gold .cal-total { color: #7A5A00; }
+.cal-key { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; margin-top: 10px; }
+.cal-key .coin { display: inline-block; }
+.cal-key-gold { display: inline-block; width: 14px; height: 10px; border-radius: 4px; background: var(--gold-wash); box-shadow: inset 0 0 0 1px #EBD48E; }
+.cal-key-sep { color: var(--ink-3); }
 .seg-toggle button[aria-pressed="true"] { background: var(--ink); color: #fff; }
 .checks { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; max-height: 300px; overflow: auto; }
 .checks li { display: flex; flex-direction: column; font-size: var(--t-xs); padding: 6px 10px; border-radius: 8px; background: var(--surface); border-left: 3px solid var(--good); }

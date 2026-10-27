@@ -3,7 +3,7 @@
  * Top to bottom: this week (total, streak, day-by-day plan and workouts),
  * last week's recap with the goal offer, earlier weeks, and the medal rules.
  */
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { TimeOptions } from "../components/TimeOptions";
 import { WeekBars, WeekLegend } from "../components/WeekBar";
 import { PlusIcon } from "../components/Icons";
@@ -15,6 +15,9 @@ import { RAISE_STEP } from "../lib/goal";
 import { DAY_NAMES_LONG, fmt, fmtGoal } from "../lib/met";
 import { SLOT_HINT, SLOT_LABEL, SLOT_MINUTES } from "../lib/plan";
 import { useStore } from "../state/store";
+import { groupWeeks, type WeekIn } from "../lib/periods";
+import { CalendarKey, MedalCalendar } from "../components/MedalCalendar";
+import { weekStart } from "../services/context";
 import { LogWorkoutSheet } from "./LogWorkoutSheet";
 
 export function ProgressScreen() {
@@ -28,7 +31,7 @@ export function ProgressScreen() {
       </div>
       <ThisWeek />
       <LastWeek />
-      <EarlierWeeks />
+      <MonthByMonth />
       <MedalRules />
     </>
   );
@@ -254,25 +257,57 @@ function LastWeek() {
   );
 }
 
-/** Every week before last, newest first, as rows of medals. */
-function EarlierWeeks() {
+const MONTH_NAMES = Array.from({ length: 12 }, (_, m) => new Date(2000, m, 1).toLocaleDateString(undefined, { month: "long" }));
+
+/**
+ * Past weeks one month at a time, picked with a Year and a Month dropdown
+ * (only months with data are listed). It opens on the latest month. The
+ * month shows its totals, then a medal calendar: a row per week, a medal or
+ * an empty circle per day, and a gold row for each week that met its goal.
+ */
+function MonthByMonth() {
   const { ctx } = useStore();
-  const weeks = ctx.past.slice(0, -1).reverse();
-  if (!weeks.length) return null;
+  const [pick, setPick] = useState<string | null>(null);
+  const months = useMemo(
+    () => groupWeeks(ctx.past.map((w): WeekIn => ({ start: w.start, label: w.label, done: w.totals.done, goal: w.goal, medals: w.medals, plan: w.plan })), weekStart(0)),
+    [ctx.past],
+  );
+  if (!months.length) return null;
+
+  const p = months.find((m) => m.key === pick) ?? months[0];
+  const years = [...new Set(months.map((m) => m.year))];
+  const inYear = months.filter((m) => m.year === p.year).sort((a, b) => a.month - b.month);
+  const ordered = [...p.weeks].sort((a, b) => a.start.getTime() - b.start.getTime());
+
   return (
     <section className="section">
-      <h2>Earlier weeks</h2>
-      <ul className="week-list">
-        {weeks.map((w) => (
-          <li key={w.label} className={w.gold ? "is-gold" : undefined}>
-            <div className="week-list-head">
-              <b>Week of {w.label}</b>
-              <span className="small"><span className="num">{fmt(w.totals.done)}</span><span className="muted"> of {fmtGoal(w.goal)}</span></span>
-            </div>
-            <WeekCoins medals={w.medals} todayIndex={7} size={26} showToday={false} />
-          </li>
-        ))}
-      </ul>
+      <h2>Month by month</h2>
+      <div className="pg-month-pick">
+        <label>
+          <span className="cl-label">Year</span>
+          <select className="cl-select" value={p.year} onChange={(e) => setPick(months.find((m) => m.year === Number(e.target.value))!.key)}>
+            {years.map((y) => <option key={y} value={y}>{y}</option>)}
+          </select>
+        </label>
+        <label>
+          <span className="cl-label">Month</span>
+          <select className="cl-select" value={p.key} onChange={(e) => setPick(e.target.value)}>
+            {inYear.map((m) => <option key={m.key} value={m.key}>{MONTH_NAMES[m.month]}{m.partial ? " (so far)" : ""}</option>)}
+          </select>
+        </label>
+      </div>
+      <CalendarKey />
+      <div className="pg-cal-card">
+        <div className="week-list-head">
+          <b>{p.label}{p.partial && <span className="muted" style={{ fontWeight: 400 }}> · so far</span>}</b>
+          <span className="small"><span className="num">{fmt(p.done)}</span><span className="muted"> of {fmtGoal(p.goal)}</span></span>
+        </div>
+        <p className="xs muted">
+          {p.goldWeeks} of {p.weeks.length} {p.weeks.length === 1 ? "week" : "weeks"} gold · {p.activeDays} active {p.activeDays === 1 ? "day" : "days"}
+          {" · "}{p.medals.gold} gold, {p.medals.silver} silver, {p.medals.bronze} bronze
+        </p>
+        <MedalCalendar weeks={ordered} month={{ year: p.year, month: p.month }} />
+      </div>
     </section>
   );
 }

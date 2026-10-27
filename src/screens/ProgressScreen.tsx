@@ -15,6 +15,8 @@ import { RAISE_STEP } from "../lib/goal";
 import { DAY_NAMES_LONG, fmt, fmtGoal } from "../lib/met";
 import { SLOT_HINT, SLOT_LABEL, SLOT_MINUTES } from "../lib/plan";
 import { useStore } from "../state/store";
+import { groupWeeks, type Period, type PeriodView } from "../lib/periods";
+import { weekStart } from "../services/context";
 import { LogWorkoutSheet } from "./LogWorkoutSheet";
 
 export function ProgressScreen() {
@@ -254,26 +256,92 @@ function LastWeek() {
   );
 }
 
-/** Every week before last, newest first, as rows of medals. */
+const VIEWS: Array<[PeriodView, string]> = [["week", "Weekly"], ["month", "Monthly"], ["quarter", "Quarterly"]];
+const WEEKS_SHOWN = 6;
+
+/**
+ * Earlier weeks, newest first, switchable between weeks, months and
+ * 4-month periods. Weekly lists every week before last as a row of medals;
+ * the other views roll all past weeks (last week included) into one card each.
+ */
 function EarlierWeeks() {
   const { ctx } = useStore();
+  const [view, setView] = useState<PeriodView>("week");
+  const [all, setAll] = useState(false);
+  if (!ctx.past.length) return null;
+
   const weeks = ctx.past.slice(0, -1).reverse();
-  if (!weeks.length) return null;
+  const periods = view === "week" ? [] : groupWeeks(
+    ctx.past.map((w) => ({ start: w.start, label: w.label, done: w.totals.done, goal: w.goal, medals: w.medals })),
+    view,
+    weekStart(0),
+  );
+
   return (
     <section className="section">
       <h2>Earlier weeks</h2>
-      <ul className="week-list">
-        {weeks.map((w) => (
-          <li key={w.label} className={w.gold ? "is-gold" : undefined}>
-            <div className="week-list-head">
-              <b>Week of {w.label}</b>
-              <span className="small"><span className="num">{fmt(w.totals.done)}</span><span className="muted"> of {fmtGoal(w.goal)}</span></span>
-            </div>
-            <WeekCoins medals={w.medals} todayIndex={7} size={26} showToday={false} />
-          </li>
+      <div className="seg-toggle three" role="group" aria-label="Group by">
+        {VIEWS.map(([v, label]) => (
+          <button key={v} aria-pressed={view === v} onClick={() => setView(v)}>{label}</button>
         ))}
-      </ul>
+      </div>
+
+      {view === "week" ? (
+        weeks.length === 0 ? <p className="small muted" style={{ marginTop: 12 }}>Only last week so far; it's shown above.</p> : (
+          <>
+            <ul className="week-list" style={{ marginTop: 12 }}>
+              {(all ? weeks : weeks.slice(0, WEEKS_SHOWN)).map((w) => (
+                <li key={w.label} className={w.gold ? "is-gold" : undefined}>
+                  <div className="week-list-head">
+                    <b>Week of {w.label}</b>
+                    <span className="small"><span className="num">{fmt(w.totals.done)}</span><span className="muted"> of {fmtGoal(w.goal)}</span></span>
+                  </div>
+                  <WeekCoins medals={w.medals} todayIndex={7} size={26} showToday={false} />
+                </li>
+              ))}
+            </ul>
+            {weeks.length > WEEKS_SHOWN && (
+              <button className="btn btn-ghost btn-block" onClick={() => setAll((a) => !a)}>
+                {all ? "Show fewer weeks" : `Show all ${weeks.length} weeks`}
+              </button>
+            )}
+          </>
+        )
+      ) : (
+        <ul className="week-list" style={{ marginTop: 12 }}>
+          {periods.map((p) => <PeriodCard key={p.key} p={p} />)}
+        </ul>
+      )}
     </section>
+  );
+}
+
+/** One month or 4-month period: total against the summed goals, gold weeks, a bar per week, medal counts. */
+function PeriodCard({ p }: { p: Period }) {
+  const allGold = p.goldWeeks === p.weeks.length;
+  const top = Math.max(1.5, ...p.weeks.map((w) => (w.goal > 0 ? w.done / w.goal : 0)));
+  const ordered = [...p.weeks].sort((a, b) => a.start.getTime() - b.start.getTime());
+  return (
+    <li className={allGold ? "is-gold" : undefined}>
+      <div className="week-list-head">
+        <b>{p.label}{p.partial && <span className="muted" style={{ fontWeight: 400 }}> · so far</span>}</b>
+        <span className="small"><span className="num">{fmt(p.done)}</span><span className="muted"> of {fmtGoal(p.goal)}</span></span>
+      </div>
+      <p className="xs muted">
+        {p.goldWeeks} of {p.weeks.length} {p.weeks.length === 1 ? "week" : "weeks"} gold · {p.activeDays} active {p.activeDays === 1 ? "day" : "days"}
+      </p>
+      <div className="period-bars" role="img" aria-label={ordered.map((w) => `Week of ${w.label}: ${fmt(w.done)} of ${fmtGoal(w.goal)}`).join("; ")}>
+        {ordered.map((w) => (
+          <span key={w.label} className={w.done + 1e-9 >= w.goal ? "met" : undefined} style={{ height: `${Math.max(6, (Math.min(w.done / w.goal, top) / top) * 100)}%` }} />
+        ))}
+        <i className="period-goal" style={{ bottom: `${(1 / top) * 100}%` }} aria-hidden />
+      </div>
+      <div className="period-medals">
+        {(["gold", "silver", "bronze"] as const).map((m) => (
+          <span key={m}><MedalCoin medal={m} size={20} /> <b className="num">{p.medals[m]}</b> <span className="xs muted">{m}</span></span>
+        ))}
+      </div>
+    </li>
   );
 }
 

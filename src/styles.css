@@ -622,6 +622,13 @@ input[type="range"] { width: 100%; accent-color: var(--ink); height: 32px; }
 .seg-toggle { display: grid; grid-template-columns: 1fr 1fr; border: 1.5px solid var(--line-strong); border-radius: 10px; overflow: hidden; }
 .seg-toggle button { border: 0; background: var(--surface); min-height: 38px; font-size: var(--t-xs); font-weight: 700; }
 .seg-toggle button + button { border-left: 1.5px solid var(--line-strong); }
+.seg-toggle.three { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.period-bars { position: relative; height: 44px; display: flex; align-items: flex-end; gap: 3px; padding-bottom: 1px; border-bottom: 1px solid var(--line); }
+.period-bars > span { flex: 1 1 0; max-width: 18px; min-width: 4px; border-radius: 3px 3px 0 0; background: var(--line-strong); }
+.period-bars > span.met { background: var(--good); }
+.period-goal { position: absolute; left: 0; right: 0; border-top: 1.5px dashed var(--ink-3); pointer-events: none; }
+.period-medals { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: var(--t-sm); }
+.period-medals > span { display: inline-flex; align-items: center; gap: 4px; }
 .seg-toggle button[aria-pressed="true"] { background: var(--ink); color: #fff; }
 .checks { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; max-height: 300px; overflow: auto; }
 .checks li { display: flex; flex-direction: column; font-size: var(--t-xs); padding: 6px 10px; border-radius: 8px; background: var(--surface); border-left: 3px solid var(--good); }

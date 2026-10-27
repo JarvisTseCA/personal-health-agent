@@ -14,6 +14,8 @@ import type { AppState } from "../state/types";
 
 export interface PastWeek {
   label: string;
+  /** That week's Monday */
+  start: Date;
   goal: number;
   totals: WeekTotals;
   medals: Medal[];
@@ -42,12 +44,16 @@ export interface AgentContext {
   state: AppState;
 }
 
+/** Monday of the current week, shifted back by `weeksAgo`. */
+export function weekStart(weeksAgo: number, now = new Date()): Date {
+  const monday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  monday.setDate(monday.getDate() - ((monday.getDay() + 6) % 7) - 7 * weeksAgo);
+  return monday;
+}
+
 /** Monday of the current week, shifted by `weeksAgo`, as "Oct 12". */
 export function weekLabel(weeksAgo: number): string {
-  const now = new Date();
-  const monday = new Date(now);
-  monday.setDate(now.getDate() - ((now.getDay() + 6) % 7) - 7 * weeksAgo);
-  return monday.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+  return weekStart(weeksAgo).toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
 
 export function buildAgentContext(state: AppState): AgentContext {
@@ -62,6 +68,7 @@ export function buildAgentContext(state: AppState): AgentContext {
     const tg = dailyTargets(w.goal, w.plan, totals.doneByDay, 6);
     return {
       label: weekLabel(state.history.length - i),
+      start: weekStart(state.history.length - i),
       goal: w.goal,
       totals,
       medals: weekMedals(totals.activeByDay, totals.doneByDay, tg, totals.done, w.goal),

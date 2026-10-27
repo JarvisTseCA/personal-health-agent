@@ -76,7 +76,7 @@ export function UserMessage({ text, at, selected, onSelect, onEdit, onSave, disa
   return (
     <div className="umsg">
       <button type="button" className="msg user" aria-expanded={selected} onClick={onSelect}>{text}</button>
-      {selected && (
+      {selected && (at || canEdit) && (
         <div className="msg-actions">
           {at && <span className="msg-time">{timeAgo(at)}</span>}
           {canEdit && (

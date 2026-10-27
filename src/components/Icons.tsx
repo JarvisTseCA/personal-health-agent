@@ -70,3 +70,11 @@ export const StethoscopeIcon = (p: P) => (
     <path d="M6 3v6a4 4 0 0 0 8 0V3" /><path d="M10 13v2a5 5 0 0 0 10 0v-2" /><circle cx="20" cy="11" r="2" />
   </svg>
 );
+export const PencilIcon = (p: P) => (
+  <svg viewBox="0 0 24 24" {...base} {...p} aria-hidden>
+    <path d="M14.5 5.5l4 4" /><path d="M4 20l1-4.5L16 4.5a1.4 1.4 0 0 1 2 0l1.5 1.5a1.4 1.4 0 0 1 0 2L8.5 19z" />
+  </svg>
+);
+export const BackIcon = (p: P) => (
+  <svg viewBox="0 0 24 24" {...base} {...p} aria-hidden><path d="M15 5l-7 7 7 7" /></svg>
+);

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { SendIcon } from "../components/Icons";
+import { UserMessage } from "../components/UserMessage";
 import { fmt, fmtGoal } from "../lib/met";
 import { agent } from "../services/agent";
 import { STARTER_SUGGESTIONS } from "../services/mockResponses";
@@ -10,6 +11,7 @@ export function CoachScreen() {
   const { state, dispatch, ctx } = useStore();
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
+  const [selected, setSelected] = useState<string | null>(null);
   const scroller = useRef<HTMLDivElement>(null);
 
   const greeting: ChatMessage = {
@@ -25,17 +27,19 @@ export function CoachScreen() {
     scroller.current?.scrollTo({ top: scroller.current.scrollHeight, behavior: "smooth" });
   }, [state.chat]);
 
-  const send = async (text: string) => {
+  /** `before` is the conversation the message follows (shorter when resending an edit). */
+  const send = async (text: string, before: ChatMessage[] = state.chat) => {
     const t = text.trim();
     if (!t || busy) return;
     setInput("");
+    setSelected(null);
     setBusy(true);
-    const userMsg: ChatMessage = { id: newId("u"), role: "user", text: t };
+    const userMsg: ChatMessage = { id: newId("u"), role: "user", text: t, at: Date.now() };
     dispatch({ type: "addMessage", message: userMsg });
     const agentId = newId("a");
     dispatch({ type: "addMessage", message: { id: agentId, role: "agent", text: "" } });
 
-    const { stream, suggestions } = agent.reply([...state.chat, userMsg], ctx);
+    const { stream, suggestions } = agent.reply([...before, userMsg], ctx);
     let acc = "";
     try {
       for await (const chunk of stream) {
@@ -48,6 +52,14 @@ export function CoachScreen() {
     } finally {
       setBusy(false);
     }
+  };
+
+  /** Save on an edited message: drop it and everything after, then send the new text. */
+  const resend = (id: string, text: string) => {
+    const i = state.chat.findIndex((m) => m.id === id);
+    if (i < 0 || busy) return;
+    dispatch({ type: "editChat", id });
+    send(text, state.chat.slice(0, i));
   };
 
   return (
@@ -63,9 +75,20 @@ export function CoachScreen() {
         <div className="chat" aria-live="polite">
           {messages.map((m) => (
             <div key={m.id} style={{ display: "contents" }}>
-              <div className={`msg ${m.role}`}>
-                {m.text || <span className="typing" aria-label="Coach is typing"><i /><i /><i /></span>}
-              </div>
+              {m.role === "user" ? (
+                <UserMessage
+                  text={m.text}
+                  at={m.at}
+                  selected={selected === m.id}
+                  onSelect={() => setSelected(selected === m.id ? null : m.id)}
+                  onSave={(text) => resend(m.id, text)}
+                  disabled={busy}
+                />
+              ) : (
+                <div className={`msg ${m.role}`}>
+                  {m.text || <span className="typing" aria-label="Coach is typing"><i /><i /><i /></span>}
+                </div>
+              )}
               {m === lastAgent && !busy && m.suggestions && (
                 <div className="msg-suggestions">
                   {m.suggestions.map((s) => (

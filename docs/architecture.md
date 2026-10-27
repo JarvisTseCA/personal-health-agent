@@ -117,7 +117,7 @@ A starting draft:
 | `profiles` | user_id, usual_time, has_health_condition, fitbit_connected, clinician_view_enabled, updated_at |
 | `enjoyed_activities` | user_id, family_id, rank, access (`have` / `sometimes` / `no`) |
 | `goals` | user_id, week_start, met_hours, set_by (`default` / `recap` / `clinician`) |
-| `week_plans` | user_id, week_start, mon … sun (`off` / `short` / `medium` / `long`) |
+| `week_plans` | user_id, week_start, mon … sun (`off` / `0` / `5` / `10` / `30` / `45` minutes) |
 | `sessions` | id, user_id, date, variant_id, compendium_code, met, duration_min, avg_hr, source, confirmed, band |
 | `declines` | id, user_id, date, family_id, reason, note |
 | `clinician_settings` | user_id, goal, no_vigorous, max_session_min, note, updated_at |

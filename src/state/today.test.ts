@@ -199,3 +199,83 @@ describe("backend (Jev) suggestions", () => {
     expect(T.applyBackendSuggestion(accepted, s.today.current!.lead, r)).toBe(accepted);
   });
 });
+
+describe("editing an earlier answer", () => {
+  // The store runs withRewind after every action; do the same here.
+  const step = (s: AppState, f: (x: AppState) => AppState) => T.withRewind(s, f(s));
+
+  it("every answer gets a time and a way back to its question", () => {
+    let s = onboarded();
+    s = step(s, (x) => T.answerTime(x, "30 min", 30));
+    s = step(s, (x) => T.answerPlace(x, "Home", "home"));
+    const answers = s.today.entries.filter((e) => e.role === "user");
+    expect(answers.map((e) => e.text)).toEqual(["30 min", "Home"]);
+    for (const a of answers) {
+      expect(a.at).toBeTypeOf("number");
+      expect(a.rewind).toBeDefined();
+    }
+  });
+
+  it("the pencil goes back to that question and drops what came after", () => {
+    let s = onboarded();
+    s = step(s, (x) => T.answerTime(x, "30 min", 30));
+    s = step(s, (x) => T.answerPlace(x, "Home", "home"));
+    s = step(s, (x) => T.answerEnergy(x, "Normal", "normal"));
+    expect(s.today.step).toBe("suggested");
+    const time = s.today.entries.find((e) => e.text === "30 min")!;
+    const back = T.editAnswer(s, time.id);
+    expect(back.today.step).toBe("time");
+    expect(back.today.entries).toHaveLength(1); // just the coach's opening question
+    expect(back.today.checkIn.minutes).toBeUndefined();
+    // A new answer carries on from there.
+    const redone = step(back, (x) => T.answerTime(x, "10 min", 10));
+    expect(redone.today.checkIn.minutes).toBe(10);
+    expect(redone.today.entries.at(-1)?.text).toBe("Where will you be exercising?");
+  });
+
+  it("going back also undoes what that answer changed", () => {
+    let s = checkIn(onboarded());
+    s = step(s, (x) => T.decline(x));
+    s = step(s, (x) => T.chooseReason(x, "hurts"));
+    expect(s.profile.hasHealthCondition).toBe(true);
+    const hurts = s.today.entries.find((e) => e.role === "user" && e.text === "Something hurts")!;
+    const back = T.editAnswer(s, hurts.id);
+    expect(back.today.step).toBe("reason");
+    expect(back.profile.hasHealthCondition).toBe(false);
+    expect(back.painReports).toBe(0);
+    expect(back.declines.length).toBe(s.declines.length - 1);
+  });
+});
+
+describe("Off at the time question", () => {
+  it("makes today a day off and moves its target to the other days", () => {
+    const s0 = onboarded();
+    const before = buildAgentContext(s0);
+    expect(before.todayTarget).toBeGreaterThan(0);
+    const s = T.withRewind(s0, T.takeDayOff(s0));
+    expect(s.plan[s.todayIndex]).toBe("off");
+    expect(s.today.step).toBe("wrap");
+    const after = buildAgentContext(s);
+    expect(after.todayTarget).toBe(0);
+    const later = (c: typeof after) => c.targets.slice(s.todayIndex + 1).reduce((a, b) => a + b, 0);
+    expect(later(after)).toBeGreaterThan(later(before));
+    // Editing the answer puts the day back.
+    const off = s.today.entries.find((e) => e.role === "user" && e.text === "Off")!;
+    expect(T.editAnswer(s, off.id).plan[s.todayIndex]).toBe(s0.plan[s0.todayIndex]);
+  });
+
+  it("understands a typed day off", () => {
+    for (const text of ["I'm sick today", "taking the day off", "rest day"]) {
+      const s = T.freeText(onboarded(), text);
+      expect(s.plan[s.todayIndex]).toBe("off");
+    }
+  });
+});
+
+it("a typed 'can't, my bike is broken' on a pick rules that activity out", () => {
+  let s = T.answerTime(onboarded(), "30 min", 30);
+  s = T.answerEnergy(T.answerPlace(s, "Home", "home"), "Normal", "normal");
+  const fam = s.today.current!.lead.familyId;
+  s = T.freeText(s, "can't, my bike is broken");
+  expect(s.profile.access[fam]).toBe("no");
+});

@@ -3,18 +3,22 @@
  * Past turns read as a conversation; the live question or card sits at the
  * bottom, so there's always exactly one decision in front of the user.
  */
-import { useEffect, useRef } from "react";
-import { TodayBar, WeekBar, WeekLegend } from "../components/WeekBar";
+import { useEffect, useRef, useState } from "react";
+import { WeekBars, WeekLegend } from "../components/WeekBar";
 import { SettingsIcon } from "../components/Icons";
 import { MedalCoin, WeekCoins } from "../components/Medal";
 import { getFamily, getVariant } from "../lib/activities";
-import { countsTowardGoal, fmt, fmtGoal, intensityOf } from "../lib/met";
+import { countsTowardGoal, fmt, intensityOf } from "../lib/met";
 import { DECLINE_LABEL, type DeclineReason, type Suggestion } from "../lib/suggest";
 import { QUESTIONS, type QuestionId } from "../services/answers";
 import { useStore } from "../state/store";
-import { CONFIRM_CHOICES, ENERGY_OPTIONS, PLACE_OPTIONS, REMIND_OPTIONS, TIME_OPTIONS } from "../state/today";
+import { CONFIRM_CHOICES, ENERGY_OPTIONS, PLACE_OPTIONS, REMIND_OPTIONS } from "../state/today";
+import { TimeOptions } from "../components/TimeOptions";
+import { SLOT_LABEL, SLOT_MINUTES } from "../lib/plan";
 import type { Screen, TodayStep } from "../state/types";
 import { OtherInput } from "../components/OtherInput";
+import { UserMessage } from "../components/UserMessage";
+import type { AppState } from "../state/types";
 
 /** What the Other box says at each step. Every step that asks something gets one. */
 const OTHER_PLACEHOLDER: Partial<Record<TodayStep, string>> = {
@@ -110,10 +114,29 @@ export function TodayScreen({ go, openPrefs }: { go: (s: Screen) => void; openPr
   const { state, ctx, dispatch } = useStore();
   const t = state.today;
   const end = useRef<HTMLDivElement>(null);
+  /** The answer whose actions row is open */
+  const [selected, setSelected] = useState<string | null>(null);
+  /** While editing an earlier answer: how to undo, and the old answer to start from */
+  const [editing, setEditing] = useState<{ backup: AppState; count: number; text: string } | null>(null);
 
   useEffect(() => {
     end.current?.scrollIntoView({ behavior: "smooth", block: "end" });
   }, [t.entries.length, t.step, t.current?.showBackups]);
+
+  // A new answer ends the edit: the conversation carries on from there.
+  useEffect(() => {
+    if (editing && t.entries.length !== editing.count) setEditing(null);
+  }, [t.entries.length, editing]);
+
+  const editFrom = (entryId: string, count: number, text: string) => {
+    setSelected(null);
+    setEditing({ backup: state, count, text });
+    dispatch({ type: "editAnswer", entryId });
+  };
+  const cancelEdit = () => {
+    if (editing) dispatch({ type: "hydrate", state: editing.backup });
+    setEditing(null);
+  };
 
   const pending = t.pendingSessionId ? state.sessions.find((s) => s.id === t.pendingSessionId) : undefined;
   const pendingFamily = pending ? getVariant(pending.variantId).family.id : undefined;
@@ -132,20 +155,10 @@ export function TodayScreen({ go, openPrefs }: { go: (s: Screen) => void; openPr
       <section className="today-summary" aria-label="Progress">
         <WeekLegend />
         <WeekCoins medals={ctx.medals} todayIndex={state.todayIndex} plan={state.plan} />
-        <div className="summary-lines">
-          <div className="summary-line">
-            <span className="k">This week</span>
-            <WeekBar doneByDay={ctx.week.doneByDay} todayIndex={state.todayIndex} todayTarget={ctx.todayTarget} goal={ctx.goal} />
-            <span className="v num">{fmt(ctx.week.done)}<small>/{fmtGoal(ctx.goal)}</small></span>
-          </div>
-          <div className="summary-line">
-            <span className="k">Today</span>
-            <TodayBar done={ctx.todayDone} target={ctx.todayTarget} />
-            {state.plan[state.todayIndex] === "off" && ctx.todayTarget === 0
-              ? <span className="v num">{fmt(ctx.todayDone)}<small> off</small></span>
-              : <span className="v num">{fmt(ctx.todayDone)}<small>/{fmt(ctx.todayTarget)}</small></span>}
-          </div>
-        </div>
+        <WeekBars
+          doneByDay={ctx.week.doneByDay} todayIndex={state.todayIndex} todayTarget={ctx.todayTarget} todayDone={ctx.todayDone}
+          weekDone={ctx.week.done} goal={ctx.goal} todayOff={state.plan[state.todayIndex] === "off" && ctx.todayTarget === 0}
+        />
         <button className="streak" onClick={() => go("progress")}>
           <b className="num">{ctx.streak.current}</b>-day streak{ctx.streak.todayPending ? ", keep it going today" : ""}
         </button>
@@ -165,15 +178,32 @@ export function TodayScreen({ go, openPrefs }: { go: (s: Screen) => void; openPr
               <MedalCoin medal={e.medal!} size={56} />
               <p>{e.text}</p>
             </div>
+          ) : e.role === "user" ? (
+            <UserMessage
+              key={e.id}
+              text={e.text}
+              at={e.at}
+              selected={selected === e.id}
+              onSelect={() => setSelected(selected === e.id ? null : e.id)}
+              onEdit={e.rewind ? () => editFrom(e.id, e.rewind!.entryCount, e.text) : undefined}
+            />
           ) : (
             <div key={e.id} className={`msg ${e.role}`}>{e.text}</div>
           ),
         )}
 
+        {editing && (
+          <div className="edit-banner" role="status">
+            <span><b>Editing your answer.</b> Pick again or change it below.</span>
+            <button className="btn btn-quiet" onClick={cancelEdit}>Cancel</button>
+          </div>
+        )}
+
         {t.step === "time" && (
-          <Bubbles label="Time today">
-            {TIME_OPTIONS.map(([label, m]) => <button key={label} className="chip" onClick={() => dispatch({ type: "time", label, minutes: m })}>{label}</button>)}
-          </Bubbles>
+          <TimeOptions
+            label="Time today"
+            onPick={(s) => dispatch(s === "off" ? { type: "dayOff" } : { type: "time", label: SLOT_LABEL[s], minutes: SLOT_MINUTES[s] })}
+          />
         )}
         {t.step === "place" && (
           <Bubbles label="Where you'll exercise">
@@ -272,7 +302,13 @@ export function TodayScreen({ go, openPrefs }: { go: (s: Screen) => void; openPr
           </div>
         )}
         {OTHER_PLACEHOLDER[t.step] && (t.step !== "confirm" || pending) && (
-          <OtherInput key={t.step} placeholder={OTHER_PLACEHOLDER[t.step]} label="Type your own answer" onSubmit={(text) => dispatch({ type: "freeText", text })} />
+          <OtherInput
+            key={`${t.step}-${editing ? editing.count : ""}`}
+            placeholder={OTHER_PLACEHOLDER[t.step]}
+            label="Type your own answer"
+            initial={editing?.text}
+            onSubmit={(text) => dispatch({ type: "freeText", text })}
+          />
         )}
         <div ref={end} />
       </div>

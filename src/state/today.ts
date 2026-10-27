@@ -20,13 +20,13 @@ import { answer, QUESTIONS, type QuestionId } from "../services/answers";
 import { SCRIPTED_REPLIES } from "../services/mockResponses";
 import type { BackendSuggestion } from "../services/backend";
 import { buildAgentContext, buildSuggestInput } from "../services/context";
-import type { AppState, TodayEntry, TodayState } from "./types";
+import type { AppState, TodayEntry, TodayRewind, TodayState } from "./types";
 
 let seq = 0;
 export const newId = (prefix: string) => `${prefix}-${Date.now().toString(36)}-${(seq++).toString(36)}`;
 
 const agent = (text: string): TodayEntry => ({ id: newId("a"), role: "agent", text });
-const user = (text: string): TodayEntry => ({ id: newId("u"), role: "user", text });
+const user = (text: string): TodayEntry => ({ id: newId("u"), role: "user", text, at: Date.now() });
 
 function push(state: AppState, ...entries: TodayEntry[]): AppState {
   return { ...state, today: { ...state.today, entries: [...state.today.entries, ...entries] } };
@@ -55,7 +55,6 @@ export function startDay(state: AppState): AppState {
   };
 }
 
-export const TIME_OPTIONS: Array<[string, number]> = [["0 min", 0], ["5 min", 5], ["10 min", 10], ["30 min", 30], ["45+ min", 45]];
 // Traveling isn't a button: Outside covers it. Typing "hotel" or "airport" in Other still works.
 export const PLACE_OPTIONS: Array<[string, Place]> = [["Home", "home"], ["Office", "office"], ["Outside", "outside"]];
 // Two buttons only. Feeling tired can still be typed in Other (parsed as "low"); we don't offer it as a tap.
@@ -71,6 +70,17 @@ export function answerTime(state: AppState, label: string, minutes: number): App
     return offer(push(s, agent("No free time today? Here's something you can do at your desk. It still earns today's bronze.")));
   }
   return setToday(push(s, agent("Where will you be exercising?")), { step: "place" });
+}
+
+/** "Off" at the time question: today becomes a day off and its target moves to the other days. */
+export function takeDayOff(state: AppState, typed?: string): AppState {
+  let s = push(state, user(typed ?? "Off"));
+  s = { ...s, plan: s.plan.map((x, i) => (i === s.todayIndex ? "off" : x)) };
+  const ctx = buildAgentContext(s);
+  const text = ctx.unplanned > 0.05
+    ? "Got it, today's a day off. Rest up. There's no day left this week to move today's target to; you can add one on Progress."
+    : "Got it, today's a day off. Rest up. I've moved today's target to the rest of the week.";
+  return setToday(push(s, agent(text)), { step: "wrap", checkIn: { ...s.today.checkIn, minutes: 0 } });
 }
 
 export function answerPlace(state: AppState, label: string, place: Place): AppState {
@@ -379,6 +389,7 @@ export function freeText(state: AppState, text: string): AppState {
   const t = state.today;
   switch (t.step) {
     case "time": {
+      if (/\b(off|day off|sick|rest day|resting|not today)\b/i.test(text)) return takeDayOff(state, text);
       const m = parseMinutes(text);
       if (m === null) return push(state, user(text), agent("I didn't catch a time. Roughly how many minutes, like 15 or 40?"));
       return answerTime(state, text, Math.min(m, 120));
@@ -445,4 +456,36 @@ export function freeText(state: AppState, text: string): AppState {
     case "wrap":
       return coachReply(state, text);
   }
+}
+
+/**
+ * Attach a rewind point to any answer this action added, so the pencil can
+ * bring the user back to that question. Runs after every action; it only
+ * acts when the conversation grew by appending.
+ */
+export function withRewind(prev: AppState, next: AppState): AppState {
+  const before = prev.today.entries;
+  const after = next.today.entries;
+  const n = before.length;
+  if (next.today.dayKey !== prev.today.dayKey || after.length <= n || (n > 0 && after[n - 1] !== before[n - 1])) return next;
+  if (!after.slice(n).some((e) => e.role === "user" && !e.rewind)) return next;
+  const { entries: _drop, ...today } = prev.today;
+  const rewind: TodayRewind = {
+    entryCount: n, today, plan: prev.plan, sessions: prev.sessions, declines: prev.declines, profile: prev.profile,
+    notes: prev.notes, painReports: prev.painReports, syncCount: prev.syncCount,
+  };
+  const entries = after.map((e, i) => (i >= n && e.role === "user" && !e.rewind ? { ...e, rewind } : e));
+  return { ...next, today: { ...next.today, entries } };
+}
+
+/** The pencil on an answer: go back to that question, as things were then. */
+export function editAnswer(state: AppState, entryId: string): AppState {
+  const e = state.today.entries.find((x) => x.id === entryId);
+  const r = e?.rewind;
+  if (!r) return state;
+  return {
+    ...state,
+    plan: r.plan ?? state.plan, sessions: r.sessions, declines: r.declines, profile: r.profile, notes: r.notes, painReports: r.painReports, syncCount: r.syncCount,
+    today: { ...r.today, entries: state.today.entries.slice(0, r.entryCount) },
+  };
 }

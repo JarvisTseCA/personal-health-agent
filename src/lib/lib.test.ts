@@ -4,7 +4,8 @@ import { getFamily, getVariant, settingOf } from "./activities";
 import { goalOffer } from "./goal";
 import { streakOf, weekMedals } from "./medals";
 import { creditFor, intensityOf, metHours, minutesFor, totalsFor, withCredit } from "./met";
-import { dailyTargets, unplannedLeft, type WeekPlan } from "./plan";
+import { dailyTargets, migratePlan, SLOT_ROWS, unplannedLeft, type WeekPlan } from "./plan";
+import { slotForMinutes } from "./freeText";
 import { afterDecline, challengePlan, suggest, type SuggestInput } from "./suggest";
 import { verifySuggestion } from "./verify";
 
@@ -36,10 +37,10 @@ describe("MET-hours", () => {
 });
 
 describe("daily targets", () => {
-  const plan: WeekPlan = ["medium", "off", "medium", "off", "off", "long", "off"];
+  const plan: WeekPlan = ["30", "off", "30", "off", "off", "45", "off"];
 
   it("splits the goal by time on each available day; off days get nothing", () => {
-    const p: WeekPlan = ["medium", "off", "medium", "off", "off", "long", "off"];
+    const p: WeekPlan = ["30", "off", "30", "off", "off", "45", "off"];
     const t = dailyTargets(7.5, p, Array(7).fill(0), 0);
     close(t[0], (7.5 * 30) / 105);
     expect(t[1]).toBe(0);
@@ -49,7 +50,7 @@ describe("daily targets", () => {
 
   it("re-divides what's left after a mid-week change (doc example: 4.5 left → 1.5 Fri, 3.0 Sat)", () => {
     // 3.0 done by Wednesday night, Thursday marked off, Friday 30 min, Saturday 60 min.
-    const SIXTY = ["off", "off", "off", "off", "medium", "long", "off"] as WeekPlan;
+    const SIXTY = ["off", "off", "off", "off", "30", "45", "off"] as WeekPlan;
     const done = [1, 1, 1, 0, 0, 0, 0];
     const t = dailyTargets(7.5, SIXTY, done, 2);
     // "Long" is 45 min in the app, so the split is 1.8 / 2.7 rather than the doc's 30/60 example.
@@ -66,12 +67,12 @@ describe("daily targets", () => {
   });
 
   it("never lowers the weekly goal because of off days", () => {
-    const allOffButSun: WeekPlan = ["off", "off", "off", "off", "off", "off", "short"];
+    const allOffButSun: WeekPlan = ["off", "off", "off", "off", "off", "off", "10"];
     close(dailyTargets(7.5, allOffButSun, Array(7).fill(0), 0)[6], 7.5);
   });
 
   it("reports what no remaining day can absorb (today and the rest of the week are off)", () => {
-    const p: WeekPlan = ["medium", "medium", "off", "off", "off", "off", "off"];
+    const p: WeekPlan = ["30", "30", "off", "off", "off", "off", "off"];
     close(unplannedLeft(7.5, p, [1, 1, 0, 0, 0, 0, 0], 2), 5.5);
     expect(unplannedLeft(7.5, p, [1, 1, 0, 0, 0, 0, 0], 1)).toBe(0); // Tuesday still has time, so it takes the rest
   });
@@ -222,5 +223,26 @@ describe("suggestions", () => {
   it("passes every verifier check", () => {
     const r = suggest(base);
     expect(verifySuggestion(r.lead!, base).every((c) => c.ok)).toBe(true);
+  });
+});
+
+describe("day options", () => {
+  it("match Today's list, laid out as Off / 0, 5, 10, 30 / 45+", () => {
+    expect(SLOT_ROWS).toEqual([["off"], ["0", "5", "10", "30"], ["45"]]);
+  });
+
+  it("convert plans saved as Short/Medium/Long", () => {
+    expect(migratePlan(["short", "off", "medium", "long", "10", "0", "45"])).toEqual(["10", "off", "30", "45", "10", "0", "45"]);
+  });
+
+  it("round typed minutes down to an option", () => {
+    expect([0, 3, 5, 15, 20, 30, 40, 60].map(slotForMinutes)).toEqual(["0", "0", "5", "10", "10", "30", "30", "45"]);
+  });
+
+  it("give 0-min days no target and split the goal by minutes", () => {
+    const t = dailyTargets(7.5, ["0", "10", "30", "off", "5", "45", "0"], Array(7).fill(0), 0);
+    expect(t[0]).toBe(0);
+    expect(t[3]).toBe(0);
+    expect(t[5] / t[1]).toBeCloseTo(4.5);
   });
 });

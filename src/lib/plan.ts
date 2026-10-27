@@ -1,8 +1,9 @@
 /**
  * Weekly planning and daily targets.
  *
- * The user marks the days they can't exercise at all ("off") and a rough
- * amount of time for the rest. The weekly goal never drops because of off
+ * The user marks the days they can't exercise at all ("off") and how much
+ * time they have on the rest, from the same list as Today's check-in
+ * (0, 5, 10, 30 or 45+ min; 0 means desk moves only). The weekly goal never drops because of off
  * days; it is split across the available days, weighted by their time:
  *
  *   daily target(d) = MET-hours left × minutes on d / minutes on all remaining days
@@ -14,16 +15,26 @@
  * Later days assume today's target gets met; if it doesn't, tomorrow's
  * start-of-day split picks up the shortfall.
  */
-export type DaySlot = "off" | "short" | "medium" | "long";
+export type DaySlot = "off" | "0" | "5" | "10" | "30" | "45";
 
-export const SLOT_MINUTES: Record<DaySlot, number> = { off: 0, short: 15, medium: 30, long: 45 };
-export const SLOT_LABEL: Record<DaySlot, string> = { off: "Off", short: "Short", medium: "Medium", long: "Long" };
-export const SLOT_HINT: Record<DaySlot, string> = { off: "Can't exercise", short: "10–20 min", medium: "About 30 min", long: "45+ min" };
-export const SLOTS: DaySlot[] = ["off", "short", "medium", "long"];
+export const SLOT_MINUTES: Record<DaySlot, number> = { off: 0, "0": 0, "5": 5, "10": 10, "30": 30, "45": 45 };
+export const SLOT_LABEL: Record<DaySlot, string> = { off: "Off", "0": "0 min", "5": "5 min", "10": "10 min", "30": "30 min", "45": "45+ min" };
+export const SLOT_HINT: Record<DaySlot, string> = {
+  off: "Can't exercise", "0": "Desk moves only", "5": "About 5 min", "10": "About 10 min", "30": "About 30 min", "45": "45 min or more",
+};
+export const SLOTS: DaySlot[] = ["off", "0", "5", "10", "30", "45"];
+/** How the options are laid out on Today and Progress: Off / 0, 5, 10, 30 min / 45+ min. */
+export const SLOT_ROWS: DaySlot[][] = [["off"], ["0", "5", "10", "30"], ["45"]];
 
 export type WeekPlan = DaySlot[];
 
-export const DEFAULT_PLAN: WeekPlan = ["medium", "off", "medium", "short", "off", "long", "short"];
+export const DEFAULT_PLAN: WeekPlan = ["30", "off", "30", "10", "off", "45", "10"];
+
+/** Saves from before the time list: Short → 10, Medium → 30, Long → 45 min. */
+const LEGACY: Record<string, DaySlot> = { short: "10", medium: "30", long: "45" };
+export function migratePlan(plan: readonly string[]): WeekPlan {
+  return plan.map((s) => (s in SLOT_MINUTES ? (s as DaySlot) : LEGACY[s] ?? "30"));
+}
 
 const sum = (xs: number[]) => xs.reduce((a, b) => a + b, 0);
 

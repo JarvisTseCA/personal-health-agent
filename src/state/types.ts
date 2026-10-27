@@ -57,6 +57,8 @@ export interface ChatMessage {
   id: string;
   role: "user" | "agent";
   text: string;
+  /** When it was sent (ms since epoch) */
+  at?: number;
   /** Optional suggested replies shown under an agent message */
   suggestions?: string[];
 }
@@ -78,6 +80,25 @@ export interface TodayEntry {
   role: "agent" | "user" | "medal";
   text: string;
   medal?: Medal;
+  /** When it was sent (ms since epoch) */
+  at?: number;
+  /** On a user answer: the app as it was just before it, so the pencil can go back to that question */
+  rewind?: TodayRewind;
+}
+
+/** Everything a Today answer can change, as it was before the answer. */
+export interface TodayRewind {
+  /** How many conversation entries came before the answer */
+  entryCount: number;
+  today: Omit<TodayState, "entries">;
+  /** Missing on rewind points saved before "Off" could change the plan */
+  plan?: WeekPlan;
+  sessions: Session[];
+  declines: DeclineRecord[];
+  profile: UserProfile;
+  notes: NoteRecord[];
+  painReports: number;
+  syncCount: number;
 }
 
 export interface TodayState {

@@ -3,14 +3,17 @@
  * belongs to the month its Thursday falls in, so a week is never split and
  * each month gets the weeks that are mostly in it.
  */
-import type { Medal } from "./medals";
+import { streakOf, trophyEarned } from "./rewards";
 
 export interface WeekIn {
   start: Date;
   label: string;
   done: number;
   goal: number;
-  medals: Medal[];
+  /** Days with any activity, Monday to Sunday */
+  active: boolean[];
+  /** Days the user opened the app, Monday to Sunday */
+  signIns: boolean[];
   /** Planned days off ("off"), for the calendar */
   plan?: readonly string[];
 }
@@ -30,14 +33,16 @@ export interface Period {
   weeks: WeekIn[];
   done: number;
   goal: number;
-  goldWeeks: number;
-  medals: Record<Exclude<Medal, "none">, number>;
+  /** Weeks that reached their goal */
+  trophies: number;
   activeDays: number;
+  /** Days the user opened the app */
+  signInDays: number;
+  /** Longest run of days in a row with the app opened, within this period's weeks */
+  bestStreak: number;
   /** The period isn't over yet (it includes the current week) */
   partial: boolean;
 }
-
-const EPS = 1e-9;
 
 export function thursday(d: Date): Date {
   const t = new Date(d);
@@ -57,17 +62,22 @@ export function groupWeeks(weeks: WeekIn[], currentWeek: Date): Period[] {
     const { key, year, month, label } = keyOf(w.start);
     let p = out.get(key);
     if (!p) {
-      p = { key, year, month, label, weeks: [], done: 0, goal: 0, goldWeeks: 0, medals: { bronze: 0, silver: 0, gold: 0 }, activeDays: 0, partial: false };
+      p = { key, year, month, label, weeks: [], done: 0, goal: 0, trophies: 0, activeDays: 0, signInDays: 0, bestStreak: 0, partial: false };
       out.set(key, p);
     }
     p.weeks.push(w);
     p.done += w.done;
     p.goal += w.goal;
-    if (w.done + EPS >= w.goal) p.goldWeeks++;
-    for (const m of w.medals) if (m !== "none") { p.medals[m]++; p.activeDays++; }
+    if (trophyEarned(w.done, w.goal)) p.trophies++;
+    p.activeDays += w.active.filter(Boolean).length;
+    p.signInDays += w.signIns.filter(Boolean).length;
   }
   const now = keyOf(currentWeek).key;
   const periods = [...out.values()];
-  for (const p of periods) p.partial = p.key === now;
+  for (const p of periods) {
+    p.partial = p.key === now;
+    const days = [...p.weeks].sort((a, b) => a.start.getTime() - b.start.getTime()).flatMap((w) => w.signIns);
+    p.bestStreak = streakOf(days).best;
+  }
   return periods.sort((a, b) => b.weeks[0].start.getTime() - a.weeks[0].start.getTime());
 }

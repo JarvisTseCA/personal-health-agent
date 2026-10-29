@@ -4,14 +4,14 @@
  *   1 Check in (time, place, energy, mood)
  *   2 Suggest one pick + 2 backups → accept, or "not today" + a reason → new pick
  *   3 Questions at any point (answered from answers.ts)
- *   4 Workout → Fitbit sync → confirm if unsure → credit, medals, "keep going"
+ *   4 Workout → Fitbit sync → confirm if unsure → credit, trophy, "keep going"
  *
  * Every function takes the whole AppState and returns a new one, so the
  * reducer stays a thin switch and this file can be unit-tested.
  */
 import { UNPLANNED_BOUTS } from "../data/mockFitbit";
 import { getFamily, getVariant, PICKABLE } from "../lib/activities";
-import type { Medal } from "../lib/medals";
+import { howTos } from "../lib/moves";
 import { countsTowardGoal, fmt, fmtGoal, minutesFor, UNCONFIRMED_MET, withCredit, type Session } from "../lib/met";
 import { WEEKLY_UPPER_LIMIT } from "../lib/goal";
 import { afterDecline, DECLINE_LABEL, suggest, type DeclineReason, type Energy, type Place, type Suggestion } from "../lib/suggest";
@@ -19,7 +19,7 @@ import { matchActivity, parseEnergy, parseMinutes, parsePlace, parseReason, pars
 import { answer, QUESTIONS, type QuestionId } from "../services/answers";
 import { SCRIPTED_REPLIES } from "../services/mockResponses";
 import type { BackendSuggestion } from "../services/backend";
-import { buildAgentContext, buildSuggestInput } from "../services/context";
+import { buildAgentContext, buildSuggestInput, equipmentAt } from "../services/context";
 import type { AppState, TodayEntry, TodayRewind, TodayState } from "./types";
 
 let seq = 0;
@@ -37,26 +37,42 @@ function setToday(state: AppState, patch: Partial<TodayState>): AppState {
 
 export const dayKeyOf = (s: Pick<AppState, "personaId" | "todayIndex">) => `${s.personaId}:${s.todayIndex}`;
 
-/** A fresh check-in for the current demo day. */
+/**
+ * A fresh check-in for the current demo day. Opening the app counts toward
+ * the streak, so the coach greets the run when there is one. A new run after
+ * a missed day just gets "welcome back": no mention of the old one.
+ */
 export function startDay(state: AppState): AppState {
-  const ctx = buildAgentContext(state);
-  const off = state.plan[state.todayIndex] === "off";
+  // Opening the app today is a sign-in.
+  const signIns = Array.from({ length: 7 }, (_, i) => (i === state.todayIndex ? true : !!state.signIns?.[i]));
+  let st: AppState = { ...state, signIns };
+  const ctx = buildAgentContext(st);
+  const off = st.plan[st.todayIndex] === "off";
+  const n = ctx.streak.current;
+  const hello = n >= 2 ? `Day ${n} in a row. ` : "Welcome back. ";
   let opener: string;
-  if (ctx.week.done + 1e-9 >= ctx.goal) {
-    opener = `You've reached this week's goal, so every medal is gold. Anything today is a bonus. How much time do you have?`;
+  if (ctx.trophy) {
+    opener = `${hello}You've already earned this week's trophy, so anything today is a bonus. How much time do you have?`;
   } else if (off) {
-    opener = `Today is marked off, so there's no target. Got a few minutes anyway? Any activity keeps your ${ctx.streak.current}-day streak going.`;
+    opener = `${hello}Today is marked off, so there's no target. Got a few minutes anyway?`;
   } else {
-    opener = `You're at ${fmt(ctx.week.done)} of ${fmtGoal(ctx.goal)} MET-hours this week. Today's target is ${fmt(ctx.todayTarget)}. How much time do you have today?`;
+    opener = `${hello}You're at ${fmt(ctx.week.done)} of ${fmtGoal(ctx.goal)} MET-hours this week. Today's target is ${fmt(ctx.todayTarget)}. How much time do you have today?`;
+  }
+  const entries = [agent(opener)];
+  if (st.clinician.note.trim() && !st.clinician.acknowledged) {
+    const who = st.clinician.name?.trim() || "your clinician";
+    entries.unshift(agent(`I've read the notes ${who} left at your visit and I'll keep them in mind. Your goals stay yours to set; change them on Progress any time.`));
+    st = { ...st, clinician: { ...st.clinician, acknowledged: true } };
   }
   return {
-    ...state,
-    today: { dayKey: dayKeyOf(state), step: "time", checkIn: {}, entries: [agent(opener)], exclude: [], boost: false, nudged: false },
+    ...st,
+    today: { dayKey: dayKeyOf(st), step: "time", checkIn: {}, entries, exclude: [], boost: false, nudged: false },
   };
 }
 
 // Traveling isn't a button: Outside covers it. Typing "hotel" or "airport" in Other still works.
-export const PLACE_OPTIONS: Array<[string, Place]> = [["Home", "home"], ["Office", "office"], ["Outside", "outside"]];
+// The screen hides Gym for someone who said they don't use one.
+export const PLACE_OPTIONS: Array<[string, Place]> = [["Home", "home"], ["Gym", "gym"], ["Office", "office"], ["Outside", "outside"]];
 // Two buttons only. Feeling tired can still be typed in Other (parsed as "low"); we don't offer it as a tap.
 export const ENERGY_OPTIONS: Array<[string, Energy]> = [["Up for a challenge", "challenge"], ["Normal", "normal"]];
 export const REMIND_OPTIONS = ["In 30 min", "In 1 hour", "This evening"];
@@ -67,7 +83,7 @@ export function answerTime(state: AppState, label: string, minutes: number): App
   if (minutes === 0) {
     // No time: skip the rest of the check-in and go straight to desk moves.
     s = setToday(s, { checkIn: { ...s.today.checkIn, place: "office", energy: "normal", mood: "surprise" } });
-    return offer(push(s, agent("No free time today? Here's something you can do at your desk. It still earns today's bronze.")));
+    return offer(push(s, agent("No free time today? Here's something you can do at your desk. Every bit of movement counts.")));
   }
   return setToday(push(s, agent("Where will you be exercising?")), { step: "place" });
 }
@@ -115,11 +131,11 @@ function offer(state: AppState, intro?: string): AppState {
   let s = state;
   if (!r.lead) {
     r = suggest({ ...input, minutes: 0 });
-    s = push(s, agent("Nothing on your list fits right now. Here's something small that still earns today's bronze."));
+    s = push(s, agent("Nothing on your list fits right now. Here's something small you can do anywhere."));
   } else if (intro) {
     s = push(s, agent(intro));
   }
-  return setToday(s, { step: "suggested", reminder: undefined, current: { lead: r.lead!, backups: r.backups, desk: r.desk, showBackups: false, source: "rules" } });
+  return setToday(s, { step: "suggested", reminder: undefined, howShown: 0, current: { lead: r.lead!, backups: r.backups, desk: r.desk, showBackups: false, source: "rules" } });
 }
 
 /**
@@ -167,7 +183,7 @@ export function anotherOption(state: AppState, typed?: string): AppState {
   }
   const [next, ...rest] = c.backups;
   return setToday(push(s, agent("How about this instead?")), {
-    step: "suggested", reminder: undefined, current: { ...c, lead: next, backups: [...rest, c.lead], showBackups: false },
+    step: "suggested", reminder: undefined, howShown: 0, current: { ...c, lead: next, backups: [...rest, c.lead], showBackups: false },
   });
 }
 
@@ -238,7 +254,7 @@ export function chooseReason(state: AppState, reason: DeclineReason, typed?: str
     const gentle = [desk.lead!, ...desk.backups]
       .filter((x) => x.met < 3)
       .sort((a, b) => a.met - b.met)
-      .map((x) => (x.variantId === "desk-stretch" ? { ...x, durationMin: 10, pattern: "A 10-minute gentle stretch", reasons: ["Gentle", "Earns today's bronze"] } : x));
+      .map((x) => (x.variantId === "desk-stretch" ? { ...x, durationMin: 10, pattern: "A 10-minute gentle stretch", reasons: ["Gentle", "Easy on your body"] } : x));
     return setToday(s, { step: "suggested", current: { lead: gentle[0], backups: gentle.slice(1), desk: true, showBackups: false } });
   }
   return offer(s, "How about this instead?");
@@ -257,28 +273,20 @@ export function ask(state: AppState, q: QuestionId): AppState {
   return push(state, user(QUESTIONS[q]), agent(answer(q, ctx, s)));
 }
 
-function todayMedal(state: AppState): Medal {
-  return buildAgentContext(state).medals[state.todayIndex];
-}
-
-/** After a session is counted: medal moment, credit line, then "keep going" or wrap up. */
+/** After a session is counted: credit line, the trophy when the week's goal is reached, then "keep going" or wrap up. */
 function afterCredit(before: AppState, after: AppState, s: Session): AppState {
-  const m0 = todayMedal(before);
+  const had = buildAgentContext(before).trophy;
   const ctx = buildAgentContext(after);
-  const m1 = ctx.medals[after.todayIndex];
   const { family, variant } = getVariant(s.variantId);
   const credit = withCredit(s).credit;
   let st = after;
 
-  if (m1 !== m0) {
-    const text = m1 === "gold" ? "Gold! You reached this week's goal, so every medal this week is now gold."
-      : m1 === "silver" ? "Silver: today's target is done."
-      : `Bronze for today. That's a ${ctx.streak.current}-day streak.`;
-    st = push(st, { id: newId("m"), role: "medal", text, medal: m1 });
-  }
   st = push(st, agent(credit > 0
     ? `+${fmt(credit)} MET-hours from ${s.customName ?? family.noun}. You're at ${fmt(ctx.week.done)} of ${fmtGoal(ctx.goal)} this week.`
-    : `${variant.label} is light activity, so it earns the medal but not goal credit for now.`));
+    : `${variant.label} is light activity, so it doesn't count toward the goal for now, but it all helps.`));
+  if (ctx.trophy && !had) {
+    st = push(st, { id: newId("t"), role: "trophy", text: `Trophy earned! You reached this week's goal of ${fmtGoal(ctx.goal)} MET-hours. That's ${ctx.trophies} ${ctx.trophies === 1 ? "trophy" : "trophies"} so far.` });
+  }
 
   const t = ctx.todayTarget;
   const d = ctx.todayDone;
@@ -364,6 +372,49 @@ export function keepGoing(state: AppState, yes: boolean, typed?: string): AppSta
   return afterCredit(state, st, s);
 }
 
+/**
+ * "Show me how": the coach shares a short how-to video for the current pick,
+ * one move at a time (goblet squat, then dumbbell row, …), or for the
+ * activity itself (setting up a spin bike, the salsa basic step).
+ */
+export function showHow(state: AppState, typed?: string): AppState {
+  const pick = state.today.accepted ?? state.today.current?.lead;
+  if (!pick) return state;
+  const here = equipmentAt(state, state.today.checkIn.place ?? "home") ?? [];
+  const list = howTos(pick.variantId, here);
+  const s = push(state, user(typed ?? "Show me how"));
+  if (!list.length) {
+    return push(s, agent(`${getFamily(pick.familyId).name} doesn't need a how-to. Start easy for the first few minutes and build up to a pace where you can talk but not sing.`));
+  }
+  const i = (state.today.howShown ?? 0) % list.length;
+  const { what, video } = list[i];
+  const next = list[(i + 1) % list.length];
+  const more = list.length > 1 ? ` Tap "Show me how" again for ${next.what}.` : "";
+  const entry: TodayEntry = { id: newId("v"), role: "agent", text: `Here's a short video on ${what} (${video.length}).${more}`, video };
+  return setToday(push(s, entry), { howShown: i + 1 });
+}
+
+/**
+ * Demo control: the example conversation where the agent teaches a move with
+ * a video. Replays today's check-in as "30 min, at the gym, normal", keeps
+ * the first pick that comes with a how-to video, and asks "Show me how".
+ */
+export function videoExample(state: AppState): AppState {
+  let s = startDay(state);
+  s = answerTime(s, "30 min", 30);
+  s = answerPlace(s, "Gym", "gym");
+  s = answerEnergy(s, "Normal", "normal");
+  for (let i = 0; i < 4 && !hasHowTo(s); i++) s = anotherOption(s);
+  return hasHowTo(s) ? showHow(s) : s;
+}
+
+/** Whether "Show me how" has anything to show for the current pick. */
+export function hasHowTo(state: AppState): boolean {
+  const pick = state.today.accepted ?? state.today.current?.lead;
+  if (!pick) return false;
+  return howTos(pick.variantId, equipmentAt(state, state.today.checkIn.place ?? "home") ?? []).length > 0;
+}
+
 /** Families offered under "Other…" when confirming a detected bout. */
 export const CONFIRM_CHOICES = PICKABLE;
 
@@ -379,6 +430,7 @@ function coachReply(state: AppState, text: string): AppState {
   return push(state, user(text), agent(r.reply(t, ctx)));
 }
 
+const HOW_WORDS = /\b(how (do|to|should) i|show me|video|demo|technique|form|teach me)\b/i;
 const DECLINE_WORDS = /\b(not today|no thanks|no thank|something else|don't want|dont want|can't|cannot|skip|pass|nah|no)\b/;
 
 /**
@@ -415,6 +467,7 @@ export function freeText(state: AppState, text: string): AppState {
       return offer(push(s, agent(`${getFamily(fam).name} it is. Here's my pick.`)));
     }
     case "suggested": {
+      if (HOW_WORDS.test(text) && hasHowTo(state)) return showHow(state, text);
       const yn = parseYesNo(text);
       if (yn === true && t.current) return accept(state, t.current.lead, text);
       if (/\b(another|something else|different one|other option)\b/i.test(text)) return anotherOption(state, text);
@@ -436,6 +489,7 @@ export function freeText(state: AppState, text: string): AppState {
       return coachReply(state, text);
     }
     case "accepted":
+      if (HOW_WORDS.test(text) && hasHowTo(state)) return showHow(state, text);
       if (DECLINE_WORDS.test(text.toLowerCase())) return setToday(push(state, user(text), agent("No problem. What's getting in the way?")), { step: "reason", accepted: undefined });
       return coachReply(state, text);
     case "confirm":

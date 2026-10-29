@@ -11,7 +11,7 @@ import type { Screen } from "../state/types";
 /**
  * Presenter controls shown beside the phone on wide screens. Not part of
  * the app itself: it lets the team set up a scenario during a demo and show
- * the backend at work (the verifier's checks, the prompt the coach gets).
+ * the backend at work (the verifier's checks, the prompt the agent gets).
  */
 export function DemoPanel({ go }: { go: (s: Screen) => void }) {
   const { state, dispatch, ctx } = useStore();
@@ -51,8 +51,14 @@ export function DemoPanel({ go }: { go: (s: Screen) => void }) {
         {!state.onboarded && <button className="btn btn-quiet" onClick={skipOnboarding}>Skip onboarding</button>}
         <button className="btn btn-quiet" disabled={!state.onboarded} onClick={() => { dispatch({ type: "restartDay" }); go("today"); }}>Start today's check-in over</button>
         <button className="btn btn-quiet" disabled={!state.onboarded} onClick={() => { dispatch({ type: "sync" }); go("today"); }}>Simulate a Fitbit sync</button>
+        <button className="btn btn-quiet" disabled={!state.onboarded} onClick={() => { dispatch({ type: "videoExample" }); go("today"); }}>Show the how-to video example</button>
         <button className="btn btn-quiet" disabled={!state.onboarded} onClick={() => { dispatch({ type: "overlay", overlay: null }); go("progress"); }}>Open Progress</button>
         <button className="btn btn-quiet" disabled={!state.onboarded} onClick={() => { dispatch({ type: "overlay", overlay: null }); go("clinician"); }}>Open the Clinician tab</button>
+        <button className="btn btn-quiet" disabled={!state.onboarded || !!state.clinician.note.trim()} onClick={() => {
+          dispatch({ type: "clinicianNotes", notes: { name: "Dr. Rivera", role: "Physician", note: "Blood pressure is a little high. Keep to moderate intensity for now and try adding two strength days a week. Recheck in 3 months.", updated: new Date().toISOString() } });
+          dispatch({ type: "setToday", index: state.todayIndex });
+          go("today");
+        }}>Simulate a clinician visit</button>
         <button className="btn btn-quiet" onClick={() => { dispatch({ type: "reset" }); go("onboarding"); }}>Reset demo</button>
       </div>
 
@@ -67,7 +73,7 @@ export function DemoPanel({ go }: { go: (s: Screen) => void }) {
         <div className="seg-toggle">
           <button aria-pressed={show === "jev"} onClick={() => setShow(show === "jev" ? null : "jev")}>Jev prompt</button>
           <button aria-pressed={show === "checks"} onClick={() => setShow(show === "checks" ? null : "checks")}>Verifier checks</button>
-          <button aria-pressed={show === "prompt"} onClick={() => setShow(show === "prompt" ? null : "prompt")}>What the coach sees</button>
+          <button aria-pressed={show === "prompt"} onClick={() => setShow(show === "prompt" ? null : "prompt")}>What the agent sees</button>
         </div>
         {show === "checks" && (
           current ? (
@@ -87,7 +93,7 @@ export function DemoPanel({ go }: { go: (s: Screen) => void }) {
             ? <pre className="prompt-view">{`Sent to ${picked.jev.model} (log #${picked.jev.logId}):\n${JSON.stringify(picked.jev.request, null, 2)}\n\nAnswers:\n${JSON.stringify(picked.jev.answers, null, 2)}`}</pre>
             : <p className="hint">Get to a suggestion on the Today tab with the backend running to see the prompt sent to Jev and its answers.</p>
         )}
-        <p className="hint">The coach writes; the calculator does the math; a second agent runs these checks. Replies are scripted in this demo.</p>
+        <p className="hint">The agent writes; the calculator does the math; a second agent runs these checks. Replies are scripted in this demo.</p>
       </div>
     </aside>
   );

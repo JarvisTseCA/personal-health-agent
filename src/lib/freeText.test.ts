@@ -15,7 +15,8 @@ describe("free text", () => {
 
   it("reads places, energy and yes/no", () => {
     expect(parsePlace("stuck at work")).toBe("office");
-    expect(parsePlace("at the gym")).toBeNull();
+    expect(parsePlace("at the gym after work")).toBe("gym");
+    expect(parsePlace("at my friend's place")).toBeNull();
     expect(parseEnergy("pretty tired")).toBe("low");
     expect(parseEnergy("feeling great")).toBe("challenge");
     expect(parseEnergy("fine")).toBe("normal");

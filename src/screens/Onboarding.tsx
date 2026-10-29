@@ -1,28 +1,30 @@
 /**
  * Onboarding, observe-first (workflow doc):
  *   Day 1: connect Fitbit, one health question.
- *   Days 1–7: observe a week; no suggestions yet, but medals already count.
- *   Day 8: confirm what the coach detected, then likes and the first weekly plan.
+ *   Days 1–7: observe a week; no suggestions yet, but the streak already counts.
+ *   Day 8: confirm what the agent detected, then likes, equipment at home and
+ *   at the gym (a photo or a typed list, one place at a time), and the first weekly plan.
  * "Don't want to wait?" skips the observing week and asks the day-8 questions now.
  * Every page after the welcome has Back, which returns to the page the user came from.
  * Access and usual weekly time aren't asked: everything starts as available
  * ("Can't access it" on a pick fixes that later), and each day starts at 10 min.
  */
 import { useMemo, useState } from "react";
-import { BackIcon, WatchIcon } from "../components/Icons";
+import { BackIcon, CameraIcon, WatchIcon } from "../components/Icons";
+import { Flame } from "../components/Rewards";
 import { OtherInput } from "../components/OtherInput";
 import { matchActivity, parsePlanChanges, parseYesNo } from "../lib/freeText";
-import { MedalCoin } from "../components/Medal";
 import { PERSONAS } from "../data/mockFitbit";
 import { getFamily, getVariant, PICKABLE, searchFamilies } from "../lib/activities";
 import { DAY_NAMES_LONG } from "../lib/met";
 import { SLOT_LABEL, SLOT_MINUTES, type WeekPlan } from "../lib/plan";
 import { TimeOptions } from "../components/TimeOptions";
 import type { Access } from "../lib/suggest";
+import { EQUIPMENT, equipmentName, listEquipment, parseEquipment, simulatePhotoDetection, type EquipmentPlace } from "../lib/equipment";
 import { DEFAULT_PROFILE, useStore } from "../state/store";
 
-type Step = "welcome" | "fitbit" | "health" | "path" | "observing" | "confirm" | "enjoy" | "plan";
-const ORDER: Step[] = ["fitbit", "health", "path", "observing", "confirm", "enjoy", "plan"];
+type Step = "welcome" | "fitbit" | "health" | "path" | "observing" | "confirm" | "enjoy" | "home-gear" | "gym-gear" | "plan";
+const ORDER: Step[] = ["fitbit", "health", "path", "observing", "confirm", "enjoy", "home-gear", "gym-gear", "plan"];
 
 /** Every day starts at 10 min; the user changes the days that differ. */
 const START_PLAN: WeekPlan = ["10", "10", "10", "10", "10", "10", "10"];
@@ -42,6 +44,10 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
   const [query, setQuery] = useState("");
   const [bout, setBout] = useState(0);
   const [fixing, setFixing] = useState(false);
+  const [homeGear, setHomeGear] = useState<string[]>([]);
+  /** null until answered; "no" means they don't use a gym */
+  const [goesToGym, setGoesToGym] = useState<null | "yes" | "no">(null);
+  const [gymGear, setGymGear] = useState<string[]>([]);
 
   // The "observed" week: the persona's most recent week, or Alex's for new users.
   const bouts = useMemo(() => {
@@ -131,7 +137,10 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
   const finish = () => {
     dispatch({
       type: "completeOnboarding",
-      profile: { ...DEFAULT_PROFILE, ...state.profile, enjoyed, access, hasHealthCondition: healthFlag, fitbitConnected: connected },
+      profile: {
+        ...DEFAULT_PROFILE, ...state.profile, enjoyed, access, hasHealthCondition: healthFlag, fitbitConnected: connected,
+        equipment: { home: homeGear, gym: goesToGym === "yes" ? gymGear : null },
+      },
       plan,
     });
     onDone();
@@ -154,13 +163,18 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
       {step === "welcome" && (
         <>
           <div className="grow">
-            <div className="welcome-coins" aria-hidden>
-              {(["bronze", "silver", "gold", "gold", "silver", "bronze", "gold"] as const).map((m, i) => <MedalCoin key={i} medal={m} size={40} />)}
+            <div className="welcome-vo2" aria-hidden>
+              <span className="welcome-vo2-k">VO2 max</span>
+              <svg viewBox="0 0 220 64" width="220" height="64">
+                <path d="M6 54 C 40 52, 60 46, 84 40 S 130 30, 152 22 S 196 10, 214 8" fill="none" stroke="var(--good)" strokeWidth="4" strokeLinecap="round" />
+                <circle cx="214" cy="8" r="6" fill="var(--good)" />
+              </svg>
             </div>
-            <h1 style={{ fontSize: 40, lineHeight: 1.05 }}>Stop deciding. Start moving.</h1>
+            <h1 style={{ fontSize: 40, lineHeight: 1.05 }}>Raise your VO2 max. Skip the planning.</h1>
             <p className="lead" style={{ marginTop: 14 }}>
-              Each day I'll hand you one workout that fits your time and the things you enjoy, and count it toward the
-              activity guideline. You just tap.
+              VO2 max is the best single measure of cardio fitness. Each day I'll hand you one workout that fits your time,
+              the equipment where you are and the things you enjoy, and count it toward the weekly guideline: the training
+              that builds VO2 max. You just tap.
             </p>
           </div>
           <div className="actions">
@@ -227,7 +241,7 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
           <div className="grow">
             <h1>First, I'll watch a week</h1>
             <p className="lead">Wear your Fitbit as usual for 7 days. I won't suggest anything yet. On day 8 I'll show you what I noticed, and we'll build your list from what you already do.</p>
-            <p className="small muted">Your progress and medals count from today.</p>
+            <p className="small muted">Your streak counts from today: every day you open the app.</p>
           </div>
           <div className="actions">
             <button className="btn btn-primary btn-block" onClick={() => { setObserved(true); go("observing"); }}>Start my week</button>
@@ -243,7 +257,7 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
             <p className="lead">Day 1 of 7. Just move the way you normally do.</p>
             <ol className="observe-days">
               {DAY_NAMES_LONG.map((d, i) => (
-                <li key={d} className={i === 0 ? "now" : ""}><MedalCoin medal="none" size={30} pending={i === 0} future={i > 0} /><span>{d.slice(0, 3)}</span></li>
+                <li key={d} className={i === 0 ? "now" : ""}><Flame size={28} lit={i === 0} /><span>{d.slice(0, 3)}</span></li>
               ))}
             </ol>
           </div>
@@ -300,7 +314,42 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
             <OtherInput placeholder="Other: an activity not listed here" onSubmit={typedEnjoy} hint={hint} />
           </div>
           <div className="actions">
-            <button className="btn btn-primary btn-block" onClick={() => go("plan")} disabled={enjoyed.length === 0}>{enjoyed.length ? "Continue" : "Pick at least one"}</button>
+            <button className="btn btn-primary btn-block" onClick={() => go("home-gear")} disabled={enjoyed.length === 0}>{enjoyed.length ? "Continue" : "Pick at least one"}</button>
+          </div>
+        </>
+      )}
+
+      {step === "home-gear" && (
+        <>
+          <div className="grow">
+            <h1>What do you have at home?</h1>
+            <p className="lead">Snap a photo of where you'd work out, or tell me in a few words. I'll only suggest workouts you can do with what's there.</p>
+            <GearPicker place="home" value={homeGear} onChange={setHomeGear} onNote={(t) => note(t, "equipment at home")} />
+          </div>
+          <div className="actions">
+            <button className="btn btn-primary btn-block" onClick={() => go("gym-gear")}>{homeGear.length ? "Continue" : "Nothing at home, continue"}</button>
+          </div>
+        </>
+      )}
+
+      {step === "gym-gear" && (
+        <>
+          <div className="grow">
+            <h1>Do you go to a gym?</h1>
+            <p className="lead">If you do, I'll ask about it separately: on gym days I'll plan around its machines and weights.</p>
+            <div className="choice">
+              <button aria-pressed={goesToGym === "yes"} onClick={() => setGoesToGym("yes")}><b>Yes</b><span>Tell me what's there</span></button>
+              <button aria-pressed={goesToGym === "no"} onClick={() => setGoesToGym("no")}><b>No</b><span>I'll leave the gym out of your options</span></button>
+            </div>
+            {goesToGym === "yes" && (
+              <div style={{ marginTop: 22 }}>
+                <h2 className="gear-q">What does your gym have?</h2>
+                <GearPicker place="gym" value={gymGear} onChange={setGymGear} onNote={(t) => note(t, "equipment at the gym")} />
+              </div>
+            )}
+          </div>
+          <div className="actions">
+            <button className="btn btn-primary btn-block" onClick={() => go("plan")} disabled={goesToGym === null}>Continue</button>
           </div>
         </>
       )}
@@ -329,6 +378,68 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
           </div>
         </>
       )}
+    </div>
+  );
+}
+
+/**
+ * Equipment for one place: a photo (recognition is simulated in the demo),
+ * typed text, or tapping chips. The photo and text fill in the chips, which
+ * the user can fix.
+ */
+function GearPicker({ place, value, onChange, onNote }: { place: EquipmentPlace; value: string[]; onChange: (ids: string[]) => void; onNote: (text: string) => void }) {
+  const [photo, setPhoto] = useState<string | null>(null);
+  const [looking, setLooking] = useState(false);
+  const [hint, setHint] = useState<string | null>(null);
+  const items = [...EQUIPMENT.filter((e) => e.usual.includes(place)), ...EQUIPMENT.filter((e) => !e.usual.includes(place))];
+  const toggle = (id: string) => onChange(value.includes(id) ? value.filter((x) => x !== id) : [...value, id]);
+  const add = (ids: string[]) => onChange([...value, ...ids.filter((id) => !value.includes(id))]);
+
+  const onPhoto = (file: File | undefined) => {
+    if (!file) return;
+    setPhoto(URL.createObjectURL(file));
+    setLooking(true);
+    setHint(null);
+    setTimeout(() => {
+      const found = simulatePhotoDetection(place);
+      add(found);
+      setLooking(false);
+      setHint(`I spotted ${listEquipment(found)}. Tap anything I got wrong.`);
+    }, 900);
+  };
+  const typed = (text: string) => {
+    const found = parseEquipment(text);
+    if (found.length) {
+      add(found);
+      setHint(`Added ${listEquipment(found)}.`);
+    } else {
+      onNote(text);
+      setHint("I didn't recognize that, so I've noted it. Tap the closest match below.");
+    }
+  };
+
+  return (
+    <div className="gear">
+      <div className="gear-photo">
+        <label className="btn btn-quiet gear-camera">
+          <CameraIcon />{photo ? "Take another photo" : "Take a photo"}
+          <input type="file" accept="image/*" capture="environment" className="sr-only" onChange={(e) => onPhoto(e.target.files?.[0])} />
+        </label>
+        {photo && (
+          <div className="gear-shot">
+            <img src={photo} alt={`Your photo of your ${place === "home" ? "home workout space" : "gym"}`} />
+            {looking && <span className="gear-looking">Looking…</span>}
+          </div>
+        )}
+      </div>
+      <OtherInput placeholder={place === "home" ? "Or type it: e.g. two dumbbells and a mat" : "Or type it: e.g. treadmills, spin bikes, free weights"} onSubmit={typed} hint={hint} />
+      <p className="xs muted" style={{ margin: "14px 0 8px" }}>{value.length ? `${value.length} selected: ${value.map(equipmentName).join(", ")}` : "Tap what you have"}</p>
+      <div className="chips">
+        {items.map((e) => (
+          <button key={e.id} className="chip" aria-pressed={value.includes(e.id)} onClick={() => toggle(e.id)}>{e.name}</button>
+        ))}
+      </div>
+      <p className="xs muted" style={{ marginTop: 10 }}>Demo: photo recognition is simulated and the photo stays on this device.</p>
     </div>
   );
 }

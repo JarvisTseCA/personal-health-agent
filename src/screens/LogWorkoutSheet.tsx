@@ -76,7 +76,7 @@ export function LogWorkoutSheet({ onClose }: { onClose: () => void }) {
 
       <p className="field small" aria-live="polite">
         {intensity === "light"
-          ? `${variant.label} is light activity (under 3 MET). It earns a bronze medal but doesn't count toward the goal for now.`
+          ? `${variant.label} is light activity (under 3 MET). It doesn't count toward the goal for now, but it all helps.`
           : `${variant.met} × ${duration} min ÷ 60 = ${fmt(credit)} MET-hours.`}
       </p>
 

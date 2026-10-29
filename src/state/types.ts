@@ -1,6 +1,6 @@
-import type { WeekRecord } from "../data/mockFitbit";
+import type { EquipmentProfile, WeekRecord } from "../data/mockFitbit";
 import type { Session } from "../lib/met";
-import type { Medal } from "../lib/medals";
+import type { Video } from "../lib/moves";
 import type { WeekPlan } from "../lib/plan";
 import type { Access, Constraint, DeclineReason, Energy, Place, Suggestion } from "../lib/suggest";
 
@@ -16,23 +16,25 @@ export interface UserProfile {
   /** Set at onboarding or by a "something hurts" decline: no vigorous suggestions */
   hasHealthCondition: boolean;
   fitbitConnected: boolean;
+  /** Equipment at home and at the gym. Missing on older saves: then nothing is filtered by equipment. */
+  equipment?: EquipmentProfile;
 }
 
-/** Set by a clinician in the Clinician tab, during a visit. Overrides the defaults. */
-export interface ClinicianSettings {
-  goal: number | null;
-  noVigorous: boolean;
-  maxSessionMin: number | null;
-  /** Shown to the user on Today */
+/**
+ * What a clinician leaves in the Clinician tab during a visit. Context only:
+ * the coach reads the notes in later conversations, but nothing here changes
+ * the user's goal or limits. The user decides those after talking with the
+ * clinician.
+ */
+export interface ClinicianNotes {
+  /** Optional suggestions and notes for the coach, in the clinician's words */
   note: string;
-  /** The goal template's other fields. Optional so older saves still load. */
   name?: string;
   role?: string;
-  reason?: string;
-  review?: string;
-  precautions?: string;
   /** ISO time the clinician last saved */
   updated?: string;
+  /** The coach has mentioned the new notes on Today */
+  acknowledged?: boolean;
 }
 
 /** One "not today" the coach remembers. `day` is relative to this week's Monday. */
@@ -77,9 +79,10 @@ export type TodayStep =
 
 export interface TodayEntry {
   id: string;
-  role: "agent" | "user" | "medal";
+  role: "agent" | "user" | "trophy";
   text: string;
-  medal?: Medal;
+  /** An agent message that teaches a move with a video */
+  video?: Video;
   /** When it was sent (ms since epoch) */
   at?: number;
   /** On a user answer: the app as it was just before it, so the pencil can go back to that question */
@@ -104,6 +107,8 @@ export interface TodayRewind {
 export interface TodayState {
   /** Which demo day this flow belongs to; a new day starts a new check-in */
   dayKey: string;
+  /** How-to videos already shown for the current pick, so "Show me how" moves on to the next move */
+  howShown?: number;
   step: TodayStep;
   checkIn: Partial<CheckIn>;
   /** What the user typed for place, when it wasn't one of the options */
@@ -129,20 +134,24 @@ export interface TodayState {
   nudged: boolean;
 }
 
-export type Screen = "onboarding" | "today" | "progress" | "coach" | "clinician" | "showcase";
+export type Screen = "onboarding" | "today" | "progress" | "chat" | "clinician" | "showcase";
 export type Overlay = null | "prefs";
 
 export interface AppState {
   version: 2;
   onboarded: boolean;
   profile: UserProfile;
-  clinician: ClinicianSettings;
-  /** The user's own weekly goal in MET-hours (a clinician goal overrides it) */
+  clinician: ClinicianNotes;
+  /** The user's weekly goal in MET-hours. Only the user changes it. */
   goal: number;
   goalSource: "default" | "recap";
   plan: WeekPlan;
   sessions: Session[];
   history: WeekRecord[];
+  /** Days this week the user opened the app (today is added when the day starts) */
+  signIns: boolean[];
+  /** Fitbit's monthly VO2 max estimates, oldest first, ending this month */
+  vo2: number[];
   declines: DeclineRecord[];
   notes: NoteRecord[];
   /** Today, as an index into the demo week (0 = Monday) */

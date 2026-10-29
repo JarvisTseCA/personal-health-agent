@@ -1,13 +1,15 @@
 /**
  * Progress tab: one place to see how activity adds up.
- * Top to bottom: this week (total, streak, day-by-day plan and workouts),
- * last week's recap with the goal offer, earlier weeks, and the medal rules.
+ * Top to bottom: VO2 max (the mission), this week (total, streak, trophy,
+ * day-by-day plan and workouts), last week's recap with the goal offer,
+ * month by month (streaks and trophies), and how rewards work.
  */
 import { useMemo, useState } from "react";
 import { TimeOptions } from "../components/TimeOptions";
 import { WeekBars, WeekLegend } from "../components/WeekBar";
 import { PlusIcon } from "../components/Icons";
-import { MedalCoin, WeekCoins } from "../components/Medal";
+import { Flame, RewardCalendar, RewardKey, Trophy } from "../components/Rewards";
+import { Vo2Card } from "../components/Vo2Card";
 import { OtherInput } from "../components/OtherInput";
 import { getFamily, getVariant } from "../lib/activities";
 import { parsePlanChanges } from "../lib/freeText";
@@ -16,7 +18,6 @@ import { DAY_NAMES_LONG, fmt, fmtGoal } from "../lib/met";
 import { SLOT_HINT, SLOT_LABEL, SLOT_MINUTES } from "../lib/plan";
 import { useStore } from "../state/store";
 import { groupWeeks, type WeekIn } from "../lib/periods";
-import { CalendarKey, MedalCalendar } from "../components/MedalCalendar";
 import { weekStart } from "../services/context";
 import { LogWorkoutSheet } from "./LogWorkoutSheet";
 
@@ -26,18 +27,44 @@ export function ProgressScreen() {
       <div className="screen-head">
         <div>
           <h1>Progress</h1>
-          <p className="sub">How your activity adds up, week by week</p>
+          <p className="sub">How your weekly training builds your VO2 max</p>
         </div>
       </div>
+      <Vo2 />
       <ThisWeek />
       <LastWeek />
       <MonthByMonth />
-      <MedalRules />
+      <RewardRules />
     </>
   );
 }
 
-/** This week: total, streak, and the day-by-day plan (what used to be the Week tab). */
+function Vo2() {
+  const { ctx } = useStore();
+  return <Vo2Card vo2={ctx.vo2} />;
+}
+
+/** A day in the list: a check if there was activity, otherwise a quiet circle. Never a mark for a miss. */
+function DayMark({ active, future, off, today }: { active: boolean; future: boolean; off: boolean; today: boolean }) {
+  const label = active ? "Active" : off ? "Day off" : future ? "Coming up" : today ? "Today" : "Rest";
+  return (
+    <svg width="28" height="28" viewBox="0 0 28 28" role="img" aria-label={label} className="day-mark">
+      {active ? (
+        <>
+          <circle cx="14" cy="14" r="12" fill="var(--good)" />
+          <path d="M8.5 14.5l3.6 3.6 7.4-7.6" stroke="#fff" strokeWidth="2.4" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+        </>
+      ) : (
+        <>
+          <circle cx="14" cy="14" r="11" fill="none" stroke={today ? "var(--ink)" : "var(--line-strong)"} strokeWidth="1.5" strokeDasharray={today ? "3 3" : future ? "1 3" : undefined} />
+          {off && <path d="M9.5 14h9" stroke="var(--ink-3)" strokeWidth="1.5" strokeLinecap="round" />}
+        </>
+      )}
+    </svg>
+  );
+}
+
+/** This week: total, streak, trophy, and the day-by-day plan (what used to be the Week tab). */
 function ThisWeek() {
   const { state, ctx, dispatch } = useStore();
   const [editing, setEditing] = useState(false);
@@ -59,8 +86,7 @@ function ThisWeek() {
   };
 
   const goalNote =
-    ctx.goalBy === "clinician" ? "Set by your clinician"
-    : ctx.steppingStone ? "A stepping stone back to the 7.5 guideline"
+    ctx.steppingStone ? "A stepping stone back to the 7.5 guideline"
     : ctx.goal > 7.5 ? "Raised after strong weeks"
     : "The activity guideline: 150 min moderate or 75 vigorous";
   const reached = ctx.week.done + 1e-9 >= ctx.goal;
@@ -84,14 +110,22 @@ function ThisWeek() {
         />
       </div>
 
-      <p className="pg-streak">
-        {reached ? "Goal reached. Every medal this week turns gold." : `${Math.round((ctx.week.done / ctx.goal) * 100)}% done, ${fmt(ctx.left)} MET-hours to go.`}
-        <span style={{ display: "block", marginTop: 4 }}>
-          <b className="num">{streak.current}</b>{streak.current === 1 ? " day" : " days"} in a row
-          <span className="muted"> · best {streak.best}</span>
-          {streak.todayPending && <span className="xs muted">. Any activity today keeps it going.</span>}
-        </span>
-      </p>
+      <div className="pg-rewards">
+        <div className={`pg-reward${reached ? " won" : ""}`}>
+          <Trophy size={30} earned={reached} />
+          <div>
+            <b>{reached ? "This week's trophy is yours" : `${fmt(ctx.left)} MET-hours to this week's trophy`}</b>
+            <span className="xs muted">{reached ? `${ctx.trophies} ${ctx.trophies === 1 ? "trophy" : "trophies"} so far` : `${Math.round((ctx.week.done / ctx.goal) * 100)}% done · ${ctx.trophies} ${ctx.trophies === 1 ? "trophy" : "trophies"} so far`}</span>
+          </div>
+        </div>
+        <div className="pg-reward">
+          <Flame size={30} />
+          <div>
+            <b><span className="num">{streak.current}</span> {streak.current === 1 ? "day" : "days"} in a row</b>
+            <span className="xs muted">Opening the app counts · best run {streak.best} days</span>
+          </div>
+        </div>
+      </div>
 
       {ctx.unplanned > 0.05 && (
         <p className="note" style={{ marginTop: 16 }}>
@@ -119,7 +153,7 @@ function ThisWeek() {
             return (
               <li key={i} className={`day ${cls}`}>
                 <div className="day-coin">
-                  <MedalCoin medal={ctx.medals[i]} size={30} pending={i === t && ctx.medals[i] === "none"} future={i > t} off={slot === "off"} />
+                  <DayMark active={here.length > 0} future={i > t} today={i === t} off={slot === "off"} />
                 </div>
                 <div className="day-body">
                   <div className="day-top">
@@ -206,8 +240,8 @@ function LastWeek() {
   for (const s of last.totals.sessions) minutesBy.set(s.familyId, (minutesBy.get(s.familyId) ?? 0) + s.durationMin);
   const top = [...minutesBy.entries()].sort((a, b) => b[1] - a[1])[0];
   const activeDays = last.totals.activeByDay.filter(Boolean).length;
-  const praise = last.gold
-    ? `A gold week: ${Math.round((last.totals.done / last.goal) * 100)}% of your goal.`
+  const praise = last.trophy
+    ? `Trophy week: ${Math.round((last.totals.done / last.goal) * 100)}% of your goal.`
     : activeDays >= 5
       ? `You moved on ${activeDays} days. That consistency is what builds the habit.`
       : "Every one of those MET-hours counted.";
@@ -215,12 +249,17 @@ function LastWeek() {
   return (
     <section className="section">
       <h2>Last week</h2>
-      <div className={`pg-card${last.gold ? " is-gold" : ""}`}>
+      <div className={`pg-card${last.trophy ? " is-gold" : ""}`}>
         <div className="pg-card-head">
           <b>Week of {last.label}</b>
           <span className="small"><span className="num" style={{ fontWeight: 700 }}>{fmt(last.totals.done)}</span><span className="muted"> of {fmtGoal(last.goal)}</span></span>
         </div>
-        <WeekCoins medals={last.medals} todayIndex={7} size={30} showToday={false} />
+        <div className="pg-lastweek">
+          {last.trophy && <Trophy size={40} title="Trophy" />}
+          <ol className="active-dots" aria-label={`Active on ${activeDays} days`}>
+            {last.totals.activeByDay.map((a, i) => <li key={i} className={a ? "on" : ""}><span />{DAY_NAMES_LONG[i].slice(0, 2)}</li>)}
+          </ol>
+        </div>
         <p className="small" style={{ marginTop: 10 }}>{praise}</p>
         {top && <p className="xs muted" style={{ marginTop: 2 }}>Most time on {getFamily(top[0]).noun}: {top[1]} min.</p>}
       </div>
@@ -262,14 +301,15 @@ const MONTH_NAMES = Array.from({ length: 12 }, (_, m) => new Date(2000, m, 1).to
 /**
  * Past weeks one month at a time, picked with a Year and a Month dropdown
  * (only months with data are listed). It opens on the latest month. The
- * month shows its totals, then a medal calendar: a row per week, a medal or
- * an empty circle per day, and a gold row for each week that met its goal.
+ * month shows its trophies and streaks, then a calendar: a row per week, a
+ * flame on each day the app was opened (days in a row joined into a band),
+ * and a trophy at the end of each week that reached its goal.
  */
 function MonthByMonth() {
   const { ctx } = useStore();
   const [pick, setPick] = useState<string | null>(null);
   const months = useMemo(
-    () => groupWeeks(ctx.past.map((w): WeekIn => ({ start: w.start, label: w.label, done: w.totals.done, goal: w.goal, medals: w.medals, plan: w.plan })), weekStart(0)),
+    () => groupWeeks(ctx.past.map((w): WeekIn => ({ start: w.start, label: w.label, done: w.totals.done, goal: w.goal, active: w.totals.activeByDay, signIns: w.signIns, plan: w.plan })), weekStart(0)),
     [ctx.past],
   );
   if (!months.length) return null;
@@ -296,32 +336,32 @@ function MonthByMonth() {
           </select>
         </label>
       </div>
-      <CalendarKey />
       <div className="pg-cal-card">
         <div className="week-list-head">
           <b>{p.label}{p.partial && <span className="muted" style={{ fontWeight: 400 }}> · so far</span>}</b>
-          <span className="small"><span className="num">{fmt(p.done)}</span><span className="muted"> of {fmtGoal(p.goal)}</span></span>
+          <span className="small"><span className="num">{fmt(p.done)}</span><span className="muted"> MET-hours</span></span>
         </div>
-        <p className="xs muted">
-          {p.goldWeeks} of {p.weeks.length} {p.weeks.length === 1 ? "week" : "weeks"} gold · {p.activeDays} active {p.activeDays === 1 ? "day" : "days"}
-          {" · "}{p.medals.gold} gold, {p.medals.silver} silver, {p.medals.bronze} bronze
-        </p>
-        <MedalCalendar weeks={ordered} month={{ year: p.year, month: p.month }} />
+        <div className="month-stats">
+          <span><Trophy size={18} earned={p.trophies > 0} /><b className="num">{p.trophies}</b> {p.trophies === 1 ? "trophy" : "trophies"}</span>
+          <span><Flame size={18} />Best streak <b className="num">{p.bestStreak}</b> {p.bestStreak === 1 ? "day" : "days"}</span>
+          <span className="muted">{p.signInDays} days with the app · {p.activeDays} active</span>
+        </div>
+        <RewardCalendar weeks={ordered} month={{ year: p.year, month: p.month }} />
       </div>
+      <RewardKey />
     </section>
   );
 }
 
-function MedalRules() {
+function RewardRules() {
   return (
     <section className="section">
-      <h2>How medals work</h2>
-      <ul className="legend" style={{ marginTop: 0 }} aria-label="How medals work">
-        <li><MedalCoin medal="bronze" size={30} /><div><b>Bronze</b><span>Any activity that day, light included</span></div></li>
-        <li><MedalCoin medal="silver" size={30} /><div><b>Silver</b><span>The day's target reached</span></div></li>
-        <li><MedalCoin medal="gold" size={30} /><div><b>Gold</b><span>Weekly goal reached: the whole week turns gold</span></div></li>
+      <h2>How rewards work</h2>
+      <ul className="legend" style={{ marginTop: 0 }} aria-label="How rewards work">
+        <li><Flame size={30} /><div><b>Streak</b><span>Every day you open the app adds a day to your streak</span></div></li>
+        <li><Trophy size={30} /><div><b>Trophy</b><span>Reach your weekly goal and that week's trophy is yours to keep</span></div></li>
       </ul>
-      <p className="xs muted" style={{ marginTop: 12 }}>A day with no activity ends the streak, even a planned day off.</p>
+      <p className="xs muted" style={{ marginTop: 12 }}>Trophies are yours to keep, and your best streak stays on record.</p>
     </section>
   );
 }

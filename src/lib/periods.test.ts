@@ -3,12 +3,13 @@ import { weekStart } from "../services/context";
 import { buildAgentContext } from "../services/context";
 import { initialState, personaProfile } from "../state/store";
 import { groupWeeks, weekMonth, type WeekIn } from "./periods";
-import type { Medal } from "./medals";
 
 const mon = (y: number, m: number, d: number) => new Date(y, m, d);
 const wk = (start: Date, done: number, active = 3): WeekIn => ({
   start, label: start.toDateString(), done, goal: 7.5,
-  medals: Array.from({ length: 7 }, (_, i) => (i < active ? (done >= 7.5 ? "gold" : "bronze") : "none")) as Medal[],
+  active: Array.from({ length: 7 }, (_, i) => i < active),
+  // Opened the app every day but Sunday
+  signIns: Array.from({ length: 7 }, (_, i) => i < 6),
 });
 
 describe("past weeks by month", () => {
@@ -24,14 +25,15 @@ describe("past weeks by month", () => {
     expect(weekMonth(mon(2026, 9, 26))).toEqual({ year: 2026, month: 9 }); // Oct 26 → October
   });
 
-  it("adds up MET-hours, goals, gold weeks and medals, newest first", () => {
+  it("adds up MET-hours, goals, trophies, active days and streaks, newest first", () => {
     const weeks = [wk(mon(2026, 9, 5), 8, 4), wk(mon(2026, 9, 12), 5, 2), wk(mon(2026, 9, 19), 9, 5)];
     const [oct] = groupWeeks(weeks, mon(2026, 9, 26));
     expect(oct.done).toBe(22);
     expect(oct.goal).toBe(22.5);
-    expect(oct.goldWeeks).toBe(2);
-    expect(oct.medals).toEqual({ gold: 9, silver: 0, bronze: 2 });
+    expect(oct.trophies).toBe(2);
     expect(oct.activeDays).toBe(11);
+    expect(oct.signInDays).toBe(18);
+    expect(oct.bestStreak).toBe(6);
     expect(oct.partial).toBe(true);
   });
 
@@ -46,7 +48,7 @@ describe("past weeks by month", () => {
     s = { ...s, onboarded: true, profile: personaProfile(s) };
     const ctx = buildAgentContext(s);
     expect(ctx.past.length).toBe(26);
-    const months = groupWeeks(ctx.past.map((w) => ({ start: w.start, label: w.label, done: w.totals.done, goal: w.goal, medals: w.medals })), weekStart(0));
+    const months = groupWeeks(ctx.past.map((w) => ({ start: w.start, label: w.label, done: w.totals.done, goal: w.goal, active: w.totals.activeByDay, signIns: w.signIns })), weekStart(0));
     expect(months.length).toBeGreaterThanOrEqual(6);
     expect(months.reduce((a, m) => a + m.weeks.length, 0)).toBe(26);
   });

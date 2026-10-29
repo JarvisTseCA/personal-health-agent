@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useRef, useState, type ComponentType } from "react";
 import { DemoPanel } from "./components/DemoPanel";
-import { CoachIcon, MedalIcon, ShowcaseIcon, StethoscopeIcon, TodayIcon } from "./components/Icons";
+import { ChatIcon, ProgressIcon, ShowcaseIcon, StethoscopeIcon, TodayIcon } from "./components/Icons";
 import { ClinicianScreen } from "./screens/ClinicianScreen";
-import { CoachScreen } from "./screens/CoachScreen";
+import { ChatScreen } from "./screens/ChatScreen";
 import { Onboarding } from "./screens/Onboarding";
 import { PreferencesSheet } from "./screens/PreferencesSheet";
 import { ProgressScreen } from "./screens/ProgressScreen";
@@ -13,15 +13,15 @@ import type { Screen } from "./state/types";
 
 const TABS: Array<{ id: Screen; label: string; Icon: ComponentType<{ className?: string }> }> = [
   { id: "today", label: "Today", Icon: TodayIcon },
-  { id: "progress", label: "Progress", Icon: MedalIcon },
-  { id: "coach", label: "Coach", Icon: CoachIcon },
+  { id: "progress", label: "Progress", Icon: ProgressIcon },
+  { id: "chat", label: "Chat", Icon: ChatIcon },
   { id: "clinician", label: "Clinician", Icon: StethoscopeIcon },
   { id: "showcase", label: "Showcase", Icon: ShowcaseIcon },
 ];
 
-const SCREENS: Screen[] = ["onboarding", "today", "progress", "coach", "clinician", "showcase"];
-/** Old links: Week and Medals are now part of Progress. */
-const RENAMED: Record<string, Screen> = { week: "progress", medals: "progress" };
+const SCREENS: Screen[] = ["onboarding", "today", "progress", "chat", "clinician", "showcase"];
+/** Old links: Week and Medals are now part of Progress; Coach is now Chat. */
+const RENAMED: Record<string, Screen> = { week: "progress", medals: "progress", coach: "chat" };
 
 /** Screen lives in the URL hash (#progress) so links and refreshes keep your place. */
 function readHash(): Screen | null {
@@ -80,10 +80,11 @@ export default function App() {
       <section className="desk-intro">
         <h1>Make It Count</h1>
         <p>
-          A personal health agent that takes away decision fatigue. Each day it hands you one workout that fits your
-          time and the activities you enjoy, counts it in MET-hours toward the weekly guideline, and rewards every day you move.
+          We help you raise your VO2 max, the best single measure of cardio fitness, without having to plan a thing.
+          Each day the agent hands you one workout that fits your time, the equipment where you are, and the activities
+          you enjoy, then counts it in MET-hours toward the weekly guideline: the training that builds VO2 max.
         </p>
-        <p className="team">Demo build. Fitbit data and coach replies are simulated.</p>
+        <p className="team">Demo build. Fitbit data, VO2 max readings and the agent's replies are simulated.</p>
       </section>
 
       <div className="phone">
@@ -98,8 +99,8 @@ export default function App() {
 
         {active === "clinician" ? (
           <ClinicianScreen onSaved={() => go("today")} onLeave={() => go(lastTab.current)} />
-        ) : active === "coach" ? (
-          <CoachScreen />
+        ) : active === "chat" ? (
+          <ChatScreen />
         ) : (
           <main className="screen" key={active}>
             {active === "onboarding" && <Onboarding onDone={() => go("today")} />}

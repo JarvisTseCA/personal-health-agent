@@ -1,5 +1,5 @@
 /**
- * Pre-written coach replies for the Coach tab (free-form questions).
+ * Pre-written coach replies for the Chat tab (free-form questions).
  *
  * Each entry has keyword triggers and a template that fills in the user's
  * real numbers from the AgentContext. The first entry whose `match` returns
@@ -20,6 +20,19 @@ export interface ScriptedReply {
 
 const has = (t: string, ...words: string[]) => words.some((w) => t.includes(w));
 
+/** Who left the clinician notes, for sentences: "Dr. Rivera" or "your clinician". */
+function clinicianName(ctx: AgentContext): string {
+  return ctx.state.clinician.name?.trim() || "your clinician";
+}
+
+/** One line that brings the clinician's notes into a reply, when there are any. */
+function withNotes(ctx: AgentContext): string {
+  const note = ctx.state.clinician.note.trim().replace(/\s*\n\s*/g, " ");
+  if (!note) return "";
+  const short = note.length > 140 ? `${note.slice(0, 137).trimEnd()}…` : note;
+  return ` I'm also keeping in mind what ${clinicianName(ctx)} noted at your visit: "${short}"`;
+}
+
 /** The activity family a message talks about, e.g. "does salsa count?" → dancing. */
 function mentionedFamily(t: string) {
   const words = t.replace(/[^a-z ]/g, " ").split(/\s+/).filter((w) => w.length > 2);
@@ -30,9 +43,38 @@ export const SCRIPTED_REPLIES: ScriptedReply[] = [
   {
     id: "safety",
     match: (t) => has(t, "chest", "dizzy", "faint", "pain", "hurt", "injur", "breath", "knee", "sore"),
-    reply: () =>
-      "That's worth taking seriously. Please stop exercising and check in with a clinician before your next workout, and seek urgent care if symptoms are severe. I'll keep suggestions gentle and skip vigorous activity until you've been cleared.",
+    reply: (_t, ctx) =>
+      `That's worth taking seriously. Please stop exercising and check in with ${ctx.state.clinician.note.trim() ? clinicianName(ctx) : "a clinician"} before your next workout, and seek urgent care if symptoms are severe. I'll keep suggestions gentle and skip vigorous activity until you've been cleared.`,
     suggestions: ["How am I doing this week?"],
+  },
+  {
+    id: "clinician",
+    match: (t) => has(t, "clinician", "doctor", "dr.", "my visit", "physician", "nurse", "therapist", "appointment"),
+    reply: (_t, ctx) => {
+      const note = ctx.state.clinician.note.trim().replace(/\s*\n\s*/g, " ");
+      if (!note) return "I don't have notes from a clinician yet. At your next visit, open the Clinician tab and hand them your phone: they'll see a summary of your activity and can leave notes for me. You'll still decide your goals together.";
+      return `Here's what ${clinicianName(ctx)} noted at your visit: "${note}" I use this as context when I suggest workouts. Your goal is yours to set; if you two agreed on a change, update it on the Progress tab.`;
+    },
+    suggestions: ["What should I do today?", "How am I doing this week?"],
+  },
+  {
+    id: "vo2",
+    match: (t) => has(t, "vo2", "v02", "vo 2", "cardio fitness", "fitness score", "oxygen"),
+    reply: (_t, ctx) => {
+      const v = ctx.vo2;
+      const trend = v && v.series.length > 1
+        ? ` It's gone from ${v.series[0].value} in ${v.series[0].label} to ${v.latest} now.`
+        : "";
+      return `${answer("vo2", ctx)}${trend}`;
+    },
+    suggestions: ["How do MET-hours raise it?", "How am I doing this week?"],
+  },
+  {
+    id: "met-vo2",
+    match: (t) => has(t, "raise it", "improve my", "increase my", "get fitter", "fitter"),
+    reply: (_t, ctx) =>
+      `Regular moderate and vigorous activity trains your heart, lungs and muscles to use more oxygen, and VO2 max follows over weeks to months. Hitting your ${fmtGoal(ctx.goal)} MET-hours most weeks is the steady part; mixing in some vigorous minutes (6 MET or more) gives it an extra push, if that's safe for you. Fitbit's estimate moves slowly, so look at the monthly trend, not day to day.`,
+    suggestions: ["What's a MET?", "What should I do today?"],
   },
   {
     id: "met",
@@ -43,13 +85,13 @@ export const SCRIPTED_REPLIES: ScriptedReply[] = [
   {
     id: "goal",
     match: (t) => has(t, "7.5", "why my goal", "goal", "guideline", "150"),
-    reply: (_t, ctx) => answer("goal", ctx),
+    reply: (_t, ctx) => `${answer("goal", ctx)}${withNotes(ctx)}`,
     suggestions: ["How am I doing this week?"],
   },
   {
-    id: "medals",
-    match: (t) => has(t, "medal", "streak", "gold", "silver", "bronze"),
-    reply: (_t, ctx) => `${answer("medals", ctx)} You're on a ${ctx.streak.current}-day streak${ctx.streak.todayPending ? "; any activity today keeps it going" : ""}.`,
+    id: "rewards",
+    match: (t) => has(t, "medal", "streak", "trophy", "trophies", "reward", "gold", "silver", "bronze"),
+    reply: (_t, ctx) => answer("rewards", ctx),
     suggestions: ["What should I do today?"],
   },
   {
@@ -58,7 +100,7 @@ export const SCRIPTED_REPLIES: ScriptedReply[] = [
     reply: (_t, ctx) =>
       ctx.left <= 0
         ? `You've reached ${fmt(ctx.week.done)} of ${fmtGoal(ctx.goal)} MET-hours, so this week is gold. Anything else is a bonus.`
-        : `You're at ${fmt(ctx.week.done)} of ${fmtGoal(ctx.goal)} MET-hours this week, with ${fmt(ctx.left)} to go. Today's target is ${fmt(ctx.todayTarget)}, and you're on a ${ctx.streak.current}-day streak.`,
+        : `You're at ${fmt(ctx.week.done)} of ${fmtGoal(ctx.goal)} MET-hours this week, with ${fmt(ctx.left)} to go. Today's target is ${fmt(ctx.todayTarget)}${ctx.streak.current >= 2 ? `, and this is day ${ctx.streak.current} in a row` : ""}.`,
     suggestions: ["What should I do today?", "Does dancing count?"],
   },
   {
@@ -69,7 +111,7 @@ export const SCRIPTED_REPLIES: ScriptedReply[] = [
       if (!fam) return "Almost anything that gets you moving counts. Tell me the activity and I'll show you the conversion; for example, 30 minutes of brisk walking earns 2.4 MET-hours.";
       const lines = fam.variants.map((v) => {
         const c = creditFor(v.met, 30);
-        return c > 0 ? `${v.label.toLowerCase()} (${v.met} MET) earns ${fmt(c)}` : `${v.label.toLowerCase()} (${v.met} MET) is light: a medal, not goal credit`;
+        return c > 0 ? `${v.label.toLowerCase()} (${v.met} MET) earns ${fmt(c)}` : `${v.label.toLowerCase()} (${v.met} MET) is light: no goal credit for now`;
       });
       return `Yes. For 30 minutes of ${fam.noun}: ${lines.join("; ")}.`;
     },
@@ -82,7 +124,7 @@ export const SCRIPTED_REPLIES: ScriptedReply[] = [
       const s = ctx.state.today.accepted ?? ctx.state.today.current?.lead;
       if (!s) return "Head to the Today tab and answer three quick questions; I'll hand you one workout that fits.";
       const { family, variant } = getVariant(s.variantId);
-      return `Today's pick is ${s.durationMin} min of ${family.noun} (${variant.label.toLowerCase()}, ${intensityOf(variant.met)}). That's ${fmt(s.credit)} MET-hours toward today's ${fmt(ctx.todayTarget)}.`;
+      return `Today's pick is ${s.durationMin} min of ${family.noun} (${variant.label.toLowerCase()}, ${intensityOf(variant.met)}). That's ${fmt(s.credit)} MET-hours toward today's ${fmt(ctx.todayTarget)}.${withNotes(ctx)}`;
     },
     suggestions: ["Why this activity?", "I only have 10 minutes"],
   },
@@ -101,16 +143,21 @@ export const SCRIPTED_REPLIES: ScriptedReply[] = [
   {
     id: "short-on-time",
     match: (t) => has(t, "only have", "busy", "no time", "short on", "10 min", "15 min", "5 min"),
-    reply: () => "Short still counts. On the Today tab, pick 10 min (or 0 min if you're stuck at your desk) and I'll find something that fits. Every day you move earns at least a bronze.",
-    suggestions: ["How do medals work?"],
+    reply: () => "Short still counts. On the Today tab, pick 10 min (or 0 min if you're stuck at your desk) and I'll find something that fits. Every MET-hour adds up toward this week's trophy.",
+    suggestions: ["How do streaks and trophies work?"],
   },
   {
     id: "fallback",
     match: () => true,
     reply: (_t, ctx) =>
       `I can tell you what to do today, explain how an activity counts, or check your progress. You have ${fmt(ctx.left)} MET-hours to go this week.`,
-    suggestions: ["How am I doing this week?", "What's a MET?", "Does salsa count?"],
+    suggestions: ["How am I doing this week?", "What's VO2 max?", "Does salsa count?"],
   },
 ];
 
-export const STARTER_SUGGESTIONS = ["How am I doing this week?", "What's a MET?", "Why is my goal 7.5?", "Does salsa count?"];
+export const STARTER_SUGGESTIONS = ["What's VO2 max?", "How am I doing this week?", "What's a MET?", "Does salsa count?"];
+
+/** Starter chips for this user: adds one about the clinician's notes when there are any. */
+export function starterSuggestions(ctx: AgentContext): string[] {
+  return ctx.state.clinician.note.trim() ? ["What did my clinician suggest?", ...STARTER_SUGGESTIONS.slice(0, 3)] : STARTER_SUGGESTIONS;
+}

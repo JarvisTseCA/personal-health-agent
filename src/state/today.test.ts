@@ -30,14 +30,52 @@ describe("today flow", () => {
     expect(s.today.current!.desk).toBe(true);
   });
 
-  it("accept → sync logs the planned workout and awards a medal", () => {
+  it("accept → sync logs the planned workout and credits it", () => {
     let s = checkIn(onboarded());
     s = T.accept(s, s.today.current!.lead);
     s = T.sync(s);
     const ctx = buildAgentContext(s);
     expect(ctx.week.activeByDay[s.todayIndex]).toBe(true);
-    expect(ctx.medals[s.todayIndex]).not.toBe("none");
-    expect(s.today.entries.some((e) => e.role === "medal")).toBe(true);
+    expect(s.today.entries.some((e) => e.role === "agent" && e.text.startsWith("+"))).toBe(true);
+  });
+
+  it("reaching the weekly goal earns the trophy, once", () => {
+    let s = onboarded("roll");
+    s = { ...s, goal: buildAgentContext(s).week.done + 0.5 };
+    s = checkIn(T.startDay(s));
+    s = T.accept(s, s.today.current!.lead);
+    s = T.sync(s);
+    expect(buildAgentContext(s).trophy).toBe(true);
+    expect(s.today.entries.filter((e) => e.role === "trophy").length).toBe(1);
+  });
+
+  it("greets the streak and never mentions a missed day", () => {
+    const alex = onboarded("alex");
+    expect(alex.today.entries[0].text).toMatch(/^Day 12 in a row/);
+    const tough = onboarded("tough");
+    expect(tough.today.entries[0].text).toMatch(/^Welcome back\./);
+    expect(tough.today.entries.map((e) => e.text).join(" ")).not.toMatch(/miss|lost|broke|why/i);
+  });
+
+  it("at the gym, offers equipment there and a how-to video", () => {
+    let s = onboarded("roll");
+    s = T.answerTime(s, "30 min", 30);
+    s = T.answerPlace(s, "Gym", "gym");
+    s = T.answerEnergy(s, "Normal", "normal");
+    expect(s.today.step).toBe("suggested");
+    const v = T.videoExample(s);
+    const last = v.today.entries.at(-1)!;
+    expect(last.video?.id).toBeTruthy();
+    expect(v.today.entries.at(-2)!.text).toBe("Show me how");
+  });
+
+  it("mentions new clinician notes once, as context", () => {
+    let s = onboarded();
+    s = T.startDay({ ...s, clinician: { note: "Moderate intensity for now.", name: "Dr. Rivera", acknowledged: false } });
+    expect(s.today.entries[0].text).toMatch(/Dr\. Rivera/);
+    expect(s.clinician.acknowledged).toBe(true);
+    expect(T.startDay(s).today.entries.some((e) => /Dr\. Rivera/.test(e.text))).toBe(false);
+    expect(s.goal).toBe(7.5);
   });
 
   it("an unplanned sync asks to confirm, and counts conservatively until then", () => {
@@ -93,7 +131,7 @@ describe("today flow", () => {
     s = T.freeText(s, "about 25 minutes");
     expect(s.today.checkIn.minutes).toBe(25);
     s = T.freeText(s, "at the gym");
-    expect(s.today.checkIn.place).toBe("other");
+    expect(s.today.checkIn.place).toBe("gym");
     s = T.freeText(s, "kind of tired");
     expect(s.today.checkIn.energy).toBe("low");
     expect(s.today.step).toBe("suggested");

@@ -186,6 +186,141 @@ sync, **show the how-to video example** (30 min at the gym → a pick with a vid
 tab, reset, and show the backend: the **verifier's checks** on the current suggestion and the prompt the
 agent would receive.
 
+## Changes on Oct 28, 2026
+
+Eight changes requested for the web app demo, what was built for each, and why. The tab-by-tab details
+are above in *What's in the demo*; the short form of each decision is also in the *Design decisions* log
+below. Merged in pull request #13.
+
+### 1. Clinician tab: a summary to check, notes for the agent, goals stay with the user
+
+**What changed:** The tab now opens (after consent) on a digestible summary of the user's data: a few
+plain sentences (average MET-hours over the last 4 weeks, as a share of the guideline and as minutes of
+moderate activity; weeks at goal; active days; main activities and share of vigorous minutes; VO2 max
+trend; the current goal and who set it), four key numbers, things to discuss (health condition, pain
+reports, health-related notes the user typed, the longest stretch without activity, why workouts get
+skipped), the weekly MET-hour chart and the activity mix. Below it is an optional notes box (name, role,
+free-text suggestions, with one-tap starters). The goal template (MET-hours, intensity, session length,
+review date, precautions) is gone, and nothing the clinician enters changes the goal or any limit.
+After hand-back, the agent mentions once on Today that it has read the notes, uses them in Chat replies
+when they're relevant, and gets them in its context as `clinician_notes`. The user can read and remove
+the notes in Preferences.
+
+**Why:** The clinician's job is to check the summary and suggest; the user makes the final decisions about
+their goals. After the visit the user and clinician talk directly, so the app doesn't need to turn the
+clinician's input into settings. Keeping the notes as agent context means the suggestions still shape
+what the agent says without overriding the user. The summary leads with sentences and a handful of
+numbers because a clinician has minutes, not a dashboard's worth of time, during a visit. The notes are
+visible to the user because they're about the user, and the user should know what the agent is using.
+
+### 2. "Coach" is now "Chat", with a machine-learning notice
+
+**What changed:** The tab is renamed Chat (old `#coach` links still open it). The top of every
+conversation, on Chat and on Today, says: "This agent is a machine learning model and may make mistakes.
+It isn't medical advice; check anything important with your clinician." The agent's brief says the same.
+
+**Why:** "Chat" says what the tab is. Users should know they're talking to a model that can be wrong,
+before they read anything it says. Today is also a conversation with the agent, so it gets the notice too.
+
+### 3. A how-to video in the Today conversation
+
+**What changed:** Under a pick (and after *Let's start*), a *Show me how* chip makes the agent share a short
+how-to video in the conversation, one move at a time: setting up a spin bike, the salsa basic step,
+rowing technique, goblet squats, dumbbell rows, band rows, kettlebell swings, bodyweight squats, incline
+push-ups, lunges, planks, beginner burpees. Typing "how do I…" does the same. The video shows as a
+thumbnail and loads YouTube's privacy-enhanced player only when tapped. The demo panel's *Show the how-to
+video example* button replays the example conversation: 30 min, at the gym, normal energy, a stationary
+bike pick, then *Show me how* and the bike-setup video.
+
+**Why:** Some picks are easier to start once you've seen them done, and not knowing how to do a move is a
+reason to skip it. Showing one move at a time keeps the conversation short. Loading the player on tap
+keeps the page fast and doesn't contact YouTube until the user asks.
+
+### 4. Gym as a place
+
+**What changed:** Check-in's place question offers Home, **Gym**, Office and Outside. Typing "at the gym"
+(or "YMCA", "fitness center") works too. Gym is hidden for users who said they don't use one. At the gym
+the agent suggests indoor activities only.
+
+**Why:** A gym day has different options than a home day, and the user needs to be able to say so in one tap.
+
+### 5. Equipment in onboarding, by photo or text, one place at a time
+
+**What changed:** After the activities page, onboarding asks *What do you have at home?*, then *Do you go
+to a gym?* and, if yes, *What does your gym have?* On each page the user can take a photo, type a list
+("two dumbbells and a mat") or tap chips; the photo and the typed list fill in the chips, which the user
+can fix. Equipment can be changed later in Preferences.
+
+**Why:** Asking about each place separately keeps each question small and matches how people think about
+it ("at home I have…"). A photo is quicker than a list for most people; text and chips are there for
+everyone else and for fixing mistakes.
+
+### 6. Suggestions based on the equipment where the user is
+
+**What changed:** The ranker only suggests an activity that needs equipment when that equipment is where
+the user will exercise today, and it prefers the variant that uses it ("Uses the stationary bike at your
+gym"). Strength and interval picks list a circuit built from the equipment on hand: dumbbells give goblet
+squats and dumbbell rows, bands give band rows, nothing gives bodyweight squats and incline push-ups. New
+Compendium entries make this possible: stationary bike (01216), treadmill walk (17358), superset circuit
+(02055), kettlebell circuit (02040) and elliptical (02048, 02049). The verifier has a new equipment check.
+
+**Why:** Modeled on Volt Athletics, which builds workouts from the equipment a user has. A pick the user
+can't do with what's there is a wasted decision, which works against the app's purpose of removing
+decision fatigue.
+
+### 7. Simpler rewards: a sign-in streak and weekly trophies
+
+**What changed:** Bronze, silver and gold daily medals are gone. There are two rewards. The **streak**
+(a flame) counts days in a row the user opened the app. The **trophy** is earned for each week that
+reaches its goal, and trophies are kept for good. Today shows the streak and what's left to this week's
+trophy; reaching the goal brings a trophy moment. Progress shows both, with the best streak so far.
+*Month by month* was redesigned to match: a flame on each day the app was opened, days in a row joined
+into one band so past streaks read at a glance, and a trophy (on a gold row) for each week that reached
+its goal. Days the app wasn't opened are plain dots.
+
+**Why:** Three medal types per day were hard to read; one streak and one weekly trophy are easier to
+follow. The app should only reward users and never penalize them. A missed day does end the streak, but
+the app doesn't emphasize it: there's no "streak lost" message, no question about why, and the agent just
+says "Welcome back." Showing the best streak means a past run still counts for something. Missed days in
+the calendar are neutral dots rather than empty or crossed-out markers.
+
+### 8. Rebranding around VO2 max
+
+**What changed:** The app's pitch is now "raise your VO2 max." The welcome screen leads with it, Progress
+opens with a VO2 max card (Fitbit's monthly estimate, its trend and what it means in METs), the Today card
+shows it next to the streak and trophy, and the agent can answer *What's VO2 max?* MET-hours stay the
+weekly unit and are explained as the training that raises VO2 max.
+
+**Why:** VO2 max is better known than MET-hours and is one of the best single measures of cardio fitness,
+so it makes a clearer goal to sell. It isn't the same thing as MET-hours, though: MET-hours measure the
+work done, VO2 max is the fitness that work builds over weeks to months. The app keeps them separate so
+the claims stay accurate. The one bridge it uses is that 1 MET is 3.5 mL of oxygen per kg per minute, so a
+VO2 max of 41 mL/kg/min is about 11.7 METs at the user's peak. MET-hours stay the unit because the activity
+guideline is written in them and they're what the app can count from each workout.
+
+### Also added
+
+- **Simulate a clinician visit** in the demo panel: adds sample notes from "Dr. Rivera" so the notes flow
+  can be shown without filling in the tab.
+- The backend (Jev) understands "gym" as a place.
+
+### Things to know
+
+- **VO2 max data.** Fitbit (now Google) estimates VO2 max only from outdoor runs with GPS on. A user who
+  doesn't run, like the one-pager's user who cycles and dances, may never get a reading. The demo's numbers
+  are simulated, and the VO2 max card says "no estimate yet" when there isn't one. Before real use, decide
+  what the app shows for non-runners. Source: [Google Fitbit Help: VO2 max](https://support.google.com/fitbit/answer/14237924).
+- **Videos.** The how-to videos are public YouTube tutorials picked for being short and beginner-friendly,
+  from channels such as IU Health, NASM, Concept2, Children's Hospital Colorado and Spinning. All allow
+  embedding. They should get a clinical review (Sarah), or be replaced by the team's own clips, before real
+  users see them. The list is in `src/lib/moves.ts`.
+- **Photo recognition.** It's simulated: a photo returns a typical set of equipment for that place, and
+  the user corrects it with the chips. The photo never leaves the device. A real version needs a vision
+  model and a decision about where photos are processed.
+- **New MET values.** The new entries (01216, 17358, 02055, 02040, 02048, 02049) were transcribed from the
+  [2024 Adult Compendium](https://pacompendium.com/adult-compendium/) on Oct 28, 2026. Like the rest of
+  `src/lib/activities.ts`, they should be re-checked before anything beyond the demo.
+
 ## Design guidelines
 
 The app is built from the team's design brief and the *PHA App Workflow* doc, including the decisions the
@@ -484,10 +619,8 @@ Still open:
   read better with only the three buttons?
 - Changing a day's plan re-splits every day's target, including past days. Should past days keep the target
   they had?
-- The how-to videos are public YouTube tutorials picked for being short and beginner-friendly. They should
-  get a clinical review, or be replaced by the team's own clips, before real users see them.
-- Photo recognition for equipment is simulated. A real version needs a vision model and a decision about
-  where photos are processed.
+- The how-to videos, simulated photo recognition and Fitbit's VO2 max for non-runners: see *Things to know*
+  under *Changes on Oct 28, 2026*.
 
 Code: `src/state/today.ts`, `src/lib/suggest.ts` (`challengePlan`), `src/lib/plan.ts`,
 `src/components/WeekBar.tsx`, `src/components/TimeOptions.tsx`, `src/components/UserMessage.tsx`,

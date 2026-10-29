@@ -70,11 +70,21 @@ then confirm what was detected, add liked activities (ranked), tell the agent yo
 the first week (every day starts at 10 min). *Set up now* skips the week. Every page has *Back*.
 
 **Equipment, one place at a time.** First *What do you have at home?*, then *Do you go to a gym?* and, if
-yes, *What does your gym have?* On each page the user can **take a photo**, **type a list** ("two dumbbells
-and a mat") or tap chips. The photo and the typed list fill in the chips, which the user can fix. In the
-demo, photo recognition is simulated (a typical set for that place) and the photo stays on the device.
+yes, *What does your gym have?* On each page the user can **upload a photo**, **type a list** ("two dumbbells
+and a mat") or tap chips.
 
-Code: `src/screens/Onboarding.tsx` (`GearPicker`), `src/lib/equipment.ts`
+**Photo analysis (demo).** *Upload a photo* loads a built-in sample photo for that place (a living-room
+corner, or a small gym) instead of opening the camera. The agent then analyzes it: the photo dims while a
+scan line runs over it, boxes with labels appear around each piece of equipment it found, and the agent
+reports in a message what it identified and what it left out (a plant, a water bottle; a mirror, a clock),
+ending with "Did I get it right? Tell me anything I missed or got wrong." A **text box** below takes the
+user's feedback in their own words: "no kettlebell, but I also have a jump rope" removes the kettlebell
+(its box disappears) and adds a jump rope, and the agent replies with what changed and the updated list.
+"Looks right" confirms it; anything it can't match is saved as a note. The chips under the thread always
+show the current list and can be tapped to fix it too.
+
+Code: `src/components/GearPicker.tsx`, `src/data/samplePhotos.ts` (the sample photos and their analysis),
+`src/assets/samples/`, `src/lib/equipment.ts` (`parseEquipment`, `parseEquipmentFeedback`)
 
 ### Today
 
@@ -247,13 +257,18 @@ the agent suggests indoor activities only.
 ### 5. Equipment in onboarding, by photo or text, one place at a time
 
 **What changed:** After the activities page, onboarding asks *What do you have at home?*, then *Do you go
-to a gym?* and, if yes, *What does your gym have?* On each page the user can take a photo, type a list
-("two dumbbells and a mat") or tap chips; the photo and the typed list fill in the chips, which the user
-can fix. Equipment can be changed later in Preferences.
+to a gym?* and, if yes, *What does your gym have?* On each page the user can upload a photo, type a list
+("two dumbbells and a mat") or tap chips. In the demo, *Upload a photo* loads a built-in sample photo; the
+agent analyzes it, draws labeled boxes around the equipment it found, reports the list in a message, and
+takes the user's corrections in a text box ("no kettlebell, but I also have a jump rope"), replying with
+what changed. Equipment can be changed later in Preferences.
 
 **Why:** Asking about each place separately keeps each question small and matches how people think about
 it ("at home I have…"). A photo is quicker than a list for most people; text and chips are there for
-everyone else and for fixing mistakes.
+everyone else. A built-in sample photo makes the demo work the same every time, with no camera and no
+upload, and the boxes and the agent's report show what a real analysis would look like. Corrections are
+typed rather than only tapped because people describe mistakes naturally ("that's not a band, it's a jump
+rope"), and the agent answering back confirms it understood.
 
 ### 6. Suggestions based on the equipment where the user is
 
@@ -314,9 +329,11 @@ guideline is written in them and they're what the app can count from each workou
   from channels such as IU Health, NASM, Concept2, Children's Hospital Colorado and Spinning. All allow
   embedding. They should get a clinical review (Sarah), or be replaced by the team's own clips, before real
   users see them. The list is in `src/lib/moves.ts`.
-- **Photo recognition.** It's simulated: a photo returns a typical set of equipment for that place, and
-  the user corrects it with the chips. The photo never leaves the device. A real version needs a vision
-  model and a decision about where photos are processed.
+- **Photo recognition.** It's simulated: *Upload a photo* loads a built-in sample photo (drawn for the
+  app, in `src/assets/samples/`), and the agent's analysis is scripted to match it (`src/data/samplePhotos.ts`).
+  Nothing is uploaded. The user's typed corrections are read for real (`parseEquipmentFeedback`). A real
+  version needs a vision model returning the same shape (equipment, a box for each, a description) and a
+  decision about where photos are processed.
 - **New MET values.** The new entries (01216, 17358, 02055, 02040, 02048, 02049) were transcribed from the
   [2024 Adult Compendium](https://pacompendium.com/adult-compendium/) on Oct 28, 2026. Like the rest of
   `src/lib/activities.ts`, they should be re-checked before anything beyond the demo.
@@ -610,6 +627,7 @@ later decision changes an earlier one, the earlier row says so instead of being 
 | Oct 28, 2026 | Chat | The Coach tab is renamed **Chat**. The top of every conversation (Chat and Today) says the agent is a machine learning model and may make mistakes. | Clearer name; users should know they're talking to a model that can be wrong. |
 | Oct 28, 2026 | Today, onboarding | **Gym** is a place option. Onboarding asks for equipment at home, then at the gym, by photo, typed list or chips. Suggestions only use equipment where the user is, and strength or interval picks list a circuit built from it. | Equipment-aware plans, like Volt Athletics: a pick the user can't do with what's there is a wasted decision. |
 | Oct 28, 2026 | Today | *Show me how* shares a short how-to video in the conversation, one move at a time. | Some picks (a spin bike, a goblet squat, the salsa basic step) are easier to start once you've seen them done. |
+| Oct 28, 2026 | Onboarding | In the demo, *Upload a photo* loads a built-in sample photo for that place. The agent analyzes it (scan, then labeled boxes), reports what it found and what it left out, and asks if it got it right. The user replies in a text box ("no kettlebell, but I have a jump rope"); the agent updates the list and says what changed. | Works the same in every demo, with no camera or upload. The boxes and the report show what the analysis would do; a typed reply lets people correct it the way they'd say it. |
 
 Still open:
 
@@ -665,7 +683,9 @@ src/
                   streaks and trophies, goal rules, equipment, moves and how-to videos,
                   suggestion ranker, verifier checks, weeks by month
   data/           Demo scenarios: about 6 months of past weeks + this week each (shaped like PMData
-                  exercise logs), sign-in days, equipment and monthly VO2 max estimates
+                  exercise logs), sign-in days, equipment and monthly VO2 max estimates, and the
+                  sample photos' scripted analysis (samplePhotos.ts)
+  assets/samples/ The built-in sample photos for the equipment upload (home, gym)
   services/
     agent.ts        Agent interface; MockAgent (today) and HttpAgent (example for later)
     answers.ts      Grounded answers to the one-tap questions

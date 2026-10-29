@@ -1,0 +1,52 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 320" width="480" height="320">
+  <!-- Sample "photo" for the demo: a corner of a living room set up for exercise. Drawn for this app. -->
+  <defs>
+    <linearGradient id="wall" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#F3EBE0"/><stop offset="1" stop-color="#E7DCCD"/></linearGradient>
+    <linearGradient id="floor" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#C79E78"/><stop offset="1" stop-color="#B08560"/></linearGradient>
+    <linearGradient id="glass" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#DCEBF5"/><stop offset="1" stop-color="#BBD4E6"/></linearGradient>
+    <linearGradient id="mat" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#8A7BE0"/><stop offset="1" stop-color="#6A5ACB"/></linearGradient>
+  </defs>
+  <rect width="480" height="210" fill="url(#wall)"/>
+  <rect y="205" width="480" height="115" fill="url(#floor)"/>
+  <rect y="203" width="480" height="6" fill="#FBF7F1"/>
+  <g stroke="#A7805C" stroke-width="1" opacity=".55">
+    <path d="M0 236H480M0 266H480M0 296H480"/>
+    <path d="M70 209V236M190 209V236M330 209V236M120 236V266M260 236V266M400 236V266M40 266V296M200 266V296M350 266V296M110 296V320M290 296V320"/>
+  </g>
+  <!-- window -->
+  <rect x="34" y="26" width="128" height="134" rx="4" fill="#FFFFFF"/>
+  <rect x="42" y="34" width="112" height="118" fill="url(#glass)"/>
+  <path d="M98 34V152M42 92H154" stroke="#FFFFFF" stroke-width="5"/>
+  <path d="M52 140l30-36 18 20 14-12 30 28z" fill="#A9C8DE" opacity=".7"/>
+  <!-- hook and resistance band -->
+  <rect x="254" y="56" width="16" height="7" rx="3" fill="#7C7468"/>
+  <path d="M262 62c-14 14-16 66-8 92 4 12 13 12 16 0 7-26 5-78-8-92z" fill="none" stroke="#E4572E" stroke-width="6" stroke-linecap="round"/>
+  <rect x="249" y="146" width="10" height="16" rx="3" fill="#2E2E33" transform="rotate(-10 254 154)"/>
+  <rect x="266" y="146" width="10" height="16" rx="3" fill="#2E2E33" transform="rotate(10 271 154)"/>
+  <!-- plant (not equipment) -->
+  <path d="M418 150c-24-26-30-52-18-70 10 18 18 40 18 70zM422 150c4-34 20-56 38-62-4 26-18 46-38 62zM420 150c-6-26-2-52 10-70 6 26 2 50-10 70z" fill="#5E8C4A"/>
+  <path d="M398 150h46l-6 46h-34z" fill="#D9774B"/>
+  <!-- yoga mat on the floor -->
+  <path d="M128 250H318L352 302H92Z" fill="url(#mat)"/>
+  <path d="M92 302H352L350 308H94Z" fill="#4E40A6"/>
+  <ellipse cx="324" cy="250" rx="9" ry="5" fill="#5848B8"/>
+  <!-- kettlebell -->
+  <path d="M48 236c0-16 28-16 28 0" fill="none" stroke="#2B2B30" stroke-width="7" stroke-linecap="round"/>
+  <circle cx="62" cy="254" r="20" fill="#34343A"/>
+  <rect x="44" y="270" width="36" height="6" rx="3" fill="#25252A"/>
+  <path d="M51 247a14 14 0 0 1 10-8" stroke="#6C6C74" stroke-width="3" fill="none" stroke-linecap="round"/>
+  <!-- pair of dumbbells -->
+  <g>
+    <rect x="374" y="259" width="38" height="5" rx="2" fill="#9BA0A8"/>
+    <rect x="366" y="250" width="12" height="23" rx="3" fill="#2F6FD6"/>
+    <rect x="408" y="250" width="12" height="23" rx="3" fill="#2F6FD6"/>
+  </g>
+  <g>
+    <rect x="386" y="285" width="38" height="5" rx="2" fill="#9BA0A8"/>
+    <rect x="378" y="276" width="12" height="23" rx="3" fill="#2F6FD6"/>
+    <rect x="420" y="276" width="12" height="23" rx="3" fill="#2F6FD6"/>
+  </g>
+  <!-- water bottle (not equipment) -->
+  <rect x="200" y="214" width="14" height="30" rx="5" fill="#9FD3C7" opacity=".9"/>
+  <rect x="202" y="208" width="10" height="8" rx="2" fill="#4F9C8A"/>
+</svg>

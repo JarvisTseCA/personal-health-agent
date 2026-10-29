@@ -80,8 +80,12 @@ reports in a message what it identified and what it left out (a plant, a water b
 ending with "Did I get it right? Tell me anything I missed or got wrong." A **text box** below takes the
 user's feedback in their own words: "no kettlebell, but I also have a jump rope" removes the kettlebell
 (its box disappears) and adds a jump rope, and the agent replies with what changed and the updated list.
-"Looks right" confirms it; anything it can't match is saved as a note. The chips under the thread always
-show the current list and can be tapped to fix it too.
+"Looks right" confirms it. **Equipment that isn't in the app's list becomes the user's own tag**: "I also
+have a foam roller and a battle rope" adds *Foam roller* and *Battle rope* tags (shown with a #), and the
+agent says it kept them as the user's own tags. Common misspellings are read too ("dumbell" is dumbbells),
+and amounts are ignored ("dumbbells 5kg"). The chips under the thread always show the current list,
+including the user's own tags, and can be tapped to fix it. Preferences has the same chips plus a box to
+add equipment the same way.
 
 Code: `src/components/GearPicker.tsx`, `src/data/samplePhotos.ts` (the sample photos and their analysis),
 `src/assets/samples/`, `src/lib/equipment.ts` (`parseEquipment`, `parseEquipmentFeedback`)
@@ -261,14 +265,17 @@ to a gym?* and, if yes, *What does your gym have?* On each page the user can upl
 ("two dumbbells and a mat") or tap chips. In the demo, *Upload a photo* loads a built-in sample photo; the
 agent analyzes it, draws labeled boxes around the equipment it found, reports the list in a message, and
 takes the user's corrections in a text box ("no kettlebell, but I also have a jump rope"), replying with
-what changed. Equipment can be changed later in Preferences.
+what changed. Anything typed that isn't in the app's equipment list is added as the user's own tag
+("foam roller"). Equipment can be changed later in Preferences.
 
 **Why:** Asking about each place separately keeps each question small and matches how people think about
 it ("at home I have…"). A photo is quicker than a list for most people; text and chips are there for
 everyone else. A built-in sample photo makes the demo work the same every time, with no camera and no
 upload, and the boxes and the agent's report show what a real analysis would look like. Corrections are
 typed rather than only tapped because people describe mistakes naturally ("that's not a band, it's a jump
-rope"), and the agent answering back confirms it understood.
+rope"), and the agent answering back confirms it understood. Unknown equipment becomes a tag instead of a
+"couldn't match that" reply, because the user knows what they own better than the app's list does; the tag
+is kept and visible, and the agent sees it in its context, even though the ranker can't plan around it yet.
 
 ### 6. Suggestions based on the equipment where the user is
 
@@ -331,7 +338,9 @@ guideline is written in them and they're what the app can count from each workou
   users see them. The list is in `src/lib/moves.ts`.
 - **Photo recognition.** It's simulated: *Upload a photo* loads a built-in sample photo (drawn for the
   app, in `src/assets/samples/`), and the agent's analysis is scripted to match it (`src/data/samplePhotos.ts`).
-  Nothing is uploaded. The user's typed corrections are read for real (`parseEquipmentFeedback`). A real
+  Nothing is uploaded. The user's typed corrections are read for real (`parseEquipmentFeedback`), and
+equipment the user names that isn't in the list is kept as a custom tag (`custom:` ids). Custom tags don't
+yet map to activities, so the ranker can't build workouts around them. A real
   version needs a vision model returning the same shape (equipment, a box for each, a description) and a
   decision about where photos are processed.
 - **New MET values.** The new entries (01216, 17358, 02055, 02040, 02048, 02049) were transcribed from the
@@ -628,6 +637,7 @@ later decision changes an earlier one, the earlier row says so instead of being 
 | Oct 28, 2026 | Today, onboarding | **Gym** is a place option. Onboarding asks for equipment at home, then at the gym, by photo, typed list or chips. Suggestions only use equipment where the user is, and strength or interval picks list a circuit built from it. | Equipment-aware plans, like Volt Athletics: a pick the user can't do with what's there is a wasted decision. |
 | Oct 28, 2026 | Today | *Show me how* shares a short how-to video in the conversation, one move at a time. | Some picks (a spin bike, a goblet squat, the salsa basic step) are easier to start once you've seen them done. |
 | Oct 28, 2026 | Onboarding | In the demo, *Upload a photo* loads a built-in sample photo for that place. The agent analyzes it (scan, then labeled boxes), reports what it found and what it left out, and asks if it got it right. The user replies in a text box ("no kettlebell, but I have a jump rope"); the agent updates the list and says what changed. | Works the same in every demo, with no camera or upload. The boxes and the report show what the analysis would do; a typed reply lets people correct it the way they'd say it. |
+| Oct 28, 2026 | Onboarding, Preferences | Equipment the user types that isn't in the app's list is added as their own tag (shown with a #), not saved as a note. Misspellings like "dumbell" match, amounts like "5kg" are ignored, and a generic word with a modifier ("battle rope", "foam mat") becomes a tag rather than matching a listed item. | The user's answer shouldn't hit a dead end. A tag keeps what they said, visibly, and they can tap it off. |
 
 Still open:
 

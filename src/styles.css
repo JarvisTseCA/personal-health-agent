@@ -645,6 +645,8 @@ input[type="range"] { width: 100%; accent-color: var(--ink); height: 32px; }
 .gear-q { font-size: var(--t-lg); font-weight: 700; margin-bottom: 10px; }
 /* Equipment photo: upload (demo sample) → analysis with boxes → the agent's report → the user's reply */
 .gear { display: flex; flex-direction: column; }
+.chip.chip-custom[aria-pressed="true"] { background: var(--ink-2); border-color: var(--ink-2); }
+.chip.chip-custom::before { content: "#"; opacity: .6; margin-right: -4px; }
 .gear-camera { align-self: flex-start; margin-bottom: 4px; }
 .gear-shot { position: relative; margin: 0; width: 100%; aspect-ratio: 3 / 2; border-radius: 14px; overflow: hidden; background: var(--wash); }
 .gear-shot img { width: 100%; height: 100%; display: block; transition: filter .3s; }

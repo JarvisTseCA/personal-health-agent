@@ -2,7 +2,8 @@ import { Sheet } from "../components/Sheet";
 import { ArrowIcon, CloseIcon } from "../components/Icons";
 import { getFamily, PICKABLE } from "../lib/activities";
 import { DECLINE_LABEL, type Access } from "../lib/suggest";
-import { EQUIPMENT, type EquipmentPlace } from "../lib/equipment";
+import { EQUIPMENT, equipmentName, isCustom, parseEquipmentWithCustom, type EquipmentPlace } from "../lib/equipment";
+import { OtherInput } from "../components/OtherInput";
 import { useStore } from "../state/store";
 
 const ACCESS: Array<[Access, string]> = [["have", "Have it"], ["sometimes", "Sometimes"], ["no", "Not right now"]];
@@ -151,23 +152,33 @@ function Equipment() {
     const cur = (place === "home" ? eq.home : eq.gym) ?? [];
     set(place, cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id]);
   };
+  /** Typed equipment: known items are selected, anything else is added as the user's own tag. */
+  const typed = (place: EquipmentPlace, text: string) => {
+    const cur = (place === "home" ? eq.home : eq.gym) ?? [];
+    const found = parseEquipmentWithCustom(text);
+    if (found.length) set(place, [...cur, ...found.filter((id) => !cur.includes(id))]);
+  };
+  const chips = (place: EquipmentPlace, cur: string[]) => (
+    <>
+      <div className="chips">
+        {[...EQUIPMENT.map((e) => e.id), ...cur.filter(isCustom)].map((id) => (
+          <button key={id} className={`chip${isCustom(id) ? " chip-custom" : ""}`} aria-pressed={cur.includes(id)} onClick={() => toggle(place, id)}>{equipmentName(id)}</button>
+        ))}
+      </div>
+      <OtherInput placeholder="Add other equipment, e.g. foam roller" label={`Add equipment ${place === "home" ? "at home" : "at the gym"}`} onSubmit={(t) => typed(place, t)} />
+    </>
+  );
   return (
     <div className="field">
       <label className="lbl">Equipment</label>
       <p className="xs muted" style={{ marginBottom: 8 }}>Workouts are built from what's where you exercise that day.</p>
       <p className="small" style={{ fontWeight: 700, margin: "8px 0 6px" }}>At home</p>
-      <div className="chips">
-        {EQUIPMENT.map((e) => <button key={e.id} className="chip" aria-pressed={eq.home.includes(e.id)} onClick={() => toggle("home", e.id)}>{e.name}</button>)}
-      </div>
+      {chips("home", eq.home)}
       <div className="switch-row" style={{ marginTop: 14 }}>
         <b className="small">At the gym</b>
         <button className="switch" role="switch" aria-checked={eq.gym !== null} aria-label="I use a gym" onClick={() => set("gym", eq.gym === null ? [] : null)} />
       </div>
-      {eq.gym !== null ? (
-        <div className="chips">
-          {EQUIPMENT.map((e) => <button key={e.id} className="chip" aria-pressed={eq.gym!.includes(e.id)} onClick={() => toggle("gym", e.id)}>{e.name}</button>)}
-        </div>
-      ) : <p className="xs muted">No gym. Turn this on to add one.</p>}
+      {eq.gym !== null ? chips("gym", eq.gym) : <p className="xs muted">No gym. Turn this on to add one.</p>}
     </div>
   );
 }

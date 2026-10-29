@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { PERSONAS } from "../data/mockFitbit";
 import { getFamily, getVariant, settingOf } from "./activities";
-import { EQUIPMENT, parseEquipment, parseEquipmentFeedback } from "./equipment";
+import { customLabel, EQUIPMENT, equipmentName, parseEquipment, parseEquipmentFeedback, parseEquipmentWithCustom } from "./equipment";
 import { SAMPLE_PHOTO_SIZE, SAMPLE_PHOTOS } from "../data/samplePhotos";
 import { howTos, movesFor } from "./moves";
 import { goalOffer } from "./goal";
@@ -126,7 +126,21 @@ describe("equipment", () => {
     expect(parseEquipmentFeedback("I don't have a kettlebell and I have a treadmill")).toMatchObject({ add: ["treadmill"], remove: ["kettlebell"] });
     expect(parseEquipmentFeedback("that's not a resistance band, it's a jump rope")).toMatchObject({ add: ["jump-rope"], remove: ["resistance-bands"] });
     expect(parseEquipmentFeedback("Yes, that's right").confirmed).toBe(true);
-    expect(parseEquipmentFeedback("the plant is fake")).toEqual({ add: [], remove: [], confirmed: false });
+    expect(parseEquipmentFeedback("thanks, that's all")).toEqual({ add: [], remove: [], confirmed: false });
+  });
+
+  it("reads misspellings, and keeps anything not in the list as the user's own tag", () => {
+    expect(parseEquipmentFeedback("dumbell 5kg")).toMatchObject({ add: ["dumbbells"], remove: [] });
+    expect(parseEquipmentFeedback("I also have a foam roller")).toMatchObject({ add: ["custom:Foam roller"] });
+    expect(parseEquipmentFeedback("a step platform and a medicine ball too").add).toEqual(["custom:Step platform", "custom:Medicine ball"]);
+    expect(parseEquipmentFeedback("no foam roller")).toMatchObject({ add: [], remove: ["custom:Foam roller"] });
+    expect(parseEquipmentFeedback("that's not a resistance band, it's a slam ball")).toMatchObject({ add: ["custom:Slam ball"], remove: ["resistance-bands"] });
+    expect(parseEquipmentWithCustom("two dumbbells and an ab wheel")).toEqual(["dumbbells", "custom:Ab wheel"]);
+    expect(equipmentName("custom:Ab wheel")).toBe("Ab wheel");
+    expect(customLabel("5 kg")).toBeNull();
+    expect(parseEquipmentWithCustom("a foam roller and a battle rope")).toEqual(["custom:Foam roller", "custom:Battle rope"]);
+    expect(parseEquipmentWithCustom("a weight bench and a cable machine").sort()).toEqual(["bench", "weight-machines"]);
+    expect(parseEquipmentWithCustom("a jump rope and a mat").sort()).toEqual(["jump-rope", "yoga-mat"]);
   });
 
   it("the sample photos' analysis uses real equipment ids and stays inside the picture", () => {

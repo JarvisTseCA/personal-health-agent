@@ -1,0 +1,52 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 320" width="480" height="320">
+  <!-- Sample "photo" for the demo: the cardio and weights corner of a small gym. Drawn for this app. -->
+  <defs>
+    <linearGradient id="gwall" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#E3E5EB"/><stop offset="1" stop-color="#D3D6DE"/></linearGradient>
+    <linearGradient id="gfloor" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#5B5E68"/><stop offset="1" stop-color="#474A53"/></linearGradient>
+  </defs>
+  <rect width="480" height="230" fill="url(#gwall)"/>
+  <rect y="58" width="480" height="14" fill="#2F8F7A" opacity=".85"/>
+  <rect y="226" width="480" height="94" fill="url(#gfloor)"/>
+  <g stroke="#3F424A" stroke-width="1.2"><path d="M0 262H480M0 296H480M120 226V320M240 226V320M360 226V320"/></g>
+  <!-- wall clock and mirror (not equipment) -->
+  <circle cx="232" cy="34" r="16" fill="#FFFFFF" stroke="#8B8F99" stroke-width="3"/>
+  <path d="M232 34V24M232 34l7 5" stroke="#3A3D45" stroke-width="2.4" stroke-linecap="round"/>
+  <rect x="300" y="86" width="150" height="72" rx="4" fill="#C9D3DE" stroke="#A9B0BA" stroke-width="3"/>
+  <path d="M320 150l30-56M345 150l30-56" stroke="#E6ECF2" stroke-width="6" opacity=".7"/>
+  <!-- treadmill -->
+  <path d="M120 156l12 96" stroke="#30333A" stroke-width="7" stroke-linecap="round"/>
+  <rect x="98" y="140" width="56" height="22" rx="5" fill="#30333A"/>
+  <rect x="106" y="145" width="26" height="10" rx="2" fill="#7FD1B9"/>
+  <path d="M20 246H150L162 270H8Z" fill="#2A2C32"/>
+  <path d="M26 250H146L154 264H16Z" fill="#41444C"/>
+  <rect x="8" y="270" width="154" height="6" rx="2" fill="#1F2126"/>
+  <!-- stationary bike -->
+  <circle cx="226" cy="246" r="23" fill="#30333A"/>
+  <circle cx="226" cy="246" r="9" fill="#9BA0A8"/>
+  <path d="M226 246L258 198M214 182L226 246M258 198H272M204 178h20" stroke="#30333A" stroke-width="7" stroke-linecap="round"/>
+  <rect x="252" y="188" width="28" height="9" rx="4" fill="#E4572E"/>
+  <path d="M198 268H278" stroke="#1F2126" stroke-width="7" stroke-linecap="round"/>
+  <!-- dumbbell rack -->
+  <rect x="330" y="182" width="128" height="8" rx="2" fill="#30333A"/>
+  <rect x="330" y="212" width="128" height="8" rx="2" fill="#30333A"/>
+  <path d="M336 190v40M452 190v40" stroke="#30333A" stroke-width="6"/>
+  <g fill="#1F2126">
+    <rect x="340" y="170" width="8" height="14" rx="2"/><rect x="360" y="170" width="8" height="14" rx="2"/>
+    <rect x="378" y="168" width="9" height="16" rx="2"/><rect x="400" y="168" width="9" height="16" rx="2"/>
+    <rect x="418" y="166" width="10" height="18" rx="2"/><rect x="440" y="166" width="10" height="18" rx="2"/>
+    <rect x="342" y="200" width="10" height="14" rx="2"/><rect x="366" y="200" width="10" height="14" rx="2"/>
+    <rect x="386" y="198" width="11" height="16" rx="2"/><rect x="412" y="198" width="11" height="16" rx="2"/>
+  </g>
+  <g fill="#9BA0A8"><rect x="348" y="175" width="12" height="4"/><rect x="387" y="174" width="13" height="4"/><rect x="428" y="173" width="12" height="4"/><rect x="352" y="205" width="14" height="4"/><rect x="397" y="204" width="15" height="4"/></g>
+  <!-- weight bench -->
+  <rect x="128" y="282" width="96" height="12" rx="5" fill="#B53A3A"/>
+  <path d="M140 294v14M212 294v14M134 308h14M206 308h14" stroke="#30333A" stroke-width="5" stroke-linecap="round"/>
+  <!-- rowing machine -->
+  <path d="M262 300H430" stroke="#30333A" stroke-width="7" stroke-linecap="round"/>
+  <circle cx="440" cy="286" r="19" fill="#2A2C32"/>
+  <circle cx="440" cy="286" r="7" fill="#9BA0A8"/>
+  <rect x="300" y="286" width="30" height="10" rx="4" fill="#1F2126"/>
+  <path d="M410 292l-22-8" stroke="#30333A" stroke-width="4" stroke-linecap="round"/>
+  <rect x="380" y="279" width="16" height="6" rx="3" fill="#E4572E"/>
+  <path d="M262 300v10M430 300v10" stroke="#1F2126" stroke-width="5" stroke-linecap="round"/>
+</svg>

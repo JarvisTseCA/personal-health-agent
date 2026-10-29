@@ -10,7 +10,8 @@
  * ("Can't access it" on a pick fixes that later), and each day starts at 10 min.
  */
 import { useMemo, useState } from "react";
-import { BackIcon, CameraIcon, WatchIcon } from "../components/Icons";
+import { BackIcon, WatchIcon } from "../components/Icons";
+import { GearPicker } from "../components/GearPicker";
 import { Flame } from "../components/Rewards";
 import { OtherInput } from "../components/OtherInput";
 import { matchActivity, parsePlanChanges, parseYesNo } from "../lib/freeText";
@@ -20,7 +21,6 @@ import { DAY_NAMES_LONG } from "../lib/met";
 import { SLOT_LABEL, SLOT_MINUTES, type WeekPlan } from "../lib/plan";
 import { TimeOptions } from "../components/TimeOptions";
 import type { Access } from "../lib/suggest";
-import { EQUIPMENT, equipmentName, listEquipment, parseEquipment, simulatePhotoDetection, type EquipmentPlace } from "../lib/equipment";
 import { DEFAULT_PROFILE, useStore } from "../state/store";
 
 type Step = "welcome" | "fitbit" | "health" | "path" | "observing" | "confirm" | "enjoy" | "home-gear" | "gym-gear" | "plan";
@@ -323,7 +323,7 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
         <>
           <div className="grow">
             <h1>What do you have at home?</h1>
-            <p className="lead">Snap a photo of where you'd work out, or tell me in a few words. I'll only suggest workouts you can do with what's there.</p>
+            <p className="lead">Upload a photo of where you'd work out and I'll find the equipment in it, or tell me in a few words. I'll only suggest workouts you can do with what's there.</p>
             <GearPicker place="home" value={homeGear} onChange={setHomeGear} onNote={(t) => note(t, "equipment at home")} />
           </div>
           <div className="actions">
@@ -382,64 +382,3 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
   );
 }
 
-/**
- * Equipment for one place: a photo (recognition is simulated in the demo),
- * typed text, or tapping chips. The photo and text fill in the chips, which
- * the user can fix.
- */
-function GearPicker({ place, value, onChange, onNote }: { place: EquipmentPlace; value: string[]; onChange: (ids: string[]) => void; onNote: (text: string) => void }) {
-  const [photo, setPhoto] = useState<string | null>(null);
-  const [looking, setLooking] = useState(false);
-  const [hint, setHint] = useState<string | null>(null);
-  const items = [...EQUIPMENT.filter((e) => e.usual.includes(place)), ...EQUIPMENT.filter((e) => !e.usual.includes(place))];
-  const toggle = (id: string) => onChange(value.includes(id) ? value.filter((x) => x !== id) : [...value, id]);
-  const add = (ids: string[]) => onChange([...value, ...ids.filter((id) => !value.includes(id))]);
-
-  const onPhoto = (file: File | undefined) => {
-    if (!file) return;
-    setPhoto(URL.createObjectURL(file));
-    setLooking(true);
-    setHint(null);
-    setTimeout(() => {
-      const found = simulatePhotoDetection(place);
-      add(found);
-      setLooking(false);
-      setHint(`I spotted ${listEquipment(found)}. Tap anything I got wrong.`);
-    }, 900);
-  };
-  const typed = (text: string) => {
-    const found = parseEquipment(text);
-    if (found.length) {
-      add(found);
-      setHint(`Added ${listEquipment(found)}.`);
-    } else {
-      onNote(text);
-      setHint("I didn't recognize that, so I've noted it. Tap the closest match below.");
-    }
-  };
-
-  return (
-    <div className="gear">
-      <div className="gear-photo">
-        <label className="btn btn-quiet gear-camera">
-          <CameraIcon />{photo ? "Take another photo" : "Take a photo"}
-          <input type="file" accept="image/*" capture="environment" className="sr-only" onChange={(e) => onPhoto(e.target.files?.[0])} />
-        </label>
-        {photo && (
-          <div className="gear-shot">
-            <img src={photo} alt={`Your photo of your ${place === "home" ? "home workout space" : "gym"}`} />
-            {looking && <span className="gear-looking">Looking…</span>}
-          </div>
-        )}
-      </div>
-      <OtherInput placeholder={place === "home" ? "Or type it: e.g. two dumbbells and a mat" : "Or type it: e.g. treadmills, spin bikes, free weights"} onSubmit={typed} hint={hint} />
-      <p className="xs muted" style={{ margin: "14px 0 8px" }}>{value.length ? `${value.length} selected: ${value.map(equipmentName).join(", ")}` : "Tap what you have"}</p>
-      <div className="chips">
-        {items.map((e) => (
-          <button key={e.id} className="chip" aria-pressed={value.includes(e.id)} onClick={() => toggle(e.id)}>{e.name}</button>
-        ))}
-      </div>
-      <p className="xs muted" style={{ marginTop: 10 }}>Demo: photo recognition is simulated and the photo stays on this device.</p>
-    </div>
-  );
-}

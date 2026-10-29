@@ -59,15 +59,38 @@ export function parseEquipment(text: string): string[] {
   return found;
 }
 
+const NEGATION = /\b(no|not|don't|dont|do not|doesn't|doesnt|isn't|isnt|aren't|arent|never|without|remove|delete|drop|wrong|isn't there|not there|gone|sold|broken)\b/;
+const CONFIRM = /\b(yes|yep|yeah|correct|right|looks good|looks right|that's it|thats it|perfect|exactly|all good|spot on)\b/;
+
+export interface EquipmentFeedback {
+  add: string[];
+  remove: string[];
+  /** The user said the analysis was right and named nothing to change */
+  confirmed: boolean;
+}
+
 /**
- * Demo stand-in for photo recognition. The demo has no vision model, so a
- * photo returns a typical set for that place; the user fixes it with the
- * chips. Nothing is uploaded. Swap this for a real model call later.
+ * The user's reply to the agent's photo analysis, e.g. "no kettlebell, but
+ * I also have a jump rope" → remove kettlebell, add jump rope.
+ *
+ * The text is split into clauses ("but", "also", "plus", commas, "and I…").
+ * In a clause with a negation ("no", "don't have", "isn't there", "wrong"),
+ * every item named is removed; in any other clause it's added ("you missed
+ * the jump rope", "there's also a bench").
  */
-export function simulatePhotoDetection(place: EquipmentPlace): string[] {
-  return place === "home"
-    ? ["dumbbells", "yoga-mat", "resistance-bands"]
-    : ["treadmill", "stationary-bike", "elliptical", "rowing-machine", "dumbbells", "bench", "weight-machines"];
+export function parseEquipmentFeedback(text: string): EquipmentFeedback {
+  const t = text.toLowerCase().replace(/[’']/g, "'");
+  const clauses = t.split(/\bbut\b|\bhowever\b|\balso\b|\bplus\b|\bthough\b|[,;.!?]|\band (?=i\b|i'|we\b|there\b|it's\b|that's\b|you\b)/);
+  const add: string[] = [];
+  const remove: string[] = [];
+  for (const c of clauses) {
+    const ids = parseEquipment(c);
+    if (!ids.length) continue;
+    const target = NEGATION.test(c) ? remove : add;
+    for (const id of ids) if (!target.includes(id)) target.push(id);
+  }
+  const clean = add.filter((id) => !remove.includes(id));
+  return { add: clean, remove, confirmed: clean.length === 0 && remove.length === 0 && CONFIRM.test(t) };
 }
 
 /** "dumbbells, a yoga mat and resistance bands" */

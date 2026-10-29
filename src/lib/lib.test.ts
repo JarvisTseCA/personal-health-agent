@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { PERSONAS } from "../data/mockFitbit";
 import { getFamily, getVariant, settingOf } from "./activities";
-import { parseEquipment } from "./equipment";
+import { EQUIPMENT, parseEquipment, parseEquipmentFeedback } from "./equipment";
+import { SAMPLE_PHOTO_SIZE, SAMPLE_PHOTOS } from "../data/samplePhotos";
 import { howTos, movesFor } from "./moves";
 import { goalOffer } from "./goal";
 import { runsOf, streakOf, trophyEarned } from "./rewards";
@@ -116,6 +117,28 @@ describe("equipment", () => {
     expect(parseEquipment("two dumbbells, a yoga mat and a spin bike").sort()).toEqual(["dumbbells", "stationary-bike", "yoga-mat"]);
     expect(parseEquipment("kettle bell + resistance bands").sort()).toEqual(["kettlebell", "resistance-bands"]);
     expect(parseEquipment("nothing really")).toEqual([]);
+  });
+
+  it("reads the user's feedback on the photo analysis", () => {
+    expect(parseEquipmentFeedback("no kettlebell, but I also have a jump rope")).toEqual({ add: ["jump-rope"], remove: ["kettlebell"], confirmed: false });
+    expect(parseEquipmentFeedback("you missed the pull-up bar")).toMatchObject({ add: ["pullup-bar"], remove: [] });
+    expect(parseEquipmentFeedback("There's no bench and no rower").remove.sort()).toEqual(["bench", "rowing-machine"]);
+    expect(parseEquipmentFeedback("I don't have a kettlebell and I have a treadmill")).toMatchObject({ add: ["treadmill"], remove: ["kettlebell"] });
+    expect(parseEquipmentFeedback("that's not a resistance band, it's a jump rope")).toMatchObject({ add: ["jump-rope"], remove: ["resistance-bands"] });
+    expect(parseEquipmentFeedback("Yes, that's right").confirmed).toBe(true);
+    expect(parseEquipmentFeedback("the plant is fake")).toEqual({ add: [], remove: [], confirmed: false });
+  });
+
+  it("the sample photos' analysis uses real equipment ids and stays inside the picture", () => {
+    const ids = new Set(EQUIPMENT.map((e) => e.id));
+    for (const photo of Object.values(SAMPLE_PHOTOS)) {
+      expect(photo.detections.length).toBeGreaterThan(2);
+      for (const d of photo.detections) {
+        expect(ids.has(d.id)).toBe(true);
+        const [x, y, w, h] = d.box;
+        expect(x >= 0 && y >= 0 && x + w <= SAMPLE_PHOTO_SIZE.w && y + h <= SAMPLE_PHOTO_SIZE.h).toBe(true);
+      }
+    }
   });
 
   it("only suggests equipment that's where the user is", () => {

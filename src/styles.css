@@ -643,11 +643,27 @@ input[type="range"] { width: 100%; accent-color: var(--ink); height: 32px; }
 .welcome-vo2 { margin: 28px 0 30px; display: flex; flex-direction: column; gap: 4px; }
 .welcome-vo2-k { font-family: var(--font-display); font-weight: 800; color: var(--good); font-size: var(--t-sm); }
 .gear-q { font-size: var(--t-lg); font-weight: 700; margin-bottom: 10px; }
-.gear-photo { display: flex; flex-direction: column; gap: 10px; margin-bottom: 4px; }
-.gear-camera { align-self: flex-start; cursor: pointer; }
-.gear-shot { position: relative; width: 100%; max-height: 180px; border-radius: 14px; overflow: hidden; background: var(--wash); }
-.gear-shot img { width: 100%; height: 180px; object-fit: cover; display: block; }
-.gear-looking { position: absolute; left: 10px; bottom: 10px; background: #1f1b3acc; color: #fff; font-size: var(--t-xs); font-weight: 700; border-radius: 8px; padding: 4px 8px; }
+/* Equipment photo: upload (demo sample) → analysis with boxes → the agent's report → the user's reply */
+.gear { display: flex; flex-direction: column; }
+.gear-camera { align-self: flex-start; margin-bottom: 4px; }
+.gear-shot { position: relative; margin: 0; width: 100%; aspect-ratio: 3 / 2; border-radius: 14px; overflow: hidden; background: var(--wash); }
+.gear-shot img { width: 100%; height: 100%; display: block; transition: filter .3s; }
+.gear-shot.is-uploading img { filter: blur(6px) saturate(.6); }
+.gear-shot.is-analyzing img { filter: saturate(.75) brightness(.92); }
+.gear-scan { position: absolute; left: 0; right: 0; top: 0; height: 26%; background: linear-gradient(180deg, transparent, #7FD1B955 70%, #2F8F7A); border-bottom: 2px solid #2F8F7A; animation: gear-scan 1.4s ease-in-out infinite alternate; }
+@keyframes gear-scan { from { transform: translateY(-100%); } to { transform: translateY(290%); } }
+.gear-box { position: absolute; border: 2px solid #2F8F7A; border-radius: 6px; background: #2F8F7A14; animation: gear-box-in .35s ease-out both; }
+.gear-box em { position: absolute; left: -2px; top: -18px; font-style: normal; font-size: 10px; font-weight: 700; line-height: 16px; color: #fff; background: #2F8F7A; border-radius: 4px; padding: 0 5px; white-space: nowrap; }
+.gear-box:nth-child(3) { animation-delay: .1s; } .gear-box:nth-child(4) { animation-delay: .2s; } .gear-box:nth-child(5) { animation-delay: .3s; } .gear-box:nth-child(6) { animation-delay: .4s; }
+@keyframes gear-box-in { from { opacity: 0; transform: scale(1.08); } }
+.gear-caption { margin-top: 6px; }
+.gear-status { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); background: #1f1b3acc; color: #fff; font-size: var(--t-xs); font-weight: 700; border-radius: 8px; padding: 3px 8px; }
+.gear-progress { height: 4px; border-radius: 2px; background: var(--gap); overflow: hidden; margin-top: 8px; }
+.gear-progress span { display: block; height: 100%; background: var(--ink); animation: gear-progress .7s ease-out forwards; }
+@keyframes gear-progress { from { width: 0; } to { width: 100%; } }
+.gear-thread { display: flex; flex-direction: column; gap: 8px; margin: 12px 0 4px; }
+.gear-thread .msg { font-size: var(--t-sm); max-width: 92%; }
+@media (prefers-reduced-motion: reduce) { .gear-scan, .gear-box, .gear-progress span { animation: none; } }
 .observe-days { list-style: none; margin: 24px 0 0; padding: 0; display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
 .observe-days li { display: flex; flex-direction: column; align-items: center; gap: 6px; font-size: 11px; font-weight: 700; color: var(--ink-3); }
 .observe-days li.now { color: var(--ink); }

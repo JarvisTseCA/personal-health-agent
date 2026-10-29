@@ -6,7 +6,8 @@
  *         of 2.5 MET-hours. If that's above the current goal, offer it
  *         (capped at the weekly upper limit, once one is set).
  *  Lower: below 50% of the current goal 3 weeks in a row → offer 50% of it.
- *  A goal set by a clinician is never changed automatically.
+ * The user always decides: nothing changes until they tap. Clinicians share
+ * suggestions in person (and as notes for the coach); they don't set goals.
  */
 export const RAISE_STEP = 2.5;
 export const RAISE_WINDOW = 2;
@@ -30,9 +31,8 @@ export interface GoalOffer {
 const EPS = 1e-9;
 
 /** `pastTotals` = completed weeks' MET-hours, oldest first. */
-export function goalOffer(current: number, pastTotals: number[], clinicianSet = false): GoalOffer {
+export function goalOffer(current: number, pastTotals: number[]): GoalOffer {
   const keep = (reason: string): GoalOffer => ({ kind: "keep", from: current, to: current, reason });
-  if (clinicianSet) return keep("Your clinician set this goal, so it only changes at your next visit.");
 
   const lastLower = pastTotals.slice(-LOWER_WINDOW);
   if (lastLower.length === LOWER_WINDOW && lastLower.every((t) => t + EPS < current * LOWER_THRESHOLD)) {

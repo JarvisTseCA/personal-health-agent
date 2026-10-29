@@ -5,11 +5,12 @@
  * words, but the activity, minutes and MET-hours come from here, so they are
  * explainable ("Why this?") and the backend always has a safe fallback.
  */
-import { getFamily, settingOf, type ActivityFamily, type ActivityKind, type ActivityVariant } from "./activities";
+import { equipmentOf, getFamily, settingOf, type ActivityFamily, type ActivityKind, type ActivityVariant } from "./activities";
+import { equipmentName } from "./equipment";
 import { countsTowardGoal, creditFor, metHours, VIGOROUS_MET } from "./met";
 
 export type Access = "have" | "sometimes" | "no";
-export type Place = "home" | "office" | "outside" | "traveling" | "other";
+export type Place = "home" | "gym" | "office" | "outside" | "traveling" | "other";
 export type Energy = "challenge" | "normal" | "low";
 
 export type DeclineReason = "no-time" | "tired" | "not-mood" | "recent" | "no-access" | "weather" | "hurts" | "other";
@@ -21,7 +22,7 @@ export interface Suggestion {
   met: number;
   /** MET-hours toward the goal */
   credit: number;
-  /** For light activity that earns a medal but no goal credit */
+  /** For light activity that gets you moving but earns no goal credit */
   rawMetHours: number;
   reasons: string[];
   score: number;
@@ -46,6 +47,11 @@ export interface SuggestInput {
   maxSessionMin: number | null;
   minutes: number;
   place: Place;
+  /**
+   * Equipment where the user is exercising today. Leave out when unknown
+   * (older profiles): then nothing is filtered by equipment.
+   */
+  equipmentHere?: string[];
   energy: Energy;
   /** A family id the user said they're in the mood for, or "surprise" */
   mood: string;
@@ -79,8 +85,18 @@ function durationChoices(minutes: number, cap: number | null): number[] {
   return ds.length ? ds : limit > 0 ? [limit] : [];
 }
 
+/** Can this be done where the user is today, with what's there? */
+export function fitsPlace(f: ActivityFamily, v: ActivityVariant, place: Place, equipmentHere?: string[]): boolean {
+  // At the gym, suggest what happens inside it.
+  if (place === "gym" && settingOf(f, v) === "outdoor") return false;
+  if (!equipmentHere) return true;
+  const needs = equipmentOf(f, v);
+  return needs.length === 0 || needs.some((e) => equipmentHere.includes(e));
+}
+
 function allowed(f: ActivityFamily, v: ActivityVariant, input: SuggestInput): boolean {
   if (input.noVigorous && v.met >= VIGOROUS_MET) return false;
+  if (!fitsPlace(f, v, input.place, input.equipmentHere)) return false;
   const c = input.constraint;
   if (c?.indoorOnly && settingOf(f, v) === "outdoor") return false;
   if (c?.maxMet !== undefined && v.met >= c.maxMet) return false;
@@ -185,6 +201,13 @@ function scoreOne(f: ActivityFamily, v: ActivityVariant, d: number, input: Sugge
   if (moodDecline) score -= 2.5;
 
   if (input.access[f.id] === "sometimes") score -= 0.7;
+
+  // Equipment where the user is: prefer the variant that uses it.
+  const uses = equipmentOf(f, v).filter((e) => input.equipmentHere?.includes(e));
+  if (uses.length) {
+    score += 0.6;
+    reasons.splice(1, 0, `Uses the ${equipmentName(uses[0]).toLowerCase()}${input.place === "gym" ? " at your gym" : input.place === "home" ? " you have at home" : ""}`);
+  }
   if (input.place === "traveling" && f.needs) score -= 2;
 
   if (input.energy === "low") {
@@ -217,7 +240,7 @@ function deskOptions(): SuggestResult {
     const v = f.variants.find((x) => x.id === vid)!;
     return {
       familyId: f.id, variantId: v.id, durationMin: d, met: v.met, credit: creditFor(v.met, d), rawMetHours: metHours(v.met, d),
-      reasons: ["Works at your desk", "Earns today's bronze"], score: 0, pattern,
+      reasons: ["Works at your desk", "Every bit of movement helps"], score: 0, pattern,
     } satisfies Suggestion;
   });
   return { lead: opts[0], backups: opts.slice(1), desk: true };

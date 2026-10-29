@@ -57,6 +57,7 @@ ENERGY_TEXT = {
 
 PLACE_TEXT = {
     "home": "at home",
+    "gym": "at the gym",
     "office": "at the office",
     "outside": "outside",
     "traveling": "traveling",

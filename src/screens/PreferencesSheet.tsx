@@ -2,6 +2,7 @@ import { Sheet } from "../components/Sheet";
 import { ArrowIcon, CloseIcon } from "../components/Icons";
 import { getFamily, PICKABLE } from "../lib/activities";
 import { DECLINE_LABEL, type Access } from "../lib/suggest";
+import { EQUIPMENT, type EquipmentPlace } from "../lib/equipment";
 import { useStore } from "../state/store";
 
 const ACCESS: Array<[Access, string]> = [["have", "Have it"], ["sometimes", "Sometimes"], ["no", "Not right now"]];
@@ -21,7 +22,7 @@ export function PreferencesSheet({ onClose, openClinician }: { onClose: () => vo
   return (
     <Sheet title="Preferences" onClose={onClose}>
       <h2>Preferences</h2>
-      <p className="muted small">The coach only suggests what's on this list, favorite first.</p>
+      <p className="muted small">The agent only suggests what's on this list, favorite first.</p>
 
       <div className="field">
         <label className="lbl">Activities you enjoy</label>
@@ -64,8 +65,25 @@ export function PreferencesSheet({ onClose, openClinician }: { onClose: () => vo
         )}
       </div>
 
+      <Equipment />
+
+      {state.clinician.note.trim() && (
+        <div className="field">
+          <label className="lbl">From your clinician</label>
+          <div className="clin-note">
+            <p className="xs muted" style={{ marginBottom: 4 }}>
+              {[state.clinician.name, state.clinician.role].filter(Boolean).join(", ") || "Your clinician"}
+              {state.clinician.updated ? `, ${new Date(state.clinician.updated).toLocaleDateString(undefined, { month: "short", day: "numeric" })}` : ""}
+            </p>
+            <p className="small" style={{ whiteSpace: "pre-wrap" }}>{state.clinician.note}</p>
+          </div>
+          <p className="xs muted" style={{ marginTop: 6 }}>The agent uses these notes as context. They don't change your goal: you decide that.</p>
+          <button className="btn btn-ghost small-btn" style={{ marginTop: 4 }} onClick={() => dispatch({ type: "forgetClinicianNotes" })}>Remove these notes</button>
+        </div>
+      )}
+
       <div className="field">
-        <label className="lbl">What the coach remembers</label>
+        <label className="lbl">What the agent remembers</label>
         {state.declines.length + state.notes.length === 0 ? (
           <p className="small muted">Nothing yet. When you say "not today" or type your own answer, it shows up here.</p>
         ) : (
@@ -110,7 +128,7 @@ export function PreferencesSheet({ onClose, openClinician }: { onClose: () => vo
         <div className="switch-row">
           <div>
             <b className="small">Clinician</b>
-            <p className="xs muted">At a visit, hand your phone to your clinician to set your goals</p>
+            <p className="xs muted">At a visit, hand your phone to your clinician to review your summary and leave notes</p>
           </div>
           <button className="btn btn-quiet small-btn" onClick={openClinician}>Open</button>
         </div>
@@ -121,5 +139,35 @@ export function PreferencesSheet({ onClose, openClinician }: { onClose: () => vo
         <button className="btn btn-primary" onClick={onClose}>Done</button>
       </div>
     </Sheet>
+  );
+}
+
+/** Equipment at home and at the gym: tap to add or remove. */
+function Equipment() {
+  const { state, dispatch } = useStore();
+  const eq = state.profile.equipment ?? { home: [], gym: [] };
+  const set = (place: EquipmentPlace, ids: string[] | null) => dispatch({ type: "setEquipment", equipment: { ...eq, [place]: ids } });
+  const toggle = (place: EquipmentPlace, id: string) => {
+    const cur = (place === "home" ? eq.home : eq.gym) ?? [];
+    set(place, cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id]);
+  };
+  return (
+    <div className="field">
+      <label className="lbl">Equipment</label>
+      <p className="xs muted" style={{ marginBottom: 8 }}>Workouts are built from what's where you exercise that day.</p>
+      <p className="small" style={{ fontWeight: 700, margin: "8px 0 6px" }}>At home</p>
+      <div className="chips">
+        {EQUIPMENT.map((e) => <button key={e.id} className="chip" aria-pressed={eq.home.includes(e.id)} onClick={() => toggle("home", e.id)}>{e.name}</button>)}
+      </div>
+      <div className="switch-row" style={{ marginTop: 14 }}>
+        <b className="small">At the gym</b>
+        <button className="switch" role="switch" aria-checked={eq.gym !== null} aria-label="I use a gym" onClick={() => set("gym", eq.gym === null ? [] : null)} />
+      </div>
+      {eq.gym !== null ? (
+        <div className="chips">
+          {EQUIPMENT.map((e) => <button key={e.id} className="chip" aria-pressed={eq.gym!.includes(e.id)} onClick={() => toggle("gym", e.id)}>{e.name}</button>)}
+        </div>
+      ) : <p className="xs muted">No gym. Turn this on to add one.</p>}
+    </div>
   );
 }

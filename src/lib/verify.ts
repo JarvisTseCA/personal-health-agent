@@ -6,7 +6,9 @@
  */
 import { getFamily, getVariant } from "./activities";
 import { creditFor, fmt, VIGOROUS_MET } from "./met";
-import type { Suggestion, SuggestInput } from "./suggest";
+import { fitsPlace, type Suggestion, type SuggestInput } from "./suggest";
+import { equipmentOf } from "./activities";
+import { listEquipment } from "./equipment";
 
 export interface Check {
   name: string;
@@ -55,9 +57,17 @@ export function verifySuggestion(s: Suggestion, input: SuggestInput, shownCredit
     },
     {
       name: "Safety",
-      rule: "Nothing ≥ 6 MET with a health flag or clinician limit",
+      rule: "Nothing ≥ 6 MET with a health flag",
       ok: !(input.noVigorous && variant.met >= VIGOROUS_MET),
-      detail: input.noVigorous ? `Limit on; ${variant.met} MET` : "No limit set",
+      detail: input.noVigorous ? `Health flag on; ${variant.met} MET` : "No health flag",
+    },
+    {
+      name: "Equipment",
+      rule: "Needed equipment is where the user is today",
+      ok: desk || fitsPlace(family, variant, input.place, input.equipmentHere),
+      detail: equipmentOf(family, variant).length === 0
+        ? `Needs nothing; ${input.place}`
+        : `Needs ${listEquipment(equipmentOf(family, variant))} (any one); ${input.place} has ${input.equipmentHere ? listEquipment(input.equipmentHere) || "none" : "not recorded"}`,
     },
     {
       name: "Sanity",

@@ -14,7 +14,7 @@ from pydantic import BaseModel, Field
 
 class CheckIn(BaseModel):
     minutes: int
-    place: str  # home | office | outside | traveling | other
+    place: str  # home | gym | office | outside | traveling | other
     energy: str  # challenge | normal | low
     mood: str  # an activity family id, or "surprise"
 

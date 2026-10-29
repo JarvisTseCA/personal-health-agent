@@ -41,6 +41,8 @@ export function parseMinutes(text: string): number | null {
 
 export function parsePlace(text: string): Place | null {
   const t = norm(text);
+  // Before "work": "at the gym after work" is the gym.
+  if (hasAny(t, ["gym", "fitness center", "fitness centre", "health club", "ymca", "y.m.c.a", "rec center", "studio"])) return "gym";
   if (hasAny(t, ["office", "work", "desk", "meeting", "school", "campus"])) return "office";
   if (hasAny(t, ["travel", "hotel", "airport", "trip", "road", "away"])) return "traveling";
   if (hasAny(t, ["outside", "outdoor", "park", "trail", "street", "beach", "yard"])) return "outside";

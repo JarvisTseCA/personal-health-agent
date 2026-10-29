@@ -1,18 +1,23 @@
 /**
- * Today: the daily loop from the workflow doc. The coach asks, the user taps.
+ * Today: the daily loop from the workflow doc. The agent asks, the user taps.
  * Past turns read as a conversation; the live question or card sits at the
  * bottom, so there's always exactly one decision in front of the user.
  */
 import { useEffect, useRef, useState } from "react";
 import { WeekBars, WeekLegend } from "../components/WeekBar";
 import { SettingsIcon } from "../components/Icons";
-import { MedalCoin, WeekCoins } from "../components/Medal";
+import { AiNotice } from "../components/AiNotice";
+import { Flame, Trophy } from "../components/Rewards";
+import { VideoCard } from "../components/VideoCard";
 import { getFamily, getVariant } from "../lib/activities";
-import { countsTowardGoal, fmt, intensityOf } from "../lib/met";
+import { equipmentName } from "../lib/equipment";
+import { movesFor } from "../lib/moves";
+import { countsTowardGoal, fmt, fmtGoal, intensityOf } from "../lib/met";
 import { DECLINE_LABEL, type DeclineReason, type Suggestion } from "../lib/suggest";
 import { QUESTIONS, type QuestionId } from "../services/answers";
+import { equipmentAt } from "../services/context";
 import { useStore } from "../state/store";
-import { CONFIRM_CHOICES, ENERGY_OPTIONS, PLACE_OPTIONS, REMIND_OPTIONS } from "../state/today";
+import { CONFIRM_CHOICES, ENERGY_OPTIONS, hasHowTo, PLACE_OPTIONS, REMIND_OPTIONS } from "../state/today";
 import { TimeOptions } from "../components/TimeOptions";
 import { SLOT_LABEL, SLOT_MINUTES } from "../lib/plan";
 import type { Screen, TodayStep } from "../state/types";
@@ -23,7 +28,7 @@ import type { AppState } from "../state/types";
 /** What the Other box says at each step. Every step that asks something gets one. */
 const OTHER_PLACEHOLDER: Partial<Record<TodayStep, string>> = {
   time: "Other: e.g. 25 min, or an hour",
-  place: "Other: e.g. at the gym",
+  place: "Other: e.g. at the park",
   energy: "Other: tell me how you feel",
   mood: "Other: any activity you have in mind",
   suggested: "Other: ask, or tell me why not",
@@ -34,7 +39,7 @@ const OTHER_PLACEHOLDER: Partial<Record<TodayStep, string>> = {
   confirm: "Other: what was it?",
   "confirm-other": "Other: type the activity",
   nudge: "Other: type your answer",
-  wrap: "Other: ask the coach anything",
+  wrap: "Other: ask anything",
 };
 
 const REASONS: DeclineReason[] = ["no-time", "tired", "not-mood", "recent", "no-access", "weather", "hurts"];
@@ -52,13 +57,33 @@ function Bubbles({ children, label }: { children: React.ReactNode; label: string
   return <div className="bubbles" role="group" aria-label={label}>{children}</div>;
 }
 
-function Questions({ ids }: { ids: QuestionId[] }) {
-  const { dispatch } = useStore();
+function Questions({ ids, how }: { ids: QuestionId[]; how?: boolean }) {
+  const { state, dispatch } = useStore();
   return (
-    <div className="ask-row" role="group" aria-label="Ask the coach">
+    <div className="ask-row" role="group" aria-label="Ask the agent">
+      {how && hasHowTo(state) && <button className="ask-chip ask-how" onClick={() => dispatch({ type: "showHow" })}>Show me how</button>}
       {ids.map((q) => (
         <button key={q} className="ask-chip" onClick={() => dispatch({ type: "ask", q })}>{QUESTIONS[q]}</button>
       ))}
+    </div>
+  );
+}
+
+/** The circuit for a strength or interval pick, built from the equipment where the user is today. */
+function Circuit({ s }: { s: Suggestion }) {
+  const { state } = useStore();
+  const here = equipmentAt(state, state.today.checkIn.place ?? "home") ?? [];
+  const moves = movesFor(s.variantId, here);
+  if (!moves.length) return null;
+  const uses = [...new Set(moves.map((m) => m.uses).filter(Boolean) as string[])];
+  return (
+    <div className="circuit">
+      <p className="xs muted">{uses.length ? `Your circuit with ${uses.map((u) => equipmentName(u).toLowerCase()).join(" and ")}` : "Your circuit, no equipment needed"}: repeat for the time</p>
+      <ol>
+        {moves.map((m) => (
+          <li key={m.name}><span>{m.name}</span><span className="xs muted">{m.dose}</span></li>
+        ))}
+      </ol>
     </div>
   );
 }
@@ -76,7 +101,7 @@ function SuggestionCard({ s, lead }: { s: Suggestion; lead: boolean }) {
         <span className="dot" style={{ background: family.color }} />
         <div className="pick-what">
           <b>{s.pattern ? variant.label : `${s.durationMin} min ${family.noun}`}</b>
-          <span className="xs muted">{s.pattern ?? variant.label}{counts ? `, ${fmt(s.credit)} MET-hours` : ", earns bronze"}</span>
+          <span className="xs muted">{s.pattern ?? variant.label}{counts ? `, ${fmt(s.credit)} MET-hours` : ", light activity"}</span>
         </div>
         <button className="btn btn-quiet small-btn" onClick={() => dispatch({ type: "accept", suggestion: s })}>Do this instead</button>
       </div>
@@ -92,7 +117,7 @@ function SuggestionCard({ s, lead }: { s: Suggestion; lead: boolean }) {
           {s.pattern && <p className="small muted">{s.pattern}</p>}
         </div>
         <div className="pick-credit">
-          {counts ? <><span className="num">{fmt(s.credit)}</span><span className="xs">MET-hours</span></> : <MedalCoin medal="bronze" size={34} title="Earns bronze" />}
+          {counts ? <><span className="num">{fmt(s.credit)}</span><span className="xs">MET-hours</span></> : <span className="xs">Light</span>}
         </div>
       </div>
       {counts && ctx.todayTarget > 0 && (
@@ -103,9 +128,10 @@ function SuggestionCard({ s, lead }: { s: Suggestion; lead: boolean }) {
       )}
       <ul className="reasons">
         {s.reasons.filter((r) => !(counts && ctx.todayTarget > 0 && /target/.test(r))).map((r) => <li key={r}>{r}</li>)}
-        {!counts && <li>Light activity ({variant.met} MET): a medal, not goal credit for now</li>}
+        {!counts && <li>Light activity ({variant.met} MET): no goal credit for now</li>}
         {intensityOf(variant.met) === "vigorous" && <li>Vigorous: {variant.met} MET</li>}
       </ul>
+      <Circuit s={s} />
     </div>
   );
 }
@@ -154,29 +180,38 @@ export function TodayScreen({ go, openPrefs }: { go: (s: Screen) => void; openPr
 
       <section className="today-summary" aria-label="Progress">
         <WeekLegend />
-        <WeekCoins medals={ctx.medals} todayIndex={state.todayIndex} plan={state.plan} />
         <WeekBars
           doneByDay={ctx.week.doneByDay} todayIndex={state.todayIndex} todayTarget={ctx.todayTarget} todayDone={ctx.todayDone}
           weekDone={ctx.week.done} goal={ctx.goal} todayOff={state.plan[state.todayIndex] === "off" && ctx.todayTarget === 0}
         />
-        <button className="streak" onClick={() => go("progress")}>
-          <b className="num">{ctx.streak.current}</b>-day streak{ctx.streak.todayPending ? ", keep it going today" : ""}
-        </button>
-      </section>
-      {(state.clinician.note.trim() || state.clinician.precautions?.trim()) && (
-        <div className="clin-note">
-          <b>From {state.clinician.name?.trim() || "your clinician"}:</b> {state.clinician.note}
-          {state.clinician.precautions?.trim() && <p className="xs" style={{ marginTop: 4 }}><b>Precautions:</b> {state.clinician.precautions}</p>}
-          {state.clinician.review && <p className="xs muted" style={{ marginTop: 4 }}>Goal review: {state.clinician.review.toLowerCase()}</p>}
+        <div className="reward-strip">
+          <button className="reward-stat" onClick={() => go("progress")} aria-label={`${ctx.streak.current} ${ctx.streak.current === 1 ? "day" : "days"} in a row. Open Progress`}>
+            <Flame size={22} />
+            <span><b className="num">{ctx.streak.current}</b><small>{ctx.streak.current === 1 ? "day" : "days"} in a row</small></span>
+          </button>
+          <button className="reward-stat" onClick={() => go("progress")} aria-label={ctx.trophy ? "This week's trophy earned. Open Progress" : `Trophy at ${fmtGoal(ctx.goal)} MET-hours. Open Progress`}>
+            <Trophy size={22} earned={ctx.trophy} />
+            <span>{ctx.trophy ? <><b>Earned</b><small>this week's trophy</small></> : <><b className="num">{fmt(ctx.left)}</b><small>to the trophy</small></>}</span>
+          </button>
+          <button className="reward-stat" onClick={() => go("progress")} aria-label={ctx.vo2 ? `VO2 max ${ctx.vo2.latest}. Open Progress` : "VO2 max: no estimate yet. Open Progress"}>
+            <span className="vo2-chip">VO2</span>
+            <span>{ctx.vo2 ? <><b className="num">{ctx.vo2.latest}</b><small>{ctx.vo2.change > 0 ? `up ${ctx.vo2.change} since ${ctx.vo2.series[0].label}` : "VO2 max"}</small></> : <><b>–</b><small>VO2 max soon</small></>}</span>
+          </button>
         </div>
-      )}
+      </section>
 
       <div className="feed" aria-live="polite">
+        <AiNotice />
         {t.entries.map((e) =>
-          e.role === "medal" ? (
-            <div key={e.id} className="medal-moment">
-              <MedalCoin medal={e.medal!} size={56} />
+          e.role === "trophy" ? (
+            <div key={e.id} className="trophy-moment">
+              <Trophy size={52} />
               <p>{e.text}</p>
+            </div>
+          ) : e.video ? (
+            <div key={e.id} className="msg agent msg-video">
+              <p>{e.text}</p>
+              <VideoCard video={e.video} />
             </div>
           ) : e.role === "user" ? (
             <UserMessage
@@ -207,7 +242,7 @@ export function TodayScreen({ go, openPrefs }: { go: (s: Screen) => void; openPr
         )}
         {t.step === "place" && (
           <Bubbles label="Where you'll exercise">
-            {PLACE_OPTIONS.map(([label, p]) => <button key={p} className="chip" onClick={() => dispatch({ type: "place", label, place: p })}>{label}</button>)}
+            {PLACE_OPTIONS.filter(([, p]) => p !== "gym" || state.profile.equipment?.gym !== null).map(([label, p]) => <button key={p} className="chip" onClick={() => dispatch({ type: "place", label, place: p })}>{label}</button>)}
           </Bubbles>
         )}
         {t.step === "energy" && (
@@ -224,7 +259,7 @@ export function TodayScreen({ go, openPrefs }: { go: (s: Screen) => void; openPr
               <button className="btn btn-quiet" onClick={() => dispatch({ type: "remindLater" })}>Remind me later</button>
               <button className="btn btn-quiet" onClick={() => dispatch({ type: "another" })}>Give me another option</button>
             </div>
-            <Questions ids={["met", "why", "how"]} />
+            <Questions how ids={["met", "why", "how"]} />
           </div>
         )}
 
@@ -262,7 +297,7 @@ export function TodayScreen({ go, openPrefs }: { go: (s: Screen) => void; openPr
               <button className="btn btn-primary" onClick={() => dispatch({ type: "sync" })}>Sync Fitbit (demo)</button>
               <button className="btn btn-quiet" onClick={() => dispatch({ type: "decline" })}>Change of plans</button>
             </div>
-            <Questions ids={["how", "walking", "goal"]} />
+            <Questions how ids={["how", "vo2", "goal"]} />
           </div>
         )}
 
@@ -298,7 +333,7 @@ export function TodayScreen({ go, openPrefs }: { go: (s: Screen) => void; openPr
               <button className="chip" onClick={() => go("progress")}>See my progress</button>
               <button className="chip" onClick={() => dispatch({ type: "sync" })}>Sync another workout (demo)</button>
             </Bubbles>
-            <Questions ids={["medals", "goal"]} />
+            <Questions ids={["rewards", "vo2"]} />
           </div>
         )}
         {OTHER_PLACEHOLDER[t.step] && (t.step !== "confirm" || pending) && (

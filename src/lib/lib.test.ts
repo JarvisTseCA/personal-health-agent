@@ -1,13 +1,17 @@
 import { describe, expect, it } from "vitest";
 import { PERSONAS } from "../data/mockFitbit";
 import { getFamily, getVariant, settingOf } from "./activities";
+import { parseEquipment } from "./equipment";
+import { howTos, movesFor } from "./moves";
 import { goalOffer } from "./goal";
-import { streakOf, weekMedals } from "./medals";
+import { runsOf, streakOf, trophyEarned } from "./rewards";
 import { creditFor, intensityOf, metHours, minutesFor, totalsFor, withCredit } from "./met";
 import { dailyTargets, migratePlan, SLOT_ROWS, unplannedLeft, type WeekPlan } from "./plan";
 import { slotForMinutes } from "./freeText";
 import { afterDecline, challengePlan, suggest, type SuggestInput } from "./suggest";
 import { verifySuggestion } from "./verify";
+import { buildAgentContext } from "../services/context";
+import { initialState, personaProfile } from "../state/store";
 
 const close = (a: number, b: number) => expect(a).toBeCloseTo(b, 2);
 
@@ -78,23 +82,73 @@ describe("daily targets", () => {
   });
 });
 
-describe("medals and streaks", () => {
-  it("bronze for any activity, silver for hitting the day's target", () => {
-    const m = weekMedals([true, true, false, false, false, false, false], [0, 2, 0, 0, 0, 0, 0], [1, 1, 1, 1, 1, 1, 1.5], 2, 7.5);
-    expect(m.slice(0, 3)).toEqual(["bronze", "silver", "none"]);
+describe("streaks and trophies", () => {
+  it("counts days in a row the app was opened, ending today", () => {
+    expect(streakOf([true, true, true])).toEqual({ current: 3, best: 3 });
+    expect(streakOf([true, true, false, true])).toEqual({ current: 1, best: 2 });
+    expect(streakOf([false, false, true])).toEqual({ current: 1, best: 1 });
   });
 
-  it("turns every medal that week gold once the weekly goal is met", () => {
-    const m = weekMedals([true, true, false, true, false, false, false], [0.5, 4, 0, 3.5, 0, 0, 0], [1, 1, 1, 1, 1, 1, 1], 8, 7.5);
-    expect(m.filter((x) => x === "gold").length).toBe(3);
-    expect(m[2]).toBe("none");
+  it("finds runs of days in a row for the calendar bands", () => {
+    expect(runsOf([true, true, false, true, false, true, true])).toEqual([[0, 2], [3, 1], [5, 2]]);
+    expect(runsOf([false, false, false, false, false, false, false])).toEqual([]);
   });
 
-  it("needs a medal every day; today is pending until it ends", () => {
-    expect(streakOf(["bronze", "silver", "none"]).current).toBe(2);
-    expect(streakOf(["bronze", "silver", "none"]).todayPending).toBe(true);
-    expect(streakOf(["bronze", "none", "gold"]).current).toBe(1);
-    expect(streakOf(["gold", "gold", "none", "bronze"]).best).toBe(2);
+  it("earns a trophy when the week reaches its goal", () => {
+    expect(trophyEarned(7.5, 7.5)).toBe(true);
+    expect(trophyEarned(7.49, 7.5)).toBe(false);
+  });
+
+  it("each persona's streak matches its blurb on the demo's Wednesday", () => {
+    const streak = (id: string) => {
+      let st = initialState(id);
+      st = { ...st, onboarded: true, profile: personaProfile(st) };
+      return buildAgentContext(st).streak.current;
+    };
+    expect(streak("alex")).toBe(12);
+    expect(streak("tough")).toBe(1);
+    expect(streak("fresh")).toBe(1);
+  });
+});
+
+describe("equipment", () => {
+  it("reads equipment from typed text", () => {
+    expect(parseEquipment("two dumbbells, a yoga mat and a spin bike").sort()).toEqual(["dumbbells", "stationary-bike", "yoga-mat"]);
+    expect(parseEquipment("kettle bell + resistance bands").sort()).toEqual(["kettlebell", "resistance-bands"]);
+    expect(parseEquipment("nothing really")).toEqual([]);
+  });
+
+  it("only suggests equipment that's where the user is", () => {
+    const input: SuggestInput = {
+      enjoyed: ["strength", "rowing"], access: { strength: "have", rowing: "have" }, noVigorous: false, maxSessionMin: null,
+      minutes: 30, place: "home", energy: "normal", mood: "surprise", needed: 1.5, boost: false, recent: [], declines: [], exclude: [],
+      equipmentHere: ["yoga-mat"],
+    };
+    const r = suggest(input);
+    expect(r.lead!.variantId).toMatch(/^strength-(bodyweight|hard)$/);
+    expect([r.lead!, ...r.backups].some((x) => x.familyId === "rowing")).toBe(false);
+    const gym = suggest({ ...input, place: "gym", equipmentHere: ["rowing-machine", "dumbbells"] });
+    expect([gym.lead!, ...gym.backups].map((x) => x.familyId)).toContain("rowing");
+  });
+
+  it("at the gym, suggests indoor activities only", () => {
+    const r = suggest({
+      enjoyed: ["cycling", "walking"], access: { cycling: "have", walking: "have" }, noVigorous: false, maxSessionMin: null,
+      minutes: 30, place: "gym", energy: "normal", mood: "surprise", needed: 1.5, boost: false, recent: [], declines: [], exclude: [],
+      equipmentHere: ["stationary-bike", "treadmill"],
+    });
+    for (const x of [r.lead!, ...r.backups]) {
+      const { family, variant } = getVariant(x.variantId);
+      expect(settingOf(family, variant)).toBe("indoor");
+    }
+  });
+
+  it("builds the circuit from what's there, with how-to videos", () => {
+    expect(movesFor("strength-weights", ["dumbbells"])[0].name).toBe("Dumbbell goblet squat");
+    expect(movesFor("strength-weights", ["resistance-bands"])[1].name).toBe("Resistance band row");
+    expect(movesFor("strength-bodyweight")[0].video?.id).toBe("8uoaYwS6iFM");
+    expect(howTos("cycling-spin")[0].what).toBe("setting up the bike");
+    expect(howTos("walking-brisk")).toEqual([]);
   });
 });
 
@@ -114,10 +168,6 @@ describe("goal adjustment", () => {
 
   it("applies the same rules below 7.5 (doc: 3.75 with 6.1 and 5.4 → 5)", () => {
     expect(goalOffer(3.75, [6.1, 5.4])).toMatchObject({ kind: "raise", to: 5 });
-  });
-
-  it("never changes a clinician-set goal", () => {
-    expect(goalOffer(7.5, [3, 2, 3], true).kind).toBe("keep");
   });
 
   it("each demo persona triggers the offer its blurb promises", () => {

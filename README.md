@@ -1,13 +1,14 @@
 # Make It Count: Personal Health Agent (demo)
 
-A mobile-style web app that takes away decision fatigue for busy adults. Each day it hands the
-user one workout that fits their time and the activities they enjoy, counts it in MET-hours toward
-the weekly physical activity guideline, and rewards every day they move with a medal.
+A mobile-style web app that helps busy adults **raise their VO2 max** without having to plan. Each day it
+hands the user one workout that fits their time, the equipment where they are and the activities they
+enjoy, counts it in MET-hours toward the weekly physical activity guideline (the training that builds VO2
+max), and rewards them with a streak for showing up and a trophy for every week they reach their goal.
 
 **Live demo:** https://jarvistseca.github.io/personal-health-agent/ (redeploys on every push to `main`)
 
-This is the **demo build**: every screen is interactive, Fitbit data is simulated, and the coach
-answers from pre-written scripts. It follows the team's *PHA App Workflow* doc. The code is organized
+This is the **demo build**: every screen is interactive, Fitbit data (including VO2 max) is simulated, and
+the agent answers from pre-written scripts. It follows the team's *PHA App Workflow* doc. The code is organized
 so a real LLM and a database can be plugged in later without rewriting the screens.
 
 **Team:** Kate Tan (clinical informatics / CS), Sarah Danziger, MD (medicine / health),
@@ -31,7 +32,7 @@ To try it on your phone, connect to the same Wi-Fi and open the "Network" URL Vi
 | `npm run dev` | Start the dev server with hot reload |
 | `npm run build` | Typecheck and build to `dist/` |
 | `npm run preview` | Serve the built app locally |
-| `npm test` | Run the unit tests for the MET-hour math, targets, medals, goal rules, ranker and Today flow |
+| `npm test` | Run the unit tests for the MET-hour math, targets, streaks and trophies, goal rules, equipment, ranker and Today flow |
 | `npm run typecheck` | TypeScript check only |
 
 **With the Python backend (Jev + SQLite):** start it on port 8000 as described in
@@ -40,114 +41,150 @@ and the app's data is saved in SQLite. Without the backend, the app works exactl
 
 ## What's in the demo
 
-The app has five tabs: **Today · Progress · Coach · Clinician · Showcase**. Onboarding runs once before
+The app has five tabs: **Today · Progress · Chat · Clinician · Showcase**. Onboarding runs once before
 them, and Preferences opens as a sheet from Today.
+
+### The mission: VO2 max
+
+The app is pitched around raising **VO2 max**, the most oxygen the body can use during hard exercise and one
+of the best single measures of cardio fitness. It's better known than MET-hours, so it leads: on the welcome
+screen, at the top of Progress and on the Today card.
+
+MET-hours stay the weekly unit, because they're what the guideline is written in and what the app can count
+from each workout. The app is careful about how the two connect:
+
+- **MET-hours are the training, VO2 max is the result.** VO2 max rises over weeks to months of regular
+  activity; the app never says a workout "adds" VO2 max.
+- **One MET is 3.5 mL of oxygen per kg per minute**, so a VO2 max of 41 mL/kg/min reads as about 11.7 METs at
+  the user's peak. That's the one number that ties the two together.
+- **The VO2 max number is Fitbit's estimate** (it was called the Cardio Fitness Score), shown once a month
+  with its trend. In the demo it's simulated. Fitbit currently estimates it from outdoor runs with GPS, so a
+  user who never runs may not get a reading; the card says so when there's none yet.
+
+Code: `src/components/Vo2Card.tsx`, `src/services/context.ts` (`vo2Of`), `src/services/answers.ts` (`vo2`)
 
 ### Onboarding (runs once)
 
-**Observe first**: connect Fitbit, tell the coach anything it should know about your health, watch a week,
-then confirm what was detected, add liked activities (ranked) and plan the first week (every day starts at
-10 min). *Set up now* skips the week. Every page has *Back*.
+**Observe first**: connect Fitbit, tell the agent anything it should know about your health, watch a week,
+then confirm what was detected, add liked activities (ranked), tell the agent your **equipment**, and plan
+the first week (every day starts at 10 min). *Set up now* skips the week. Every page has *Back*.
+
+**Equipment, one place at a time.** First *What do you have at home?*, then *Do you go to a gym?* and, if
+yes, *What does your gym have?* On each page the user can **take a photo**, **type a list** ("two dumbbells
+and a mat") or tap chips. The photo and the typed list fill in the chips, which the user can fix. In the
+demo, photo recognition is simulated (a typical set for that place) and the photo stays on the device.
+
+Code: `src/screens/Onboarding.tsx` (`GearPicker`), `src/lib/equipment.ts`
 
 ### Today
 
 The daily loop, and the screen the app opens on.
 
-- **Summary card:** this week's medals, a bar for the week's MET-hours and one for today's target, and the
-  streak. Tapping the streak opens Progress.
-- **Summary legend:** the week bar reads *Done* (green), *Left for today* (amber), *Upcoming days* (gray).
-- **Check-in:** bubbles for time (*Off*, 0, 5, 10, 30, 45+ min), where they'll exercise and how they feel.
-  *Off* makes today a day off; *0 min* offers desk moves.
+- **Summary card:** a bar for the week's MET-hours and one for today's target, with a legend (*Done* green,
+  *Left for today* amber, *Upcoming days* gray). Below them, three rewards at a glance: the **streak**
+  (days in a row the app was opened), what's left to **this week's trophy**, and **VO2 max** with its trend.
+  Each opens Progress.
+- **"This agent is a machine learning model and may make mistakes"** sits at the top of the conversation,
+  as it does in Chat.
+- **Check-in:** bubbles for time (*Off*, 0, 5, 10, 30, 45+ min), where they'll exercise (**Home, Gym**,
+  Office, Outside) and how they feel. *Gym* is hidden for someone who said they don't use one. *Off* makes
+  today a day off; *0 min* offers desk moves.
 - **Edit an answer:** tap any answer you sent for its time and a pencil, which goes back to that question.
-- **Suggestion:** one pick, three buttons: *Let's start*, *Remind me later* (the coach asks when) and
-  *Give me another option* (swaps in the next pick, no reason needed).
-- **Questions:** chips such as *What's a MET?*, *Why this?* and *How did you calculate this?* at every step.
-- **Workout:** *Sync Fitbit* logs it, asks to confirm if unsure, awards medals and nudges *keep going*.
-- **From your clinician:** after a visit, the clinician's note, precautions and goal review date appear here.
-- The settings button opens **Preferences**: ranked activities with access, what the coach remembers
-  (declines and notes), the health flag, Fitbit, and a shortcut to the Clinician tab.
+- **Suggestion:** one pick, three buttons: *Let's start*, *Remind me later* (the agent asks when) and
+  *Give me another option*. The pick only uses equipment that's where the user is today ("Uses the
+  stationary bike at your gym"). Strength and interval picks list a **circuit built from that equipment**
+  (dumbbells → goblet squats and dumbbell rows; nothing → bodyweight squats and incline push-ups).
+- **Show me how:** a chip under the pick (and typing "how do I…") makes the agent share a **short how-to
+  video**, one move at a time: setting up a spin bike, the salsa basic step, rowing technique, goblet squats
+  and so on. The video plays in the conversation (YouTube's privacy-enhanced player, loaded on tap).
+- **Questions:** chips such as *What's a MET?*, *Why this?*, *How did you calculate this?* and *What's VO2 max?*
+- **Workout:** *Sync Fitbit* logs it, asks to confirm if unsure, and nudges *keep going*. Reaching the
+  weekly goal brings the **trophy moment**.
+- **After a clinician visit:** the agent says once that it has read the clinician's notes and that the
+  user's goals stay theirs to set.
+- The settings button opens **Preferences**: ranked activities with access, **equipment at home and at the
+  gym**, **the clinician's notes** (readable and removable), what the agent remembers (declines and notes),
+  the health flag, Fitbit, and a shortcut to the Clinician tab.
 
-Code: `src/screens/TodayScreen.tsx`, `src/state/today.ts`, `src/screens/PreferencesSheet.tsx`
+Code: `src/screens/TodayScreen.tsx`, `src/state/today.ts`, `src/lib/moves.ts`, `src/components/VideoCard.tsx`,
+`src/screens/PreferencesSheet.tsx`
 
 ### Progress
 
-One tab for how activity adds up. It replaces the old Week tab, Medals tab and weekly recap sheet.
-Top to bottom:
+One tab for how activity adds up. Top to bottom:
 
-- **This week:** MET-hours done against the goal, the same legend and *This week* / *Today* bars as the
-  Today card (past days as one green block, then today, then the coming days), percent done and what's
-  left, and the streak (current and best). The line under the heading says where the goal came from (guideline, raised,
-  stepping stone or clinician).
-- **Day by day:** each day's medal, target and workouts (from Fitbit or logged). *Update my goals* sets each
-  day to *Off* or 0, 5, 10, 30 or 45+ min (the same list as Today) at any point and re-splits what's left.
+- **Your VO2 max:** the latest estimate, its monthly trend and what it means in METs.
+- **This week:** MET-hours done against the goal, the same legend and bars as the Today card, then two
+  reward cards: **this week's trophy** (earned, or how much is left) with the trophy count, and the
+  **streak** with the best run so far. The line under the heading says where the goal came from (guideline,
+  raised, or stepping stone).
+- **Day by day:** each day's target and workouts, with a green check on days with activity and a quiet circle
+  otherwise. *Update my goals* sets each day to *Off* or 0, 5, 10, 30 or 45+ min and re-splits what's left.
   *Log a workout Fitbit missed* adds one by hand.
-- **Last week:** the recap: total, medals, a line of praise and the activity with the most time. Below it,
-  the goal offer: raise, lower or keep, or type your own goal.
-- **Month by month:** pick a month with the *Year* and *Month* dropdowns (only months with data are listed;
-  it opens on the latest). The month shows MET-hours against its weeks' goals added up, gold weeks, active
-  days and medal counts, then a medal calendar: a row per week, a medal for each day with activity, an empty
-  circle for each day without (a dash on a planned day off), day numbers, and the week's MET-hours. Days from
-  the neighboring month are dimmed: a week counts in the month its Thursday falls in. A week that reached its
-  goal is highlighted gold. The demo personas have about six months of weeks.
-- **How medals work:** bronze, silver and gold rules, and what ends a streak.
+- **Last week:** the recap: total, the trophy if earned, which days were active, a line of praise and the
+  activity with the most time. Below it, the goal offer: raise, lower or keep, or type your own goal.
+- **Month by month:** pick a month with the *Year* and *Month* dropdowns. The month shows its **trophies**,
+  its **best streak**, and days with the app, then a calendar: a row per week, a **flame on each day the app
+  was opened**, days in a row joined into one band so **past streaks** read at a glance, and a **trophy** at
+  the end of each week that reached its goal (that row is gold). Days the app wasn't opened are plain dots.
+- **How rewards work:** the streak and the trophy, in two lines.
 
-Code: `src/screens/ProgressScreen.tsx`, `src/components/MedalCalendar.tsx`, `src/lib/periods.ts`
+Code: `src/screens/ProgressScreen.tsx`, `src/components/Rewards.tsx`, `src/components/Vo2Card.tsx`,
+`src/lib/periods.ts`, `src/lib/rewards.ts`
 
-### Coach
+### Chat
 
-A chat for free-form questions, answered from scripts with the user's real numbers, including the
-clinician guardrail for pain or dizziness. Tap a message you sent to edit it (*Cancel* / *Save*); saving asks
-again and replaces the reply.
+A chat for free-form questions (the old Coach tab), answered from scripts with the user's real numbers.
+The top of the conversation says the agent is a machine learning model and may make mistakes. It answers
+VO2 max questions, brings in the **clinician's notes** when they're relevant ("What did my clinician
+suggest?", today's pick, the goal), and keeps the guardrail for pain or dizziness. Tap a message you sent to
+edit it (*Cancel* / *Save*); saving asks again and replaces the reply. Old `#coach` links open Chat.
 
-Code: `src/screens/CoachScreen.tsx`, `src/services/mockResponses.ts`
+Code: `src/screens/ChatScreen.tsx`, `src/services/mockResponses.ts`
 
 ### Clinician
 
-Used at a visit, on the user's own phone, so no clinician account is needed.
+Used at a visit, on the user's own phone, so no clinician account is needed. **The clinician reviews and
+suggests; the user decides.**
 
-- **Consent first.** Every time the tab opens, a pop-up asks: *"Do you want your clinician to help you set
-  your exercise goals? If so, please hand your phone to them now, and they will have access to your
-  records."* *Not now* goes back to the previous tab. Nothing is shown until the user agrees.
-- **Goal template** (dropdowns plus free text):
+- **Consent first.** Every time the tab opens, a pop-up asks: *"Share your summary with your clinician?
+  If you'd like your clinician to review your activity, please hand your phone to them now. They'll see a
+  summary of your records and can leave notes for the agent. You'll decide on any changes to your goals
+  together."* *Not now* goes back to the previous tab.
+- **At a glance:** a few plain sentences (average MET-hours over the last 4 weeks, as a share of the
+  guideline and in minutes of moderate activity; weeks at goal and active days; main activities and the share
+  of vigorous minutes; VO2 max trend; the current goal, set by the user), then four key numbers.
+- **To discuss:** health condition, pain reports, health-related things the user typed, the longest stretch
+  without activity, and why workouts get skipped.
+- **Detail:** weekly MET-hours for the last 6 weeks against each week's goal, and the activity mix.
+- **Notes for the agent (optional):** name, role and free-text suggestions, with one-tap starters (*Build
+  up gradually*, *Moderate intensity only for now*, *Add two strength days a week*, *Stop and call if…*).
+  The agent uses the notes as **context** in later conversations. They don't change the goal or any limit.
+- **Hand back:** *Save notes and hand back* (or *Done, hand back* with no changes). The user and clinician
+  talk it through in person, and the user changes their goal on Progress if they decide to.
 
-  | Field | Input |
-  |---|---|
-  | Name | Free text |
-  | Role | Dropdown: physician, nurse practitioner, physician assistant, physical therapist, exercise physiologist, other |
-  | Reason for this goal | Dropdown: prevention, blood pressure / heart, blood sugar / diabetes, weight, after injury or illness, pregnancy / postpartum, other |
-  | MET-hours per week | Dropdown: keep the app's goal, 3.75, 5, 7.5 (guideline), 10, 15, or a custom number from 1 to 30 |
-  | Intensity allowed | Dropdown: moderate and vigorous, or moderate only (under 6 MET) |
-  | Longest single session | Dropdown: no limit, 30, 45 or 60 min |
-  | Review this goal | Dropdown: in 2 weeks, 4 weeks, 3 months, or at the next visit |
-  | Note for the user | Free text |
-  | Precautions | Free text |
-
-  A live line converts the goal to minutes, e.g. 7.5 MET-hours ≈ 150 min moderate or 75 min vigorous.
-- **Records:** weekly MET-hours against each week's goal, activity mix, why workouts get skipped, and flags
-  (health condition, pain reports, longest gap without activity, the open weekly-limit question).
-- **Save and hand back** applies the goal and limits, returns to Today and shows the user what changed.
-  *Cancel* discards the changes.
-
-Code: `src/screens/ClinicianScreen.tsx`
+Code: `src/screens/ClinicianScreen.tsx`, `src/services/clinicianSummary.ts`
 
 ### Showcase
 
 The **demo moment** from the one-pager. It works without onboarding. Pick two or three activities, see
 what 30 minutes of each is worth, and compare three weeks: *too little*, *overdid it* and *with the agent*,
-with the agent's plan expandable.
+with the agent's plan expandable. Each week shows its active days and a trophy if it reached the goal.
 
 Code: `src/screens/ShowcaseScreen.tsx`
 
 **Typing is always an option.** Every question that offers buttons or bubbles also has an *Other* text box
 below them. Typed answers are read into the same choices (`src/lib/freeText.ts`): "25 min", "at the gym",
-"my knee is sore" (takes the safety path), "pickleball". Anything the app can't place is kept as a note the
-coach remembers (shown in Preferences), and an activity outside the list keeps the user's name for it and counts
-at the bottom of the effort band Fitbit measured.
+"my knee is sore" (takes the safety path), "pickleball", "two dumbbells and a mat". Anything the app can't
+place is kept as a note the agent remembers (shown in Preferences), and an activity outside the list keeps
+the user's name for it and counts at the bottom of the effort band Fitbit measured.
 
 **Demo controls** (right side on desktop): switch scenario (*Alex*, *On a roll* → goal raise, *Tough month*
 → goal cut, *Fresh start*), pretend it's a different day, restart today's check-in, simulate a Fitbit
-sync, jump to Progress or the Clinician tab, reset, and show the backend: the **verifier's checks** on the
-current suggestion and the prompt the coach would receive.
+sync, **show the how-to video example** (30 min at the gym → a pick with a video → *Show me how*),
+**simulate a clinician visit** (adds sample notes from "Dr. Rivera"), jump to Progress or the Clinician
+tab, reset, and show the backend: the **verifier's checks** on the current suggestion and the prompt the
+agent would receive.
 
 ## Design guidelines
 
@@ -174,7 +211,7 @@ flowchart TD
     F -- "reminder" --> D
     Q["3. Ask a question<br/>e.g. What's a MET?"] -. "any time" .-> D
     E -- yes --> G["4. Work out<br/>Fitbit sync, confirm if unsure"]
-    G --> H["Credit and medals<br/>MET-hours, bronze to gold"]
+    G --> H["Credit and trophy<br/>MET-hours toward the week"]
     H -- "next day" --> C
     H -- "end of week" --> R["Weekly review<br/>recap, goal offer"]
     R --> B
@@ -192,13 +229,14 @@ flowchart TD
       another option*. A reason for turning it down can still be typed, and the coach saves it.
    3. *Ask:* at any point the user can tap or type a question, such as *What's a MET?*
    4. *Work out:* Fitbit syncs the workout and the user confirms it if the app isn't sure. It's converted to
-      MET-hours, medals update, and if the user got partway to today's target the coach nudges them to keep
+      MET-hours, progress updates, and if the user got partway to today's target the coach nudges them to keep
       going. The rest of the week's targets adjust.
-4. **Weekly review (end of week).** The *Last week* section of Progress shows last week's total and medals,
+4. **Weekly review (end of week).** The *Last week* section of Progress shows last week's total and trophy,
    then offers to raise, lower or keep the goal. Planning the next week happens in the same tab.
 
 The Clinician tab sits outside these loops. The user opens it during a visit and agrees to share their
-records, and what the clinician sets (goal, limits, note, precautions) applies from then on.
+records. The clinician reviews a summary and can leave notes, which the agent uses as context from then on.
+Goals stay the user's to set.
 
 ### Onboarding
 
@@ -206,11 +244,12 @@ records, and what the clinician sets (goal, limits, note, precautions) applies f
 ask for anything else they enjoy and can do.
 
 - Observe first is the default: connect Fitbit, tell the coach anything it should know, then wear the Fitbit
-  for a week while the coach makes no suggestions. Medals still count during that week.
+  for a week while the coach makes no suggestions. The streak still counts during that week.
 - Every page after the welcome has *Back* at the top, which returns to the page the user came from.
 - On day 8 the coach shows each workout it detected ("Tuesday, 30 min, looks like cycling. Right?") and the
   user confirms, corrects or skips it.
-- Then the user adds activities they enjoy (in order of preference) and plans the first week. Every day
+- Then the user adds activities they enjoy (in order of preference), their equipment at home and at the gym
+  (a photo, a typed list or chips; asked one place at a time), and plans the first week. Every day
   starts at 10 min; the user changes the days that differ (*Off*, 0, 5, 10, 30 or 45+ min).
 - There's no access page and no "how much time most weeks" page. Everything starts as available; if the user
   can't do something, typing so when turning a pick down ("can't, my bike is broken") or setting it in Preferences
@@ -233,8 +272,7 @@ exercise at all, and let them change the plan mid-week, with the remaining goal 
   moves only, so it has no target but isn't a day off.
 - The weekly goal never drops because of off days; their share moves to the other days, weighted by minutes.
 - *Update my goals* works at any point; so does tapping *Off* at Today's time question. Every change, and every Fitbit sync, re-splits what's left.
-- Today's target is fixed at the start of the day, so silver is judged against a number that doesn't move
-  during a workout.
+- Today's target is fixed at the start of the day, so it doesn't move during a workout.
 
 Code: `src/lib/plan.ts`, `src/screens/ProgressScreen.tsx`
 
@@ -243,7 +281,7 @@ Code: `src/lib/plan.ts`, `src/screens/ProgressScreen.tsx`
 **Instruction:** Ask for the user's preferences and availability each day.
 
 - Three quick questions, each answered with one tap: time today (*Off*, or 0, 5, 10, 30 or 45+ min), where they'll
-  exercise (home, office, outside), and how they feel (*Up for a challenge* or *Normal*).
+  exercise (home, gym, office, outside), and how they feel (*Up for a challenge* or *Normal*).
 - There's no "what are you in the mood for?" question: the coach picks, to avoid decision fatigue.
 - Feeling tired isn't a button, to nudge toward moving, but typing it works and the pick gets easier.
 - *Up for a challenge* aims for 1.5× today's target, through a harder pace rather than a longer session;
@@ -262,11 +300,13 @@ can do at their desk.
   another option*, which cycles through them.
 - *Remind me later* asks when (in 30 min, in 1 hour, this evening, or a typed time) and brings the same pick
   back then.
-- The ranker filters to activities the user enjoys, can access and has time for, and that their health
-  settings allow. It then scores them on preference, fit to today's target, how recently each was done, past
+- The ranker filters to activities the user enjoys, can access and has time for, that their health
+  settings allow, and whose equipment is where they'll exercise today (at the gym, indoor activities only). It then scores them on preference, fit to today's target, how recently each was done, past
   declines and today's energy.
 - Each card says why it was picked ("Your favorite", "Not done in the last few days").
-- With 0 minutes, it offers desk moves with a resistance band. These earn a bronze medal.
+- Strength and interval picks come with a circuit built from the equipment on hand, and *Show me how*
+  shares a short how-to video for each move (`src/lib/moves.ts`).
+- With 0 minutes, it offers desk moves with a resistance band.
 
 Code: `src/lib/suggest.ts`
 
@@ -290,10 +330,11 @@ Code: `src/state/today.ts`, `src/screens/PreferencesSheet.tsx`
 **Instruction:** The user can ask questions (for example, "What is MET?") at any point.
 
 - One-tap question chips sit under every suggestion: *What's a MET?*, *Why this activity?*, *How did you
-  calculate this?*, *Does walking count?*, *Why is my goal 7.5?*
+  calculate this?*, *Does walking count?*, *Why is my goal 7.5?*, *What's VO2 max?*, *How do streaks and
+  trophies work?*
 - Answers come from a fixed glossary, the ranker's real reasons and the calculator's real numbers, never
   numbers the coach makes up.
-- The Coach tab takes questions in the user's own words.
+- The Chat tab takes questions in the user's own words.
 
 Code: `src/services/answers.ts`, `src/services/mockResponses.ts`
 
@@ -321,18 +362,21 @@ bigger session and ask less of another day.
 
 Code: `src/state/today.ts`
 
-### Medals and streaks
+### Streaks and trophies
 
-**Instruction:** Any exercise earns a bronze medal for the day. Reaching the daily goal earns silver. Reaching
-the weekly goal turns every medal that week gold. A screen shows the streak as medals.
+**Instruction (Oct 28):** A simpler reward design than daily medals. A streak for signing in, and a reward for
+finishing each weekly goal. Only reward users; never penalize them.
 
-- Light activity, such as a short walk or desk moves, counts toward bronze.
-- The streak counts days in a row with at least a bronze. Any day with no activity ends it, even a planned
-  day off.
-- The Progress tab shows the streak, and *Month by month* shows past weeks as a medal calendar with a gold
-  row for every week that reached its goal.
+- **Streak (flame):** days in a row the user opened the app. Today counts as soon as the app is open.
+- A missed day quietly starts a new run. The app doesn't say the streak was lost, ask why, or show a
+  warning; the agent just says "Welcome back." The best run stays on Progress so it still counts for something.
+- **Trophy:** one for each week the weekly goal is reached, kept for good. Reaching it brings the trophy
+  moment on Today.
+- Bronze, silver and gold daily medals are gone.
+- The Today card shows the streak and what's left to the trophy; Progress shows both, and *Month by month*
+  shows past streaks as flame bands and past trophies at the end of each week.
 
-Code: `src/lib/medals.ts`, `src/screens/ProgressScreen.tsx`
+Code: `src/lib/rewards.ts`, `src/components/Rewards.tsx`, `src/screens/ProgressScreen.tsx`
 
 ### Goal setting and adjustment
 
@@ -345,23 +389,27 @@ weeks.
 - **Lower:** if the user is under half the goal 3 weeks in a row, offer half the goal.
 - The same rules apply at every goal level, including below 7.5. A goal below 7.5 is labeled a stepping stone.
 - The *Last week* section of Progress makes the offer and the user accepts, keeps or types their own goal.
-  A goal set by a clinician is never changed automatically.
+  The user always makes the final call: nothing changes until they tap, and clinicians don't set goals.
 
 Code: `src/lib/goal.ts`, `src/screens/ProgressScreen.tsx`
 
 ### Clinician tab
 
-**Instruction:** A separate screen where a clinician can check the user's exercise records and set a goal.
+**Instruction (Oct 28):** The tab gives the clinician a digestible summary of the user's data. Instead of
+setting the user's goal, the clinician checks the summary and gives suggestions; the user makes the final
+decisions about their goals. After hand-back the user and clinician talk directly, and the clinician can add
+optional notes that the agent uses as context in later conversations.
 
 - The user hands their phone to the clinician during a visit, so no clinician account is needed.
 - Opening the tab always asks for consent first; the records stay hidden until the user agrees.
-- The goal template uses dropdowns for structured fields (role, reason, MET-hours per week, intensity,
-  session length, review date) and free text for the name, a note and precautions.
-- The goal, intensity and session limits feed the verifier's checks. A clinician goal is never changed
-  automatically by the goal rules.
-- On hand-back the user sees a summary of what changed, and Today shows the note and precautions.
+- The summary leads with plain sentences and four key numbers, then things to discuss, then the detail.
+- Notes are optional free text (name and role too). They go into the agent's context as
+  `clinician_notes`, with an instruction to use them when relevant but not to treat them as a goal or rule.
+- Nothing the clinician enters changes the goal, intensity or session length. The user can read and
+  remove the notes in Preferences.
+- The old goal template (MET-hours, intensity, session length, review date, precautions) was removed.
 
-Code: `src/screens/ClinicianScreen.tsx`
+Code: `src/screens/ClinicianScreen.tsx`, `src/services/clinicianSummary.ts`
 
 ### Tap first, type anytime
 
@@ -374,7 +422,7 @@ Code: `src/screens/ClinicianScreen.tsx`
   keeps the user's name for it.
 - Tapping any answer the user sent shows when it was sent and a pencil, as in Claude's chat. On Today, the
   pencil goes back to that question, with the options and the old answer in the Other box; *Cancel* undoes
-  it. On Coach, the message turns into an edit box with *Cancel* and *Save*, and Save resends it.
+  it. On Chat, the message turns into an edit box with *Cancel* and *Save*, and Save resends it.
 
 Code: `src/lib/freeText.ts`, `src/components/OtherInput.tsx`, `src/components/UserMessage.tsx`
 
@@ -385,15 +433,17 @@ Add a guardrail to check calculation outputs. Describe each agent's task in natu
 
 - The coach talks to the user. A verifier checks each suggestion before the user sees it.
 - All numbers come from plain code (the calculator), never from a language model.
-- The verifier checks the MET source, the arithmetic, the time fit, preferences, repetition, safety limits and
-  session length. The demo panel shows its results.
+- The verifier checks the MET source, the arithmetic, the time fit, preferences, repetition, the health
+  flag, equipment where the user is, and session length. The demo panel shows its results.
+- The agent's brief says it's a machine learning model that can make mistakes, and that it must never point
+  out a missed day or a broken streak.
 - Each agent's task is written as a short plain-English brief that anyone on the team can edit.
 
 Code: `src/lib/verify.ts`, `src/services/prompts.ts`
 
 ### Design decisions
 
-A running log of what we decided for the Today page and the pages around it (Progress, Coach, onboarding)
+A running log of what we decided for the Today page and the pages around it (Progress, Chat, onboarding)
 and why, so the reasoning doesn't get lost. Add new decisions at the bottom with the date and the page. When a
 later decision changes an earlier one, the earlier row says so instead of being deleted.
 
@@ -417,8 +467,14 @@ later decision changes an earlier one, the earlier row says so instead of being 
 | Oct 27, 2026 | Onboarding | Onboarding is shorter: the access page ("Which can you actually do this month?") and the usual-time page ("Most weeks, how much time do you have?") are gone. The plan page starts every day at 10 min. Every page has *Back*. The health page leads with a large text box, with *No health conditions* and *Prefer not to say* below it. | Fewer choices before the first suggestion. Access is better learned as the user goes (a typed "can't access it"), and a flat 10 min a day is an easy starting point to adjust. A free-text box catches things the three buttons couldn't, like an injury or medication. |
 | Oct 27, 2026 | Today, Progress | In the *This week* bar, all past days' MET-hours form one solid green block, with no line between days. | Lines between days read as extra gaps and made the bar hard to follow. The bar now has exactly three parts (done so far / today / coming days) separated by the two gaps. The day-by-day split is on Progress. |
 | Oct 27, 2026 | Progress | *(Replaced below by a single month view.)* *Earlier weeks* can be viewed by week, month or quarter. A quarter is 4 months (Jan–Apr, May–Aug, Sep–Dec). Each month or quarter is one card: total against the summed goals, gold weeks, active days, a bar per week, medal counts. A week belongs to the month its Thursday falls in. The demo history grew from 4 weeks to about 6 months (same days of the week as before, so streaks and goal offers are unchanged). | Weeks alone get long and hide the trend; months and quarters show whether things are building up or slipping. Counting a week in its Thursday's month keeps every week whole. |
-| Oct 27, 2026 | Progress | *(Kept for the month view below.)* All three *Earlier weeks* views are a medal calendar: one row per week, a medal or an empty circle for each day, the week's MET-hours at the end, and a gold row for each week that reached its goal. Monthly shows day numbers and dims days from the next or previous month; Quarterly labels each month. This replaces the bar per week in the month and quarter cards. | A calendar shows the pattern at a glance (which days, which weeks) and the empty circles make missed days visible without scolding. Gold rows tie straight back to the medal rule: reach the weekly goal and the whole week turns gold. |
-| Oct 27, 2026 | Progress | Past weeks are shown one month at a time, picked with *Year* and *Month* dropdowns, instead of a Weekly / Monthly / Quarterly switch. It opens on the latest month; only months with data are listed. The section is called *Month by month*. | One view is simpler than three, and a month is the right size for a calendar: big enough to see a pattern, small enough to read. The dropdowns jump straight to any month instead of scrolling through all of them. |
+| Oct 27, 2026 | Progress | *(Replaced Oct 28, below: no more medals.)* All three *Earlier weeks* views are a medal calendar: one row per week, a medal or an empty circle for each day, the week's MET-hours at the end, and a gold row for each week that reached its goal. Monthly shows day numbers and dims days from the next or previous month; Quarterly labels each month. This replaces the bar per week in the month and quarter cards. | A calendar shows the pattern at a glance (which days, which weeks) and the empty circles make missed days visible without scolding. Gold rows tie straight back to the medal rule: reach the weekly goal and the whole week turns gold. |
+| Oct 27, 2026 | Progress | *(Calendar replaced Oct 28, below.)* Past weeks are shown one month at a time, picked with *Year* and *Month* dropdowns, instead of a Weekly / Monthly / Quarterly switch. It opens on the latest month; only months with data are listed. The section is called *Month by month*. | One view is simpler than three, and a month is the right size for a calendar: big enough to see a pattern, small enough to read. The dropdowns jump straight to any month instead of scrolling through all of them. |
+| Oct 28, 2026 | All | **Rebrand around VO2 max.** The welcome screen, Progress and the Today card lead with VO2 max (Fitbit's estimate and its monthly trend). MET-hours stay the weekly unit, explained as the training that raises VO2 max; 1 MET = 3.5 mL/kg/min ties the two. | VO2 max is better known than MET-hours. It's not the same thing, though: MET-hours measure the work, VO2 max is fitness, so the app never equates them. |
+| Oct 28, 2026 | Today, Progress, Showcase | **Rewards simplified:** a sign-in streak (flame) and a trophy for each week that reaches its goal. Bronze, silver and gold daily medals are gone. A missed day quietly resets the streak; no message mentions it. *Month by month* shows flame bands for past streaks and a trophy per goal week. | Fewer reward types are easier to read. Rewards should only add up; pointing out a miss feels like a penalty. |
+| Oct 28, 2026 | Clinician | The clinician reviews a **summary** and leaves **optional notes for the agent**; the goal template is gone. The user decides on goals after talking with the clinician. | The user owns their goals. The clinician's input still shapes what the agent says, as context. |
+| Oct 28, 2026 | Chat | The Coach tab is renamed **Chat**. The top of every conversation (Chat and Today) says the agent is a machine learning model and may make mistakes. | Clearer name; users should know they're talking to a model that can be wrong. |
+| Oct 28, 2026 | Today, onboarding | **Gym** is a place option. Onboarding asks for equipment at home, then at the gym, by photo, typed list or chips. Suggestions only use equipment where the user is, and strength or interval picks list a circuit built from it. | Equipment-aware plans, like Volt Athletics: a pick the user can't do with what's there is a wasted decision. |
+| Oct 28, 2026 | Today | *Show me how* shares a short how-to video in the conversation, one move at a time. | Some picks (a spin bike, a goblet squat, the salsa basic step) are easier to start once you've seen them done. |
 
 Still open:
 
@@ -426,16 +482,17 @@ Still open:
   which takes the safety path. Should *Something hurts* come back as a small one-tap option?
 - Should the question chips (*What's a MET?*, *Why this activity?*) stay under the pick, or would the card
   read better with only the three buttons?
-- Changing a day's plan re-splits every day's target, including past days, so marking today *Off* can turn
-  yesterday's silver into bronze. Should past days keep the target they had?
-- Off days and the streak (Project Questions, "Off days"). Today a day with no activity ends the streak, even
-  a planned day off. The proposal: off days (e.g. a sick day) don't end the streak, get their own off-day
-  medal, and turn gold with the rest of the week when the weekly goal is reached. Not built yet.
+- Changing a day's plan re-splits every day's target, including past days. Should past days keep the target
+  they had?
+- The how-to videos are public YouTube tutorials picked for being short and beginner-friendly. They should
+  get a clinical review, or be replaced by the team's own clips, before real users see them.
+- Photo recognition for equipment is simulated. A real version needs a vision model and a decision about
+  where photos are processed.
 
 Code: `src/state/today.ts`, `src/lib/suggest.ts` (`challengePlan`), `src/lib/plan.ts`,
 `src/components/WeekBar.tsx`, `src/components/TimeOptions.tsx`, `src/components/UserMessage.tsx`,
-`src/screens/TodayScreen.tsx`, `src/screens/ProgressScreen.tsx`, `src/screens/CoachScreen.tsx`,
-`src/screens/Onboarding.tsx`, `src/lib/periods.ts`, `src/components/MedalCalendar.tsx`,
+`src/screens/TodayScreen.tsx`, `src/screens/ProgressScreen.tsx`, `src/screens/ChatScreen.tsx`,
+`src/screens/Onboarding.tsx`, `src/lib/periods.ts`, `src/components/Rewards.tsx`,
 `backend/app/challenge.py`
 
 ### Not built yet
@@ -451,7 +508,7 @@ cautious option shown for each one.
 
 | Question | Why it matters | What the app does for now |
 |---|---|---|
-| **Light activity and the goal.** Should activity under 3 MET (a slow walk, desk band sets) count toward the weekly MET-hour goal, or only earn a medal? | The activity guideline counts only moderate (3+ MET) and vigorous (6+ MET) activity, but desk moves are the only option on 0-minute days. | Light activity earns a bronze medal and keeps the streak, but adds nothing to the goal. Setting: `LIGHT_COUNTS_TOWARD_GOAL` in `src/lib/met.ts` (off). |
+| **Light activity and the goal.** Should activity under 3 MET (a slow walk, desk band sets) count toward the weekly MET-hour goal, or only be logged? | The activity guideline counts only moderate (3+ MET) and vigorous (6+ MET) activity, but desk moves are the only option on 0-minute days. | Light activity is logged and shown, but adds nothing to the goal. Setting: `LIGHT_COUNTS_TOWARD_GOAL` in `src/lib/met.ts` (off). |
 | **Weekly upper limit.** Is there an evidence-based upper limit on weekly MET-hours? | It sets when the coach stops "keep going" nudges and suggests rest, which weeks get flagged in the Clinician tab, and how high an automatic goal raise can go. | No limit is set. Raises follow the rounding rule only, and the Clinician tab says the limit isn't set yet. Setting: `WEEKLY_UPPER_LIMIT` in `src/lib/goal.ts` (`null`). |
 | **Floor for goal cuts.** Halving after 3 low weeks can repeat. Below what goal should the app stop cutting and suggest talking with a clinician instead? | Repeated halving could take the goal far below anything meaningful without anyone reviewing it. | No floor. Each cut is only an offer the user must accept, and any goal below 7.5 is labeled a stepping stone back to the guideline. |
 
@@ -462,28 +519,32 @@ The same list is at the end of the *PHA App Workflow* doc.
 - **MET-hours = MET × minutes ÷ 60**, with MET values from the [2024 Adult Compendium of Physical Activities](https://pacompendium.com/adult-compendium/) (`src/lib/activities.ts`).
 - **Weekly goal: 7.5 MET-hours** = 150 min at 3 MET = 75 min at 6 MET. Only activity ≥ 3 MET counts by default (`LIGHT_COUNTS_TOWARD_GOAL` in `src/lib/met.ts`, an open clinical question). Unconfirmed Fitbit bouts count at 3.0 or 6.0 MET, the bottom of their band.
 - **Daily targets** (`src/lib/plan.ts`): what's left, split over the remaining available days by their time. Off days never lower the weekly goal. Today's target is fixed at the start of the day.
-- **Medals** (`src/lib/medals.ts`): bronze for any activity, silver for the day's target, gold for every medal once the weekly goal is met. The streak needs a medal every day.
-- **Goal rules** (`src/lib/goal.ts`): raise to the lower of the last 2 weeks rounded down to a multiple of 2.5 (if higher); after 3 weeks under 50%, offer half. A clinician-set goal never changes automatically. `WEEKLY_UPPER_LIMIT` is `null` until the clinical question is answered.
-- **Suggestions** (`src/lib/suggest.ts`): filter (enjoyed, accessible, fits time, safe) → score (preference, goal fit, variety, past declines, energy) → one lead and two backups of a different type. Every suggestion passes the checks in `src/lib/verify.ts`.
+- **Rewards** (`src/lib/rewards.ts`): the streak is days in a row the app was opened, ending today; a trophy is earned when a week's MET-hours reach its goal.
+- **VO2 max** (`src/services/context.ts`): Fitbit's monthly estimate in mL/kg/min. Peak METs = VO2 max ÷ 3.5.
+- **Goal rules** (`src/lib/goal.ts`): raise to the lower of the last 2 weeks rounded down to a multiple of 2.5 (if higher); after 3 weeks under 50%, offer half. Only the user changes the goal. `WEEKLY_UPPER_LIMIT` is `null` until the clinical question is answered.
+- **Suggestions** (`src/lib/suggest.ts`): filter (enjoyed, accessible, fits time, safe, equipment where the user is) → score (preference, goal fit, variety, past declines, energy) → one lead and two backups of a different type. Every suggestion passes the checks in `src/lib/verify.ts`.
 
 ## Project layout
 
 ```
 src/
   lib/            Pure logic, unit-tested: activities + MET values, MET-hours, daily targets,
-                  medals, goal rules, suggestion ranker, verifier checks, weeks by month
+                  streaks and trophies, goal rules, equipment, moves and how-to videos,
+                  suggestion ranker, verifier checks, weeks by month
   data/           Demo scenarios: about 6 months of past weeks + this week each (shaped like PMData
-                  exercise logs)
+                  exercise logs), sign-in days, equipment and monthly VO2 max estimates
   services/
     agent.ts        Agent interface; MockAgent (today) and HttpAgent (example for later)
     answers.ts      Grounded answers to the one-tap questions
-    mockResponses.ts  The pre-written Coach-tab script. Edit this to change demo answers
+    mockResponses.ts  The pre-written Chat-tab script. Edit this to change demo answers
+    clinicianSummary.ts  The plain-language summary on the Clinician tab
     context.ts      Builds the structured user context the agent sees
     prompts.ts      Plain-English task briefs for the coach and verifier agents
     store.ts        Persistence; localStorage today, swap for a database later
   state/          App state (React context + reducer), the Today flow (today.ts), shared types
   screens/        One file per screen / bottom sheet
-  components/     Medal coins and calendar, week bars, time options, icons, sheet, demo panel
+  components/     Flame, trophy and month calendar, VO2 max card, video card, AI notice, week bars,
+                  time options, icons, sheet, demo panel
 docs/architecture.md   How to add the LLM and database
 ```
 

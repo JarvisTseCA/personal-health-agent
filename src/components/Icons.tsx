@@ -11,7 +11,7 @@ export const PlanIcon = (p: P) => (
     <path d="M4 6h10M4 12h16M4 18h7" /><circle cx="18" cy="6" r="2" /><circle cx="15" cy="18" r="2" />
   </svg>
 );
-export const CoachIcon = (p: P) => (
+export const ChatIcon = (p: P) => (
   <svg viewBox="0 0 24 24" {...base} {...p} aria-hidden>
     <path d="M4 5h16v11H9l-5 4z" /><path d="M8 10h8" />
   </svg>
@@ -52,10 +52,19 @@ export const TodayIcon = (p: P) => (
     <circle cx="12" cy="12" r="4" /><path d="M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6l1.4 1.4M17 17l1.4 1.4M5.6 18.4L7 17M17 7l1.4-1.4" />
   </svg>
 );
-export const MedalIcon = (p: P) => (
+/** Progress tab: a trophy outline */
+export const ProgressIcon = (p: P) => (
   <svg viewBox="0 0 24 24" {...base} {...p} aria-hidden>
-    <circle cx="12" cy="14" r="6" /><path d="M8.5 3.5L10.5 8.5M15.5 3.5L13.5 8.5" /><path d="M12 11.5v5" />
+    <path d="M8 4h8v5a4 4 0 0 1-8 0z" /><path d="M8 6H5a3 3 0 0 0 3 4M16 6h3a3 3 0 0 1-3 4" /><path d="M12 13v4M8.5 20h7M10 17h4" />
   </svg>
+);
+export const CameraIcon = (p: P) => (
+  <svg viewBox="0 0 24 24" {...base} {...p} aria-hidden>
+    <path d="M4 8h3l2-3h6l2 3h3v11H4z" /><circle cx="12" cy="13" r="3.5" />
+  </svg>
+);
+export const PlayIcon = (p: P) => (
+  <svg viewBox="0 0 24 24" {...p} aria-hidden><path d="M8 5.5v13l11-6.5z" fill="currentColor" /></svg>
 );
 export const ArrowIcon = ({ dir = "up", ...p }: P & { dir?: "up" | "down" }) => (
   <svg viewBox="0 0 24 24" {...base} {...p} aria-hidden style={{ width: 18, height: 18, transform: dir === "down" ? "rotate(180deg)" : undefined }}>

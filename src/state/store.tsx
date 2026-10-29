@@ -8,7 +8,8 @@ import { buildAgentContext, type AgentContext } from "../services/context";
 import { backendHealth, fetchSuggestion, type BackendSuggestion } from "../services/backend";
 import { repository } from "../services/store";
 import * as Today from "./today";
-import type { AppState, ChatMessage, ClinicianSettings, Overlay, UserProfile } from "./types";
+import type { EquipmentProfile } from "../data/mockFitbit";
+import type { AppState, ChatMessage, ClinicianNotes, Overlay, UserProfile } from "./types";
 
 export { newId } from "./today";
 
@@ -21,12 +22,9 @@ export const DEFAULT_PROFILE: UserProfile = {
   fitbitConnected: false,
 };
 
-export const DEFAULT_CLINICIAN: ClinicianSettings = {
-  goal: null, noVigorous: false, maxSessionMin: null, note: "",
-  name: "", role: "", reason: "", review: "", precautions: "",
-};
+export const DEFAULT_CLINICIAN: ClinicianNotes = { note: "", name: "", role: "" };
 
-function personaState(personaId: string): Pick<AppState, "personaId" | "sessions" | "history" | "declines" | "notes" | "plan" | "goal"> {
+function personaState(personaId: string): Pick<AppState, "personaId" | "sessions" | "history" | "declines" | "notes" | "plan" | "goal" | "signIns" | "vo2"> {
   const p = PERSONAS.find((x) => x.id === personaId) ?? PERSONAS[0];
   return {
     personaId: p.id,
@@ -36,6 +34,8 @@ function personaState(personaId: string): Pick<AppState, "personaId" | "sessions
     notes: [],
     plan: p.plan,
     goal: p.goal,
+    signIns: p.signInsThisWeek,
+    vo2: p.vo2,
   };
 }
 
@@ -62,7 +62,7 @@ export function initialState(personaId = "alex"): AppState {
 /** The profile a persona would have after onboarding (used by "Skip onboarding"). */
 export function personaProfile(state: AppState): UserProfile {
   const p = PERSONAS.find((x) => x.id === state.personaId) ?? PERSONAS[0];
-  return { ...state.profile, enjoyed: p.enjoyed, access: p.access, fitbitConnected: true };
+  return { ...state.profile, enjoyed: p.enjoyed, access: p.access, fitbitConnected: true, equipment: p.equipment };
 }
 
 export type Action =
@@ -103,7 +103,11 @@ export type Action =
   | { type: "restartDay" }
   | { type: "acceptGoal"; to: number }
   | { type: "keepGoal" }
-  | { type: "clinician"; patch: Partial<ClinicianSettings> }
+  | { type: "clinicianNotes"; notes: ClinicianNotes }
+  | { type: "forgetClinicianNotes" }
+  | { type: "setEquipment"; equipment: EquipmentProfile }
+  | { type: "showHow" }
+  | { type: "videoExample" }
   | { type: "overlay"; overlay: Overlay }
   | { type: "toast"; text: string | null }
   | { type: "addMessage"; message: ChatMessage }
@@ -174,7 +178,7 @@ function reduce(state: AppState, action: Action): AppState {
     case "decline": return Today.decline(state);
     case "editAnswer": return Today.editAnswer(state, action.entryId);
     case "editChat": {
-      // Editing a Coach message drops it and everything after; the screen resends the new text.
+      // Editing a Chat message drops it and everything after; the screen resends the new text.
       const i = state.chat.findIndex((m) => m.id === action.id);
       return i < 0 ? state : { ...state, chat: state.chat.slice(0, i) };
     }
@@ -198,8 +202,16 @@ function reduce(state: AppState, action: Action): AppState {
       return { ...state, goal: action.to, goalSource: "recap", recapHandled: true };
     case "keepGoal":
       return { ...state, recapHandled: true };
-    case "clinician":
-      return { ...state, clinician: { ...state.clinician, ...action.patch } };
+    case "clinicianNotes":
+      return { ...state, clinician: { ...action.notes, acknowledged: false } };
+    case "forgetClinicianNotes":
+      return { ...state, clinician: DEFAULT_CLINICIAN };
+    case "setEquipment":
+      return { ...state, profile: { ...state.profile, equipment: action.equipment } };
+    case "showHow":
+      return Today.showHow(state);
+    case "videoExample":
+      return Today.videoExample(state);
     case "overlay":
       return { ...state, overlay: action.overlay };
     case "toast":
@@ -237,7 +249,16 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         const s = saved as AppState;
         // Plans saved as Short/Medium/Long become 10/30/45 min.
         const plans = { plan: migratePlan(s.plan), history: (s.history ?? []).map((w) => ({ ...w, plan: migratePlan(w.plan) })) };
-        dispatch({ type: "hydrate", state: { ...initialState(), ...s, ...plans, overlay: null, toast: null } });
+        // Saves from before streaks, VO2 max and clinician notes: fill those in from the persona.
+        const persona = personaState(s.personaId ?? "alex");
+        const extra = {
+          signIns: s.signIns ?? persona.signIns,
+          vo2: s.vo2 ?? persona.vo2,
+          clinician: { note: s.clinician?.note ?? "", name: s.clinician?.name ?? "", role: s.clinician?.role ?? "", updated: s.clinician?.updated, acknowledged: s.clinician?.acknowledged ?? true },
+          chat: s.chat ?? [],
+        };
+        const today = { ...s.today, entries: (s.today?.entries ?? []).filter((e) => (e.role as string) !== "medal") };
+        dispatch({ type: "hydrate", state: { ...initialState(), ...s, ...plans, ...extra, today, overlay: null, toast: null } });
       }
       hydrated.current = true;
     });

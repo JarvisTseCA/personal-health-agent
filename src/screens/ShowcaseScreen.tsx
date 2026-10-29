@@ -5,10 +5,9 @@
  */
 import { useMemo, useState } from "react";
 import { ChevronIcon } from "../components/Icons";
-import { MedalCoin } from "../components/Medal";
+import { Trophy } from "../components/Rewards";
 import { getFamily, getVariant, PICKABLE, type ActivityFamily, type ActivityVariant } from "../lib/activities";
 import { creditFor, DAY_NAMES, fmt, formatDuration, GUIDELINE_GOAL, intensityOf, minutesFor } from "../lib/met";
-import type { Medal } from "../lib/medals";
 import { useStore } from "../state/store";
 
 const GOAL = GUIDELINE_GOAL;
@@ -71,8 +70,9 @@ function buildSchedules(families: ActivityFamily[]): Schedule[] {
   ];
 }
 
-function weekMedals(blocks: Block[], gold: boolean): Medal[] {
-  return DAY_NAMES.map((_, i) => (blocks.some((b) => b.dayIndex === i) ? (gold ? "gold" : "bronze") : "none"));
+/** Which days of the week had a session, Monday to Sunday. */
+function activeDays(blocks: Block[]): boolean[] {
+  return DAY_NAMES.map((_, i) => blocks.some((b) => b.dayIndex === i));
 }
 
 export function ShowcaseScreen() {
@@ -149,8 +149,9 @@ export function ShowcaseScreen() {
                     <div className="goal-line" style={{ bottom: `${(GOAL / maxCredit) * 100}%` }} />
                   </div>
                   <div className="pct">{pct}%</div>
-                  <div className="mini-coins" aria-label="Medals">
-                    {weekMedals(s.blocks, credit + 1e-9 >= GOAL).map((m, i) => <MedalCoin key={i} medal={m} size={12} />)}
+                  <div className="mini-week" aria-label={`Active on ${activeDays(s.blocks).filter(Boolean).length} days${credit + 1e-9 >= GOAL ? ", trophy earned" : ""}`}>
+                    <span className="mini-dots">{activeDays(s.blocks).map((on, i) => <i key={i} className={on ? "on" : ""} />)}</span>
+                    {credit + 1e-9 >= GOAL && <Trophy size={16} />}
                   </div>
                   <div className="what">{formatDuration(clock)} total. {s.note}.</div>
                 </div>

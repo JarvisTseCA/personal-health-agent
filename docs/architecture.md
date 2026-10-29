@@ -10,14 +10,14 @@ Screens ──► useStore() ──► AppState (React reducer)
    │                                otherwise localStorage
    │
    ├─► ctx = buildAgentContext(state)                             services/context.ts
-   │      MET-hours, daily targets, medals, goal offer            lib/met.ts, plan.ts, medals.ts, goal.ts
+   │      MET-hours, daily targets, streak/trophies, goal offer   lib/met.ts, plan.ts, rewards.ts, goal.ts
    │
    ├─► Today flow (check-in → pick → decline/questions → sync)    state/today.ts
    │      suggest() shows the in-app ranker's pick right away     lib/suggest.ts
    │      the backend's Jev pick replaces it when it arrives      services/backend.ts → backend/
    │      verifySuggestion() checks whatever is shown             lib/verify.ts
    │
-   └─► agent.reply(history, ctx) ──► MockAgent  (Coach tab)        services/agent.ts
+   └─► agent.reply(history, ctx) ──► MockAgent  (Chat tab)         services/agent.ts
                                        picks a scripted reply      services/mockResponses.ts
                                        and streams it word by word
 ```
@@ -116,11 +116,14 @@ A starting draft:
 | `users` | id, name, created_at |
 | `profiles` | user_id, usual_time, has_health_condition, fitbit_connected, clinician_view_enabled, updated_at |
 | `enjoyed_activities` | user_id, family_id, rank, access (`have` / `sometimes` / `no`) |
-| `goals` | user_id, week_start, met_hours, set_by (`default` / `recap` / `clinician`) |
+| `goals` | user_id, week_start, met_hours, set_by (`default` / `recap`; only the user changes it) |
 | `week_plans` | user_id, week_start, mon … sun (`off` / `0` / `5` / `10` / `30` / `45` minutes) |
 | `sessions` | id, user_id, date, variant_id, compendium_code, met, duration_min, avg_hr, source, confirmed, band |
 | `declines` | id, user_id, date, family_id, reason, note |
-| `clinician_settings` | user_id, goal, no_vigorous, max_session_min, note, updated_at |
+| `clinician_notes` | user_id, name, role, note, updated_at (context for the agent; sets nothing) |
+| `equipment` | user_id, place (`home` / `gym`), equipment_id; plus a "no gym" flag on `profiles` |
+| `sign_ins` | user_id, date (one row per day the app was opened; the streak is computed from these) |
+| `vo2_max` | user_id, month, ml_kg_min, source (`fitbit`) |
 | `check_ins` | user_id, date, minutes, place, energy, mood |
 | `chat_messages` | id, user_id, role, text, created_at |
 
@@ -128,9 +131,9 @@ A starting draft:
 turns them into the JSON block injected into the prompt. Move to per-week `date` fields (instead of
 `dayIndex`) at this point.
 
-## Later: a chat model for the Coach tab
+## Later: a chat model for the Chat tab
 
-The Coach tab answers general questions in the user's own words. It's still scripted, and it needs a
+The Chat tab answers general questions in the user's own words. It's still scripted, and it needs a
 model that writes text, so it will use a different model than Jev.
 
 1. Add `POST /api/chat` to the same FastAPI backend. It receives `{ system, messages }`, forwards them
@@ -159,6 +162,9 @@ coach's replies, and parse free-text "Other" notes into structured preferences.
 ## Guardrails to keep
 
 - Only suggest activities from the user's enjoyed list and marked accessible (the code filters options before Jev sees them; the verifier re-checks; desk moves are the one exception).
-- With a health flag or clinician limit: nothing at 6 MET or more, and suggest checking with a clinician first.
+- With a health flag: nothing at 6 MET or more, and suggest checking with a clinician first.
+- Use `clinician_notes` as context when relevant; never treat them as a goal or a rule.
+- Remind the user it's a machine learning model and can make mistakes (the app shows this at the top of every conversation).
+- Never point out a missed day or a broken streak.
 - Symptoms like chest pain or dizziness: stop and contact a clinician (see the `safety` script).
 - Never let a model produce numbers; MET-hours come from the calculator and the verifier compares them.

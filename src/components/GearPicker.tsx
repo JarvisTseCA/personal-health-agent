@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { SAMPLE_PHOTO_SIZE, SAMPLE_PHOTOS } from "../data/samplePhotos";
-import { EQUIPMENT, equipmentName, parseEquipment, parseEquipmentFeedback, type EquipmentPlace } from "../lib/equipment";
+import { EQUIPMENT, equipmentName, isCustom, parseEquipmentFeedback, parseEquipmentWithCustom, type EquipmentPlace } from "../lib/equipment";
 import { CameraIcon } from "./Icons";
 import { OtherInput } from "./OtherInput";
 
@@ -19,7 +19,8 @@ function list(xs: string[]): string {
  * place, the agent analyzes it (boxes drawn over what it found, then a
  * message listing it), and the user replies in a text box to correct it
  * ("no kettlebell, but I have a jump rope"). Typing a list and tapping chips
- * still work. The chips always show the current list.
+ * still work. Anything typed that isn't in the equipment list is added as
+ * its own tag ("foam roller"). The chips always show the current list.
  */
 export function GearPicker({ place, value, onChange, onNote }: { place: EquipmentPlace; value: string[]; onChange: (ids: string[]) => void; onNote: (text: string) => void }) {
   const sample = SAMPLE_PHOTOS[place];
@@ -32,7 +33,9 @@ export function GearPicker({ place, value, onChange, onNote }: { place: Equipmen
   const current = useRef(value);
   current.current = value;
 
-  const items = [...EQUIPMENT.filter((e) => e.usual.includes(place)), ...EQUIPMENT.filter((e) => !e.usual.includes(place))];
+  const items = [...EQUIPMENT.filter((e) => e.usual.includes(place)), ...EQUIPMENT.filter((e) => !e.usual.includes(place))].map((e) => ({ id: e.id, name: e.name }));
+  // The user's own tags, after the standard list
+  const custom = value.filter(isCustom).map((id) => ({ id, name: equipmentName(id) }));
   const set = (ids: string[]) => { current.current = ids; onChange(ids); };
   const toggle = (id: string) => set(value.includes(id) ? value.filter((x) => x !== id) : [...value, id]);
   const named = (ids: string[]) => list(ids.map((id) => equipmentName(id).toLowerCase()));
@@ -65,26 +68,29 @@ export function GearPicker({ place, value, onChange, onNote }: { place: Equipmen
       set(after);
       const the = (ids: string[]) => list(ids.map((id) => `the ${equipmentName(id).toLowerCase()}`));
       const parts = [removed.length ? `taken out ${the(removed)}` : "", added.length ? `added ${the(added)}` : ""].filter(Boolean);
-      reply = `Thanks, I've ${parts.join(" and ")}. ${place === "home" ? "At home" : "At your gym"} you now have: ${after.length ? named(after) : "nothing yet"}. Anything else?`;
+      const mine = added.filter(isCustom);
+      const own = mine.length
+        ? ` ${the(mine).replace(/^t/, "T")} ${mine.length === 1 ? "isn't" : "aren't"} in my equipment list, so I've kept ${mine.length === 1 ? "it as your own tag" : "them as your own tags"}.`
+        : "";
+      reply = `Thanks, I've ${parts.join(" and ")}.${own} ${place === "home" ? "At home" : "At your gym"} you now have: ${after.length ? named(after) : "nothing yet"}. Anything else?`;
     } else if (f.confirmed) {
       reply = `Great. I'll plan your ${place === "home" ? "home" : "gym"} workouts around these: ${named(before)}.`;
     } else if (f.add.length || f.remove.length) {
       reply = `That matches what I have: ${named(before)}. Anything else?`;
     } else {
-      onNote(text);
-      reply = "I couldn't match that to equipment I know, so I've saved it as a note for the team. You can also tap the list below to fix it.";
+      reply = "Got it. Anything else you'd like to add or take out?";
     }
     setThread((t) => [...t, { role: "user", text }, { role: "agent", text: reply }]);
   };
 
   const typed = (text: string) => {
-    const found = parseEquipment(text);
+    const found = parseEquipmentWithCustom(text);
     if (found.length) {
       set([...value, ...found.filter((id) => !value.includes(id))]);
       setHint(`Added ${named(found)}.`);
     } else {
       onNote(text);
-      setHint("I didn't recognize that, so I've noted it. Tap the closest match below.");
+      setHint("Noted. Type the name of a piece of equipment to add it.");
     }
   };
 
@@ -132,8 +138,8 @@ export function GearPicker({ place, value, onChange, onNote }: { place: Equipmen
         {value.length ? `${phase === "done" ? "Your list" : `${value.length} selected`}: ${value.map(equipmentName).join(", ")}. Tap to change.` : "Or tap what you have"}
       </p>
       <div className="chips">
-        {items.map((e) => (
-          <button key={e.id} className="chip" aria-pressed={value.includes(e.id)} onClick={() => toggle(e.id)}>{e.name}</button>
+        {[...items, ...custom].map((e) => (
+          <button key={e.id} className={`chip${isCustom(e.id) ? " chip-custom" : ""}`} aria-pressed={value.includes(e.id)} onClick={() => toggle(e.id)} title={isCustom(e.id) ? "Your own tag: tap to remove" : undefined}>{e.name}</button>
         ))}
       </div>
       <p className="xs muted" style={{ marginTop: 10 }}>Demo: "Upload a photo" uses a built-in sample photo, and the analysis is scripted. Nothing is uploaded.</p>

@@ -67,9 +67,15 @@ class Limits(BaseModel):
 
 class SuggestRequest(BaseModel):
     user_id: str = "demo"
+    weekly_goal_met_hours: float
+    done_this_week_met_hours: float
+    left_this_week_met_hours: float
     day_name: str
     check_in: CheckIn
     needed_met_hours: float = Field(description="MET-hours still needed to reach today's target")
+    # Names of the equipment the user said they have where they are today, their own tags included.
+    # None: no equipment on file (older saves), so nothing was filtered by equipment.
+    equipment_here: Optional[List[str]] = None
     target_met_hours: Optional[float] = Field(default=None, description="Today's full target (a challenge aims for 1.5x this)")
     boost: bool = False  # "Up for a challenge" or "I want more today": aim for 1.5× today's need
     enjoyed: List[Enjoyed]

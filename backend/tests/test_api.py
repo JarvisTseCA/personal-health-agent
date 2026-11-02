@@ -9,9 +9,13 @@ from app.jev import mock_activity, mock_durations
 from app.suggest import AnswerError, assemble, pick_activities
 
 REQ = {
+    "weekly_goal_met_hours": 7.5,
+    "done_this_week_met_hours": 2.1,
+    "left_this_week_met_hours": 5.4,
     "day_name": "Wednesday",
     "check_in": {"minutes": 60, "place": "home", "energy": "normal", "mood": "surprise"},
     "needed_met_hours": 2.0,
+    "equipment_here": ["Yoga mat", "Foam roller"],
     "enjoyed": [
         {"family_id": "yoga", "name": "Yoga", "rank": 1, "access": "have"},
         {"family_id": "cycling", "name": "Cycling", "rank": 2, "access": "have"},
@@ -80,6 +84,22 @@ def test_mood_uses_the_name_from_the_frontend():
     check_in = {**REQ["check_in"], "mood": "cycling", "mood_name": "Cycling"}
     state = build_activity_request(SuggestRequest(**{**REQ, "check_in": check_in}), "jev-latest")["state"]
     assert state["in_the_mood_for"] == "Cycling"
+
+
+def test_state_starts_with_the_week_then_today():
+    state = build_activity_request(SuggestRequest(**REQ), "jev-latest")["state"]
+    assert list(state)[:8] == [
+        "weekly_goal_met_hours", "done_this_week_met_hours", "left_this_week_met_hours",
+        "today", "met_hours_still_needed_today", "time_available_min", "where",
+        "equipment_here_as_the_user_described_it",
+    ]
+    assert (state["weekly_goal_met_hours"], state["left_this_week_met_hours"]) == (7.5, 5.4)
+    assert state["equipment_here_as_the_user_described_it"] == ["Yoga mat", "Foam roller"]
+
+
+def test_no_equipment_on_file_leaves_it_out():
+    state = build_activity_request(SuggestRequest(**{**REQ, "equipment_here": None}), "jev-latest")["state"]
+    assert "equipment_here_as_the_user_described_it" not in state
 
 
 def test_rejects_requests_without_names(client):

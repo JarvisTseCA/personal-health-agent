@@ -6,10 +6,11 @@
  * localStorage, exactly like the demo build.
  */
 import { getFamily, getVariant } from "../lib/activities";
+import { equipmentName } from "../lib/equipment";
 import { creditFor, DAY_NAMES_LONG, metHours } from "../lib/met";
 import { candidates, type Suggestion } from "../lib/suggest";
 import type { AppState } from "../state/types";
-import { buildSuggestInput } from "./context";
+import { buildAgentContext, buildSuggestInput } from "./context";
 
 const BASE = import.meta.env.VITE_API_BASE ?? "/api";
 
@@ -41,16 +42,22 @@ export interface BackendSuggestion {
 
 /** The variables from today's check-in and the options that passed the hard filters. */
 export function buildSuggestRequest(state: AppState) {
-  const input = buildSuggestInput(state);
+  const ctx = buildAgentContext(state);
+  const input = buildSuggestInput(state, ctx);
   const { options, durations } = candidates(input);
   const c = input.constraint;
   return {
+    weekly_goal_met_hours: ctx.goal,
+    done_this_week_met_hours: +ctx.week.done.toFixed(2),
+    left_this_week_met_hours: +ctx.left.toFixed(2),
     day_name: DAY_NAMES_LONG[state.todayIndex],
     check_in: {
       minutes: input.minutes, place: input.place, energy: input.energy, mood: input.mood,
       mood_name: input.mood === "surprise" ? null : getFamily(input.mood).name,
     },
     needed_met_hours: input.needed,
+    // What the user said they have where they are today, including their own tags; null on older saves.
+    equipment_here: input.equipmentHere?.map(equipmentName) ?? null,
     target_met_hours: input.target,
     // "Up for a challenge" aims for 1.5× today's target, same as "I want more".
     boost: input.boost || input.energy === "challenge",

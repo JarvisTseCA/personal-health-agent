@@ -9,9 +9,13 @@ from app.jev import mock_activity, mock_durations
 from app.suggest import AnswerError, assemble, pick_activities
 
 REQ = {
+    "weekly_goal_met_hours": 7.5,
+    "done_this_week_met_hours": 2.1,
+    "left_this_week_met_hours": 5.4,
     "day_name": "Wednesday",
     "check_in": {"minutes": 60, "place": "home", "energy": "normal", "mood": "surprise"},
     "needed_met_hours": 2.0,
+    "equipment_here": ["Yoga mat", "Foam roller"],
     "enjoyed": [
         {"family_id": "yoga", "name": "Yoga", "rank": 1, "access": "have"},
         {"family_id": "cycling", "name": "Cycling", "rank": 2, "access": "have"},
@@ -28,8 +32,8 @@ REQ = {
          "label": "Brisk", "met": 4.8, "description": "Brisk walking", "setting": "outdoor"},
     ],
     "durations": [10, 20, 30, 45, 60],
-    "recent": [{"family_id": "cycling", "days_ago": 1}],
-    "declines": [{"family_id": "walking", "reason": "weather", "days_ago": 2}],
+    "recent": [{"family_id": "cycling", "name": "Cycling", "days_ago": 1}],
+    "declines": [{"family_id": "walking", "name": "Walking", "reason": "weather", "days_ago": 2}],
 }
 
 
@@ -57,6 +61,52 @@ def test_activity_prompt_carries_the_check_in_variables():
     assert body["state"]["recently_done"] == ["Cycling, yesterday"]
     assert list(body["questions"]) == ["activity"]
     assert set(body["questions"]["activity"]["criteria"]) == {o["variant_id"] for o in REQ["options"]}
+
+
+def test_recent_lists_use_names_newest_first():
+    # The frontend sends this week, then last week, so the days come out of order.
+    recent = [
+        {"family_id": "walking", "name": "Walking", "days_ago": 2},
+        {"family_id": "cycling", "name": "Cycling", "days_ago": 1},
+        {"family_id": "walking", "name": "Walking", "days_ago": 9},
+        {"family_id": "desk", "name": "Desk moves", "days_ago": 7},
+    ]
+    declines = [
+        {"family_id": "dancing", "name": "Dancing", "reason": "not-mood", "days_ago": 4},
+        {"family_id": "walking", "name": "Walking", "reason": "weather", "days_ago": 2},
+    ]
+    state = build_activity_request(SuggestRequest(**{**REQ, "recent": recent, "declines": declines}), "jev-latest")["state"]
+    assert state["recently_done"] == ["Cycling, yesterday", "Walking, 2 days ago", "Desk moves, 7 days ago", "Walking, 9 days ago"]
+    assert state["recently_declined"] == ["Walking, 2 days ago, reason: weather", "Dancing, 4 days ago, reason: not-mood"]
+
+
+def test_mood_uses_the_name_from_the_frontend():
+    check_in = {**REQ["check_in"], "mood": "cycling", "mood_name": "Cycling"}
+    state = build_activity_request(SuggestRequest(**{**REQ, "check_in": check_in}), "jev-latest")["state"]
+    assert state["in_the_mood_for"] == "Cycling"
+
+
+def test_state_starts_with_the_week_then_today():
+    state = build_activity_request(SuggestRequest(**REQ), "jev-latest")["state"]
+    assert list(state)[:8] == [
+        "weekly_goal_met_hours", "done_this_week_met_hours", "left_this_week_met_hours",
+        "today", "met_hours_still_needed_today", "time_available_min", "where",
+        "equipment_here_as_the_user_described_it",
+    ]
+    assert (state["weekly_goal_met_hours"], state["left_this_week_met_hours"]) == (7.5, 5.4)
+    assert state["equipment_here_as_the_user_described_it"] == ["Yoga mat", "Foam roller"]
+
+
+def test_no_equipment_on_file_leaves_it_out():
+    state = build_activity_request(SuggestRequest(**{**REQ, "equipment_here": None}), "jev-latest")["state"]
+    assert "equipment_here_as_the_user_described_it" not in state
+
+
+def test_rejects_requests_without_names(client):
+    no_recent_name = {**REQ, "recent": [{"family_id": "desk", "days_ago": 7}]}
+    no_mood_name = {**REQ, "check_in": {**REQ["check_in"], "mood": "cycling"}}
+    assert client.post("/api/suggest", json=no_recent_name).status_code == 422
+    assert client.post("/api/suggest", json=no_mood_name).status_code == 422
 
 
 def test_duration_prompt_asks_once_per_picked_activity():

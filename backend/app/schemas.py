@@ -9,7 +9,7 @@ math stays in the frontend calculator (src/lib).
 """
 from typing import Dict, List, Literal, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 class CheckIn(BaseModel):
@@ -17,6 +17,13 @@ class CheckIn(BaseModel):
     place: str  # home | gym | office | outside | traveling | other
     energy: str  # challenge | normal | low
     mood: str  # an activity family id, or "surprise"
+    mood_name: Optional[str] = None  # the name shown to people, e.g. "Cycling"; none for "surprise"
+
+    @model_validator(mode="after")
+    def _mood_has_a_name(self):
+        if self.mood != "surprise" and not self.mood_name:
+            raise ValueError("mood_name is required unless mood is 'surprise'")
+        return self
 
 
 class Enjoyed(BaseModel):
@@ -41,11 +48,13 @@ class Option(BaseModel):
 
 class Recent(BaseModel):
     family_id: str
+    name: str  # the name shown to people, e.g. "Desk moves"
     days_ago: int
 
 
 class Decline(BaseModel):
     family_id: str
+    name: str
     reason: str
     days_ago: int
     note: Optional[str] = None
@@ -58,9 +67,15 @@ class Limits(BaseModel):
 
 class SuggestRequest(BaseModel):
     user_id: str = "demo"
+    weekly_goal_met_hours: float
+    done_this_week_met_hours: float
+    left_this_week_met_hours: float
     day_name: str
     check_in: CheckIn
     needed_met_hours: float = Field(description="MET-hours still needed to reach today's target")
+    # Names of the equipment the user said they have where they are today, their own tags included.
+    # None: no equipment on file (older saves), so nothing was filtered by equipment.
+    equipment_here: Optional[List[str]] = None
     target_met_hours: Optional[float] = Field(default=None, description="Today's full target (a challenge aims for 1.5x this)")
     boost: bool = False  # "Up for a challenge" or "I want more today": aim for 1.5× today's need
     enjoyed: List[Enjoyed]

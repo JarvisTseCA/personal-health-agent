@@ -29,7 +29,8 @@ ACTIVITY_INSTRUCTIONS = (
     "recently). On a low-energy day prefer lighter options. When they want a challenge, "
     "prefer a harder pace that earns 1.5x today's target in their usual session length "
     "over an easier pace done for longer. Options they can only 'sometimes' access are less "
-    "likely to happen."
+    "likely to happen. The equipment list is what the user said they have here; use it as a "
+    "reference."
 )
 
 # Open question for the team: when a shorter and a longer session both fit,
@@ -74,27 +75,39 @@ def _days_ago_text(days: int) -> str:
 
 
 def build_state(req: SuggestRequest) -> Dict[str, Any]:
-    """Everything Jev should know about the user today, in plain words."""
-    names = {e.family_id: e.name for e in req.enjoyed}
-    names.update({o.family_id: o.family_name for o in req.options})
-    c = req.check_in
+    """Everything Jev should know about the user today, in plain words.
 
+    Names come from the frontend, which has the full activity library; ids
+    never reach the prompt. Recent and declined lists go newest first.
+    """
+    c = req.check_in
+    recent = sorted(req.recent, key=lambda r: r.days_ago)
+    declines = sorted(req.declines, key=lambda d: d.days_ago)
+
+    # The week first, then today, from the bigger picture down.
     state: Dict[str, Any] = {
+        "weekly_goal_met_hours": round(req.weekly_goal_met_hours, 2),
+        "done_this_week_met_hours": round(req.done_this_week_met_hours, 2),
+        "left_this_week_met_hours": round(req.left_this_week_met_hours, 2),
         "today": req.day_name,
+        "met_hours_still_needed_today": round(req.needed_met_hours, 2),
         "time_available_min": c.minutes,
         "where": PLACE_TEXT.get(c.place, c.place),
+    }
+    if req.equipment_here is not None:
+        state["equipment_here_as_the_user_described_it"] = req.equipment_here
+    state.update({
         "energy": ENERGY_TEXT.get(c.energy, c.energy),
-        "in_the_mood_for": "no preference" if c.mood == "surprise" else names.get(c.mood, c.mood),
-        "met_hours_still_needed_today": round(req.needed_met_hours, 2),
+        "in_the_mood_for": "no preference" if c.mood == "surprise" else c.mood_name,
         "wants_more_than_usual_today": req.boost,
         "favorites_in_order": [f"{e.rank}. {e.name} (access: {e.access})" for e in req.enjoyed],
-        "recently_done": [f"{names.get(r.family_id, r.family_id)}, {_days_ago_text(r.days_ago)}" for r in req.recent],
+        "recently_done": [f"{r.name}, {_days_ago_text(r.days_ago)}" for r in recent],
         "recently_declined": [
-            f"{names.get(d.family_id, d.family_id)}, {_days_ago_text(d.days_ago)}, reason: {d.reason}"
+            f"{d.name}, {_days_ago_text(d.days_ago)}, reason: {d.reason}"
             + (f" ({d.note})" if d.note else "")
-            for d in req.declines
+            for d in declines
         ],
-    }
+    })
     if req.boost:
         state["challenge_aim_met_hours"] = round(challenge.challenge_aim(req), 2)
     if req.limits.no_vigorous:

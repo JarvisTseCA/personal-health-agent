@@ -74,25 +74,29 @@ def _days_ago_text(days: int) -> str:
 
 
 def build_state(req: SuggestRequest) -> Dict[str, Any]:
-    """Everything Jev should know about the user today, in plain words."""
-    names = {e.family_id: e.name for e in req.enjoyed}
-    names.update({o.family_id: o.family_name for o in req.options})
+    """Everything Jev should know about the user today, in plain words.
+
+    Names come from the frontend, which has the full activity library; ids
+    never reach the prompt. Recent and declined lists go newest first.
+    """
     c = req.check_in
+    recent = sorted(req.recent, key=lambda r: r.days_ago)
+    declines = sorted(req.declines, key=lambda d: d.days_ago)
 
     state: Dict[str, Any] = {
         "today": req.day_name,
         "time_available_min": c.minutes,
         "where": PLACE_TEXT.get(c.place, c.place),
         "energy": ENERGY_TEXT.get(c.energy, c.energy),
-        "in_the_mood_for": "no preference" if c.mood == "surprise" else names.get(c.mood, c.mood),
+        "in_the_mood_for": "no preference" if c.mood == "surprise" else c.mood_name,
         "met_hours_still_needed_today": round(req.needed_met_hours, 2),
         "wants_more_than_usual_today": req.boost,
         "favorites_in_order": [f"{e.rank}. {e.name} (access: {e.access})" for e in req.enjoyed],
-        "recently_done": [f"{names.get(r.family_id, r.family_id)}, {_days_ago_text(r.days_ago)}" for r in req.recent],
+        "recently_done": [f"{r.name}, {_days_ago_text(r.days_ago)}" for r in recent],
         "recently_declined": [
-            f"{names.get(d.family_id, d.family_id)}, {_days_ago_text(d.days_ago)}, reason: {d.reason}"
+            f"{d.name}, {_days_ago_text(d.days_ago)}, reason: {d.reason}"
             + (f" ({d.note})" if d.note else "")
-            for d in req.declines
+            for d in declines
         ],
     }
     if req.boost:

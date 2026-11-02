@@ -46,7 +46,10 @@ export function buildSuggestRequest(state: AppState) {
   const c = input.constraint;
   return {
     day_name: DAY_NAMES_LONG[state.todayIndex],
-    check_in: { minutes: input.minutes, place: input.place, energy: input.energy, mood: input.mood },
+    check_in: {
+      minutes: input.minutes, place: input.place, energy: input.energy, mood: input.mood,
+      mood_name: input.mood === "surprise" ? null : getFamily(input.mood).name,
+    },
     needed_met_hours: input.needed,
     target_met_hours: input.target,
     // "Up for a challenge" aims for 1.5× today's target, same as "I want more".
@@ -59,8 +62,12 @@ export function buildSuggestRequest(state: AppState) {
       label: variant.label, met: variant.met, description: variant.description, setting: variant.setting ?? family.setting,
     })),
     durations,
-    recent: input.recent.map((r) => ({ family_id: r.familyId, days_ago: r.daysAgo })),
-    declines: state.declines.map((d) => ({ family_id: d.familyId, reason: d.reason, days_ago: state.todayIndex - d.day, note: d.note ?? null })),
+    // Names come from the activity library here; the backend has no copy of it.
+    recent: input.recent.map((r) => ({ family_id: r.familyId, name: getFamily(r.familyId).name, days_ago: r.daysAgo })),
+    declines: state.declines.map((d) => ({
+      family_id: d.familyId, name: getFamily(d.familyId).name, reason: d.reason,
+      days_ago: state.todayIndex - d.day, note: d.note ?? null,
+    })),
     limits: { no_vigorous: input.noVigorous, max_session_min: input.maxSessionMin },
     constraint_notes: [
       ...(c?.indoorOnly ? ["Indoors only"] : []),

@@ -9,7 +9,7 @@ math stays in the frontend calculator (src/lib).
 """
 from typing import Dict, List, Literal, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 class CheckIn(BaseModel):
@@ -17,6 +17,13 @@ class CheckIn(BaseModel):
     place: str  # home | gym | office | outside | traveling | other
     energy: str  # challenge | normal | low
     mood: str  # an activity family id, or "surprise"
+    mood_name: Optional[str] = None  # the name shown to people, e.g. "Cycling"; none for "surprise"
+
+    @model_validator(mode="after")
+    def _mood_has_a_name(self):
+        if self.mood != "surprise" and not self.mood_name:
+            raise ValueError("mood_name is required unless mood is 'surprise'")
+        return self
 
 
 class Enjoyed(BaseModel):
@@ -41,11 +48,13 @@ class Option(BaseModel):
 
 class Recent(BaseModel):
     family_id: str
+    name: str  # the name shown to people, e.g. "Desk moves"
     days_ago: int
 
 
 class Decline(BaseModel):
     family_id: str
+    name: str
     reason: str
     days_ago: int
     note: Optional[str] = None

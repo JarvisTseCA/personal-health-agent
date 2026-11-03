@@ -3,6 +3,7 @@ import { buildSuggestRequest, type BackendSuggestion } from "../services/backend
 import { buildAgentContext } from "../services/context";
 import { initialState, personaProfile } from "./store";
 import * as T from "./today";
+import { applyClinicianTurn } from "../services/clinicianChat";
 import type { AppState } from "./types";
 
 function onboarded(persona = "alex"): AppState {
@@ -69,12 +70,16 @@ describe("today flow", () => {
     expect(v.today.entries.at(-2)!.text).toBe("Show me how");
   });
 
-  it("mentions new clinician notes once, as context", () => {
-    let s = onboarded();
-    s = T.startDay({ ...s, clinician: { note: "Moderate intensity for now.", name: "Dr. Rivera", acknowledged: false } });
-    expect(s.today.entries[0].text).toMatch(/Dr\. Rivera/);
-    expect(s.clinician.acknowledged).toBe(true);
-    expect(T.startDay(s).today.entries.some((e) => /Dr\. Rivera/.test(e.text))).toBe(false);
+  it("clinician feedback from Chat keeps picks moderate and favors strength, without changing the goal", () => {
+    let s = onboarded("roll");
+    s = applyClinicianTurn(s, "My doctor said keep it moderate for now and add two strength days a week");
+    expect(s.clinician.entries.length).toBe(1);
+    expect(s.chat.at(-1)!.text).toMatch(/moderate activity/);
+    s = checkIn(T.startDay(s), 45);
+    const picks = [s.today.current!.lead, ...s.today.current!.backups];
+    expect(picks.every((p) => p.met < 6)).toBe(true);
+    expect(s.today.current!.lead.familyId).toBe("strength");
+    expect(s.today.current!.lead.reasons[0]).toBe("Your clinician suggested it");
     expect(s.goal).toBe(7.5);
   });
 

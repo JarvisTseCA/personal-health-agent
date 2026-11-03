@@ -57,9 +57,9 @@ export function verifySuggestion(s: Suggestion, input: SuggestInput, shownCredit
     },
     {
       name: "Safety",
-      rule: "Nothing ≥ 6 MET with a health flag",
+      rule: "Nothing ≥ 6 MET with a health flag or clinician advice to keep it moderate",
       ok: !(input.noVigorous && variant.met >= VIGOROUS_MET),
-      detail: input.noVigorous ? `Health flag on; ${variant.met} MET` : "No health flag",
+      detail: input.noVigorous ? `Limit on; ${variant.met} MET` : "No limit set",
     },
     {
       name: "Equipment",

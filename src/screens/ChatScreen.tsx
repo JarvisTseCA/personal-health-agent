@@ -6,6 +6,7 @@ import { fmt, fmtGoal } from "../lib/met";
 import { agent } from "../services/agent";
 import { starterSuggestions } from "../services/mockResponses";
 import { newId, useStore } from "../state/store";
+import { clinicianTurnKind } from "../services/clinicianChat";
 import type { ChatMessage } from "../state/types";
 
 /** Chat: free-form questions to the same agent as Today, answered with the user's own numbers. */
@@ -19,7 +20,7 @@ export function ChatScreen() {
   const greeting: ChatMessage = {
     id: "greeting",
     role: "agent",
-    text: `Hi ${state.profile.name}. You're at ${fmt(ctx.week.done)} of ${fmtGoal(ctx.goal)} MET-hours this week${ctx.vo2 ? `, and your VO2 max is ${ctx.vo2.latest}` : ""}. Ask me anything: what counts, what VO2 max is, or how trophies work.${state.clinician.note.trim() ? " I also have the notes from your clinician's visit." : ""}`,
+    text: `Hi ${state.profile.name}. You're at ${fmt(ctx.week.done)} of ${fmtGoal(ctx.goal)} MET-hours this week${ctx.vo2 ? `, and your VO2 max is ${ctx.vo2.latest}` : ""}. Ask me anything: what counts, what VO2 max is, or how trophies work.${state.clinician.entries.length ? " I also have the feedback you shared from your clinician." : " After a visit, you can tell me what your clinician said."}`,
     suggestions: starterSuggestions(ctx),
   };
   const messages = [greeting, ...state.chat];
@@ -35,6 +36,11 @@ export function ChatScreen() {
     if (!t || busy) return;
     setInput("");
     setSelected(null);
+    // Feedback from the user's clinician: saved as a note, with the agent's reply (services/clinicianChat.ts).
+    if (clinicianTurnKind({ ...state, chat: before }, t)) {
+      dispatch({ type: "clinicianChat", text: t });
+      return;
+    }
     setBusy(true);
     const userMsg: ChatMessage = { id: newId("u"), role: "user", text: t, at: Date.now() };
     dispatch({ type: "addMessage", message: userMsg });

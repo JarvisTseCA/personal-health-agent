@@ -13,6 +13,9 @@ import { afterDecline, challengePlan, suggest, type SuggestInput } from "./sugge
 import { verifySuggestion } from "./verify";
 import { buildAgentContext } from "../services/context";
 import { initialState, personaProfile } from "../state/store";
+import { isAddFeedbackRequest, isClinicianReport } from "./clinicianNotes";
+import { applyClinicianTurn, clinicianTurnKind } from "../services/clinicianChat";
+import { buildSummary, GUIDELINE_MIN } from "../services/summary";
 
 const close = (a: number, b: number) => expect(a).toBeCloseTo(b, 2);
 
@@ -109,6 +112,62 @@ describe("streaks and trophies", () => {
     expect(streak("alex")).toBe(12);
     expect(streak("tough")).toBe(1);
     expect(streak("fresh")).toBe(1);
+  });
+});
+
+describe("clinician feedback in Chat", () => {
+  const base = () => { const st = initialState("alex"); return { ...st, onboarded: true, profile: personaProfile(st) }; };
+
+  it("tells reports apart from questions", () => {
+    expect(isClinicianReport("My doctor said to keep it moderate")).toBe(true);
+    expect(isClinicianReport("my physical therapist wants me to do more stretching")).toBe(true);
+    expect(isClinicianReport("Dr. Lee's advice: walk every day")).toBe(true);
+    expect(isClinicianReport("What did my clinician suggest?")).toBe(false);
+    expect(isClinicianReport("Does my doctor see this?")).toBe(false);
+    expect(isAddFeedbackRequest("Add feedback from my clinician")).toBe(true);
+  });
+
+  it("asks, then saves the next message; cancel saves nothing", () => {
+    let s = applyClinicianTurn(base(), "Add feedback from my clinician");
+    expect(s.chat.at(-1)!.kind).toBe("ask-clinician");
+    s = applyClinicianTurn(s, "keep walking every day and go easy on the knees");
+    expect(s.clinician.entries.map((n) => n.text)).toEqual(["Keep walking every day and go easy on the knees"]);
+    expect(buildAgentContext(s).noVigorous).toBe(true);
+    let c = applyClinicianTurn(base(), "Add feedback from my clinician");
+    c = applyClinicianTurn(c, "never mind");
+    expect(c.clinician.entries).toEqual([]);
+  });
+
+  it("offers to add strength when it isn't on the list, and a note can be removed", () => {
+    let s = applyClinicianTurn(base(), "My doctor said I should add strength training twice a week");
+    expect(s.chat.at(-1)!.kind).toBe("offer-strength");
+    s = applyClinicianTurn(s, "Add strength training");
+    expect(s.profile.enjoyed).toContain("strength");
+    expect(buildAgentContext(s).guidance.strength).toBe(true);
+    s = { ...s, clinician: { entries: [] } };
+    expect(buildAgentContext(s).guidance.strength).toBe(false);
+  });
+
+  it("other messages go to the normal agent", () => {
+    expect(clinicianTurnKind(base(), "How am I doing this week?")).toBeNull();
+  });
+});
+
+describe("summary tab", () => {
+  it("averages the last 4 full weeks in plain and clinical units", () => {
+    const st = initialState("alex");
+    const sum = buildSummary(buildAgentContext({ ...st, onboarded: true, profile: personaProfile(st) }));
+    expect(sum.weeks).toBe(4);
+    expect(sum.avgBriskMin).toBe(Math.round((sum.avgMetHours / 3) * 60));
+    expect(sum.chart.length).toBe(6);
+    expect(sum.chart.at(-1)!.current).toBe(true);
+    expect(sum.calendar.length).toBe(4);
+    expect(GUIDELINE_MIN).toBe(150);
+  });
+
+  it("a new user gets no averages", () => {
+    const st = initialState("fresh");
+    expect(buildSummary(buildAgentContext({ ...st, onboarded: true, profile: personaProfile(st) })).weeks).toBe(0);
   });
 });
 

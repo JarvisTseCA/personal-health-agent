@@ -7,6 +7,7 @@
 import { getFamily } from "../lib/activities";
 import { goalOffer, type GoalOffer } from "../lib/goal";
 import { equipmentName } from "../lib/equipment";
+import { guidanceOf, type ClinicianGuidance } from "../lib/clinicianNotes";
 import { streakOf, trophyEarned, type Streak } from "../lib/rewards";
 import { DAY_NAMES, DAY_NAMES_LONG, totalsFor, type WeekTotals } from "../lib/met";
 import { dailyTargets, unplannedLeft, type WeekPlan } from "../lib/plan";
@@ -63,6 +64,8 @@ export interface AgentContext {
   past: PastWeek[];
   offer: GoalOffer;
   noVigorous: boolean;
+  /** What the saved clinician feedback asks for */
+  guidance: ClinicianGuidance;
   enjoyedNames: string[];
   state: AppState;
 }
@@ -112,6 +115,7 @@ export function buildAgentContext(state: AppState): AgentContext {
     };
   });
 
+  const guidance = guidanceOf(state.clinician.entries);
   const streak = streakOf([...past.flatMap((w) => w.signIns), ...signIns.slice(0, t + 1)]);
   const trophy = trophyEarned(week.done, goal);
   const todayTarget = targets[t];
@@ -138,7 +142,9 @@ export function buildAgentContext(state: AppState): AgentContext {
     vo2: vo2Of(state.vo2 ?? []),
     past,
     offer: goalOffer(goal, past.map((w) => w.totals.done)),
-    noVigorous: state.profile.hasHealthCondition,
+    // A health flag, or clinician feedback that says to keep it moderate
+    noVigorous: state.profile.hasHealthCondition || guidance.moderateOnly,
+    guidance,
     enjoyedNames: state.profile.enjoyed.map((id) => getFamily(id).noun),
     state,
   };
@@ -171,6 +177,7 @@ export function buildSuggestInput(state: AppState, ctx = buildAgentContext(state
     minutes: c.minutes ?? 30,
     place: c.place ?? "home",
     equipmentHere: equipmentAt(state, c.place ?? "home"),
+    favorKind: ctx.guidance.strength ? "strength" : undefined,
     energy: c.energy ?? "normal",
     mood: c.mood ?? "surprise",
     needed: ctx.todayNeeded,
@@ -196,9 +203,15 @@ export function serializeContext(ctx: AgentContext) {
       equipment_at_home: (s.profile.equipment?.home ?? []).map(equipmentName),
       equipment_at_gym: s.profile.equipment?.gym === null ? "doesn't use a gym" : (s.profile.equipment?.gym ?? []).map(equipmentName),
     },
-    // Context from the user's last visit. Use it when it's relevant; it doesn't set goals or limits.
-    clinician_notes: s.clinician.note.trim()
-      ? { from: [s.clinician.name, s.clinician.role].filter(Boolean).join(", ") || "their clinician", note: s.clinician.note.trim(), saved: s.clinician.updated ?? null }
+    // Feedback from the user's clinician, as the user typed it in Chat. Context, not a goal or a rule.
+    clinician_notes: s.clinician.entries.length
+      ? {
+          notes: s.clinician.entries.map((n) => ({ saved: n.at.slice(0, 10), text: n.text })),
+          applied: [
+            ...(ctx.guidance.moderateOnly ? ["moderate activity only (nothing at 6 MET or more)"] : []),
+            ...(ctx.guidance.strength ? ["strength training favored"] : []),
+          ],
+        }
       : null,
     vo2_max: ctx.vo2 ? { latest_ml_kg_min: ctx.vo2.latest, change_over_months: ctx.vo2.change, monthly: ctx.vo2.series.map((x) => `${x.label} ${x.value}`) } : null,
     goal: { weekly_met_hours: ctx.goal, set_by: ctx.goalBy, stepping_stone: ctx.steppingStone },

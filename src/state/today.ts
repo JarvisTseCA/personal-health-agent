@@ -45,7 +45,7 @@ export const dayKeyOf = (s: Pick<AppState, "personaId" | "todayIndex">) => `${s.
 export function startDay(state: AppState): AppState {
   // Opening the app today is a sign-in.
   const signIns = Array.from({ length: 7 }, (_, i) => (i === state.todayIndex ? true : !!state.signIns?.[i]));
-  let st: AppState = { ...state, signIns };
+  const st: AppState = { ...state, signIns };
   const ctx = buildAgentContext(st);
   const off = st.plan[st.todayIndex] === "off";
   const n = ctx.streak.current;
@@ -59,11 +59,6 @@ export function startDay(state: AppState): AppState {
     opener = `${hello}You're at ${fmt(ctx.week.done)} of ${fmtGoal(ctx.goal)} MET-hours this week. Today's target is ${fmt(ctx.todayTarget)}. How much time do you have today?`;
   }
   const entries = [agent(opener)];
-  if (st.clinician.note.trim() && !st.clinician.acknowledged) {
-    const who = st.clinician.name?.trim() || "your clinician";
-    entries.unshift(agent(`I've read the notes ${who} left at your visit and I'll keep them in mind. Your goals stay yours to set; change them on Progress any time.`));
-    st = { ...st, clinician: { ...st.clinician, acknowledged: true } };
-  }
   return {
     ...st,
     today: { dayKey: dayKeyOf(st), step: "time", checkIn: {}, entries, exclude: [], boost: false, nudged: false },

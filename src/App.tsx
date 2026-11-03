@@ -1,12 +1,12 @@
-import { useCallback, useEffect, useRef, useState, type ComponentType } from "react";
+import { useCallback, useEffect, useState, type ComponentType } from "react";
 import { DemoPanel } from "./components/DemoPanel";
-import { ChatIcon, ProgressIcon, ShowcaseIcon, StethoscopeIcon, TodayIcon } from "./components/Icons";
-import { ClinicianScreen } from "./screens/ClinicianScreen";
+import { ChatIcon, ProgressIcon, ShowcaseIcon, SummaryIcon, TodayIcon } from "./components/Icons";
 import { ChatScreen } from "./screens/ChatScreen";
 import { Onboarding } from "./screens/Onboarding";
 import { PreferencesSheet } from "./screens/PreferencesSheet";
 import { ProgressScreen } from "./screens/ProgressScreen";
 import { ShowcaseScreen } from "./screens/ShowcaseScreen";
+import { SummaryScreen } from "./screens/SummaryScreen";
 import { TodayScreen } from "./screens/TodayScreen";
 import { useStore } from "./state/store";
 import type { Screen } from "./state/types";
@@ -15,13 +15,13 @@ const TABS: Array<{ id: Screen; label: string; Icon: ComponentType<{ className?:
   { id: "today", label: "Today", Icon: TodayIcon },
   { id: "progress", label: "Progress", Icon: ProgressIcon },
   { id: "chat", label: "Chat", Icon: ChatIcon },
-  { id: "clinician", label: "Clinician", Icon: StethoscopeIcon },
+  { id: "summary", label: "Summary", Icon: SummaryIcon },
   { id: "showcase", label: "Showcase", Icon: ShowcaseIcon },
 ];
 
-const SCREENS: Screen[] = ["onboarding", "today", "progress", "chat", "clinician", "showcase"];
-/** Old links: Week and Medals are now part of Progress; Coach is now Chat. */
-const RENAMED: Record<string, Screen> = { week: "progress", medals: "progress", coach: "chat" };
+const SCREENS: Screen[] = ["onboarding", "today", "progress", "chat", "summary", "showcase"];
+/** Old links: Week and Medals are now part of Progress; Coach is now Chat; Clinician is now Summary. */
+const RENAMED: Record<string, Screen> = { week: "progress", medals: "progress", coach: "chat", clinician: "summary" };
 
 /** Screen lives in the URL hash (#progress) so links and refreshes keep your place. */
 function readHash(): Screen | null {
@@ -69,11 +69,6 @@ export default function App() {
   const overlay = state.onboarded ? state.overlay : null;
   const close = () => dispatch({ type: "overlay", overlay: null });
 
-  // "Not now" and "Cancel" on the Clinician tab go back to the tab the user came from.
-  const lastTab = useRef<Screen>("today");
-  useEffect(() => {
-    if (active !== "clinician" && active !== "onboarding") lastTab.current = active;
-  }, [active]);
 
   return (
     <div className="desk">
@@ -97,20 +92,19 @@ export default function App() {
           </div>
         </div>
 
-        {active === "clinician" ? (
-          <ClinicianScreen onSaved={() => go("today")} onLeave={() => go(lastTab.current)} />
-        ) : active === "chat" ? (
+        {active === "chat" ? (
           <ChatScreen />
         ) : (
           <main className="screen" key={active}>
             {active === "onboarding" && <Onboarding onDone={() => go("today")} />}
             {active === "today" && <TodayScreen go={go} openPrefs={() => dispatch({ type: "overlay", overlay: "prefs" })} />}
             {active === "progress" && <ProgressScreen />}
+            {active === "summary" && <SummaryScreen go={go} />}
             {active === "showcase" && <ShowcaseScreen />}
           </main>
         )}
 
-        {active !== "onboarding" && active !== "clinician" && (
+        {active !== "onboarding" && (
           <nav className="tabbar" aria-label="Main">
             {TABS.map(({ id, label, Icon }) => (
               <button key={id} className="tab" aria-current={active === id ? "page" : undefined} onClick={() => go(id)}>
@@ -121,7 +115,7 @@ export default function App() {
           </nav>
         )}
 
-        {overlay === "prefs" && active !== "clinician" && <PreferencesSheet onClose={close} openClinician={() => { close(); go("clinician"); }} />}
+        {overlay === "prefs" && <PreferencesSheet onClose={close} openSummary={() => { close(); go("summary"); }} />}
 
         {state.toast && (
           <div className="toast" role="status">

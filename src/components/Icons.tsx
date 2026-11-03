@@ -74,9 +74,10 @@ export const ArrowIcon = ({ dir = "up", ...p }: P & { dir?: "up" | "down" }) => 
 export const CloseIcon = (p: P) => (
   <svg viewBox="0 0 24 24" {...base} {...p} aria-hidden><path d="M6 6l12 12M18 6L6 18" /></svg>
 );
-export const StethoscopeIcon = (p: P) => (
+/** Summary tab: a clipboard with a small chart */
+export const SummaryIcon = (p: P) => (
   <svg viewBox="0 0 24 24" {...base} {...p} aria-hidden>
-    <path d="M6 3v6a4 4 0 0 0 8 0V3" /><path d="M10 13v2a5 5 0 0 0 10 0v-2" /><circle cx="20" cy="11" r="2" />
+    <rect x="5" y="4.5" width="14" height="16" rx="2" /><path d="M9 3h6v3H9z" /><path d="M8.5 16.5v-2.5M12 16.5v-5M15.5 16.5v-3.5" />
   </svg>
 );
 export const PencilIcon = (p: P) => (

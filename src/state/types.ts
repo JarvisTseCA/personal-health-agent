@@ -1,6 +1,7 @@
 import type { EquipmentProfile, WeekRecord } from "../data/mockFitbit";
 import type { Session } from "../lib/met";
 import type { Video } from "../lib/moves";
+import type { ClinicianNote } from "../lib/clinicianNotes";
 import type { WeekPlan } from "../lib/plan";
 import type { Access, Constraint, DeclineReason, Energy, Place, Suggestion } from "../lib/suggest";
 
@@ -21,20 +22,11 @@ export interface UserProfile {
 }
 
 /**
- * What a clinician leaves in the Clinician tab during a visit. Context only:
- * the coach reads the notes in later conversations, but nothing here changes
- * the user's goal or limits. The user decides those after talking with the
- * clinician.
+ * Feedback from the user's clinician, as the user typed it in Chat. Context
+ * for the agent (see lib/clinicianNotes.ts); it never changes the user's goal.
  */
 export interface ClinicianNotes {
-  /** Optional suggestions and notes for the coach, in the clinician's words */
-  note: string;
-  name?: string;
-  role?: string;
-  /** ISO time the clinician last saved */
-  updated?: string;
-  /** The coach has mentioned the new notes on Today */
-  acknowledged?: boolean;
+  entries: ClinicianNote[];
 }
 
 /** One "not today" the coach remembers. `day` is relative to this week's Monday. */
@@ -63,6 +55,8 @@ export interface ChatMessage {
   at?: number;
   /** Optional suggested replies shown under an agent message */
   suggestions?: string[];
+  /** An agent message waiting for a specific answer: the clinician's feedback, or yes to adding strength */
+  kind?: "ask-clinician" | "offer-strength";
 }
 
 export interface CheckIn {
@@ -134,7 +128,7 @@ export interface TodayState {
   nudged: boolean;
 }
 
-export type Screen = "onboarding" | "today" | "progress" | "chat" | "clinician" | "showcase";
+export type Screen = "onboarding" | "today" | "progress" | "chat" | "summary" | "showcase";
 export type Overlay = null | "prefs";
 
 export interface AppState {
@@ -160,7 +154,7 @@ export interface AppState {
   chat: ChatMessage[];
   personaId: string;
   syncCount: number;
-  /** "Something hurts" reports, for the clinician's flags */
+  /** "Something hurts" reports, for the Summary tab's things to mention */
   painReports: number;
   overlay: Overlay;
   toast: string | null;

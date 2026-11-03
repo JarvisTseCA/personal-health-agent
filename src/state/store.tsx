@@ -7,6 +7,7 @@ import type { QuestionId } from "../services/answers";
 import { buildAgentContext, type AgentContext } from "../services/context";
 import { backendHealth, fetchSuggestion, type BackendSuggestion } from "../services/backend";
 import { repository } from "../services/store";
+import { applyClinicianTurn } from "../services/clinicianChat";
 import * as Today from "./today";
 import type { EquipmentProfile } from "../data/mockFitbit";
 import type { AppState, ChatMessage, ClinicianNotes, Overlay, UserProfile } from "./types";
@@ -22,7 +23,16 @@ export const DEFAULT_PROFILE: UserProfile = {
   fitbitConnected: false,
 };
 
-export const DEFAULT_CLINICIAN: ClinicianNotes = { note: "", name: "", role: "" };
+export const DEFAULT_CLINICIAN: ClinicianNotes = { entries: [] };
+
+/** Saves from the hand-over Clinician tab had one note with a name; keep it as the first entry. */
+function migrateClinician(c: unknown): ClinicianNotes {
+  const old = (c ?? {}) as { entries?: ClinicianNotes["entries"]; note?: string; name?: string; updated?: string };
+  if (Array.isArray(old.entries)) return { entries: old.entries };
+  const text = old.note?.trim();
+  if (!text) return DEFAULT_CLINICIAN;
+  return { entries: [{ id: "cn-migrated", text: old.name?.trim() ? `${old.name.trim()} said: ${text}` : text, at: old.updated ?? new Date().toISOString() }] };
+}
 
 function personaState(personaId: string): Pick<AppState, "personaId" | "sessions" | "history" | "declines" | "notes" | "plan" | "goal" | "signIns" | "vo2"> {
   const p = PERSONAS.find((x) => x.id === personaId) ?? PERSONAS[0];
@@ -103,8 +113,8 @@ export type Action =
   | { type: "restartDay" }
   | { type: "acceptGoal"; to: number }
   | { type: "keepGoal" }
-  | { type: "clinicianNotes"; notes: ClinicianNotes }
-  | { type: "forgetClinicianNotes" }
+  | { type: "clinicianChat"; text: string }
+  | { type: "forgetClinicianNote"; id: string }
   | { type: "setEquipment"; equipment: EquipmentProfile }
   | { type: "showHow" }
   | { type: "videoExample" }
@@ -202,10 +212,10 @@ function reduce(state: AppState, action: Action): AppState {
       return { ...state, goal: action.to, goalSource: "recap", recapHandled: true };
     case "keepGoal":
       return { ...state, recapHandled: true };
-    case "clinicianNotes":
-      return { ...state, clinician: { ...action.notes, acknowledged: false } };
-    case "forgetClinicianNotes":
-      return { ...state, clinician: DEFAULT_CLINICIAN };
+    case "clinicianChat":
+      return applyClinicianTurn(state, action.text);
+    case "forgetClinicianNote":
+      return { ...state, clinician: { entries: state.clinician.entries.filter((n) => n.id !== action.id) } };
     case "setEquipment":
       return { ...state, profile: { ...state.profile, equipment: action.equipment } };
     case "showHow":
@@ -254,7 +264,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         const extra = {
           signIns: s.signIns ?? persona.signIns,
           vo2: s.vo2 ?? persona.vo2,
-          clinician: { note: s.clinician?.note ?? "", name: s.clinician?.name ?? "", role: s.clinician?.role ?? "", updated: s.clinician?.updated, acknowledged: s.clinician?.acknowledged ?? true },
+          clinician: migrateClinician(s.clinician),
           chat: s.chat ?? [],
         };
         const today = { ...s.today, entries: (s.today?.entries ?? []).filter((e) => (e.role as string) !== "medal") };

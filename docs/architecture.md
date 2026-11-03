@@ -120,7 +120,7 @@ A starting draft:
 | `week_plans` | user_id, week_start, mon … sun (`off` / `0` / `5` / `10` / `30` / `45` minutes) |
 | `sessions` | id, user_id, date, variant_id, compendium_code, met, duration_min, avg_hr, source, confirmed, band |
 | `declines` | id, user_id, date, family_id, reason, note |
-| `clinician_notes` | user_id, name, role, note, updated_at (context for the agent; sets nothing) |
+| `clinician_notes` | id, user_id, text, created_at (what the user told Chat their clinician said; agent context, never changes the goal) |
 | `equipment` | user_id, place (`home` / `gym`), equipment_id; plus a "no gym" flag on `profiles` |
 | `sign_ins` | user_id, date (one row per day the app was opened; the streak is computed from these) |
 | `vo2_max` | user_id, month, ml_kg_min, source (`fitbit`) |
@@ -163,7 +163,7 @@ coach's replies, and parse free-text "Other" notes into structured preferences.
 
 - Only suggest activities from the user's enjoyed list and marked accessible (the code filters options before Jev sees them; the verifier re-checks; desk moves are the one exception).
 - With a health flag: nothing at 6 MET or more, and suggest checking with a clinician first.
-- Use `clinician_notes` as context when relevant; never treat them as a goal or a rule.
+- Use `clinician_notes` (the user's paraphrase of their clinician's feedback) as context when relevant; never treat them as a goal.
 - Remind the user it's a machine learning model and can make mistakes (the app shows this at the top of every conversation).
 - Never point out a missed day or a broken streak.
 - Symptoms like chest pain or dizziness: stop and contact a clinician (see the `safety` script).

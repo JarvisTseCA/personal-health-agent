@@ -9,6 +9,7 @@
 import { getVariant, searchFamilies } from "../lib/activities";
 import { creditFor, fmt, fmtGoal, intensityOf } from "../lib/met";
 import { answer } from "./answers";
+import { quote } from "../lib/clinicianNotes";
 import type { AgentContext } from "./context";
 
 export interface ScriptedReply {
@@ -20,17 +21,11 @@ export interface ScriptedReply {
 
 const has = (t: string, ...words: string[]) => words.some((w) => t.includes(w));
 
-/** Who left the clinician notes, for sentences: "Dr. Rivera" or "your clinician". */
-function clinicianName(ctx: AgentContext): string {
-  return ctx.state.clinician.name?.trim() || "your clinician";
-}
-
-/** One line that brings the clinician's notes into a reply, when there are any. */
+/** One line that brings the clinician's feedback into a reply, when there is any. */
 function withNotes(ctx: AgentContext): string {
-  const note = ctx.state.clinician.note.trim().replace(/\s*\n\s*/g, " ");
-  if (!note) return "";
-  const short = note.length > 140 ? `${note.slice(0, 137).trimEnd()}…` : note;
-  return ` I'm also keeping in mind what ${clinicianName(ctx)} noted at your visit: "${short}"`;
+  const last = ctx.state.clinician.entries.at(-1);
+  if (!last) return "";
+  return ` I'm also keeping in mind what you told me from your clinician: "${quote(last.text, 140)}"`;
 }
 
 /** The activity family a message talks about, e.g. "does salsa count?" → dancing. */
@@ -44,18 +39,21 @@ export const SCRIPTED_REPLIES: ScriptedReply[] = [
     id: "safety",
     match: (t) => has(t, "chest", "dizzy", "faint", "pain", "hurt", "injur", "breath", "knee", "sore"),
     reply: (_t, ctx) =>
-      `That's worth taking seriously. Please stop exercising and check in with ${ctx.state.clinician.note.trim() ? clinicianName(ctx) : "a clinician"} before your next workout, and seek urgent care if symptoms are severe. I'll keep suggestions gentle and skip vigorous activity until you've been cleared.`,
+      `That's worth taking seriously. Please stop exercising and check in with ${ctx.state.clinician.entries.length ? "your clinician" : "a clinician"} before your next workout, and seek urgent care if symptoms are severe. I'll keep suggestions gentle and skip vigorous activity until you've been cleared.`,
     suggestions: ["How am I doing this week?"],
   },
   {
     id: "clinician",
     match: (t) => has(t, "clinician", "doctor", "dr.", "my visit", "physician", "nurse", "therapist", "appointment"),
     reply: (_t, ctx) => {
-      const note = ctx.state.clinician.note.trim().replace(/\s*\n\s*/g, " ");
-      if (!note) return "I don't have notes from a clinician yet. At your next visit, open the Clinician tab and hand them your phone: they'll see a summary of your activity and can leave notes for me. You'll still decide your goals together.";
-      return `Here's what ${clinicianName(ctx)} noted at your visit: "${note}" I use this as context when I suggest workouts. Your goal is yours to set; if you two agreed on a change, update it on the Progress tab.`;
+      const notes = ctx.state.clinician.entries;
+      if (!notes.length) {
+        return "I don't have any feedback from your clinician yet. At your next visit, show them your Summary tab. Afterwards, tell me what they said, for example \"My doctor said to keep it moderate for now\", and I'll use it when I suggest workouts.";
+      }
+      const list = notes.map((n) => `"${quote(n.text, 140)}"`).join(" and ");
+      return `You've told me your clinician said ${list}. I use this when I suggest workouts. Your goal is yours to set; if you two agreed on a change, update it on the Progress tab.`;
     },
-    suggestions: ["What should I do today?", "How am I doing this week?"],
+    suggestions: ["Add feedback from my clinician", "What should I do today?"],
   },
   {
     id: "vo2",
@@ -157,7 +155,9 @@ export const SCRIPTED_REPLIES: ScriptedReply[] = [
 
 export const STARTER_SUGGESTIONS = ["What's VO2 max?", "How am I doing this week?", "What's a MET?", "Does salsa count?"];
 
-/** Starter chips for this user: adds one about the clinician's notes when there are any. */
+/** Starter chips for this user: always one for adding the clinician's feedback, plus one to recall it when there is some. */
 export function starterSuggestions(ctx: AgentContext): string[] {
-  return ctx.state.clinician.note.trim() ? ["What did my clinician suggest?", ...STARTER_SUGGESTIONS.slice(0, 3)] : STARTER_SUGGESTIONS;
+  return ctx.state.clinician.entries.length
+    ? ["What did my clinician suggest?", "Add feedback from my clinician", ...STARTER_SUGGESTIONS.slice(0, 2)]
+    : ["Add feedback from my clinician", ...STARTER_SUGGESTIONS.slice(0, 3)];
 }

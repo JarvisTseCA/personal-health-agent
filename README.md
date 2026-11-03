@@ -41,7 +41,7 @@ and the app's data is saved in SQLite. Without the backend, the app works exactl
 
 ## What's in the demo
 
-The app has five tabs: **Today · Progress · Chat · Clinician · Showcase**. Onboarding runs once before
+The app has five tabs: **Today · Progress · Chat · Summary · Showcase**. Onboarding runs once before
 them, and Preferences opens as a sheet from Today.
 
 ### The mission: VO2 max
@@ -114,11 +114,12 @@ The daily loop, and the screen the app opens on.
 - **Questions:** chips such as *What's a MET?*, *Why this?*, *How did you calculate this?* and *What's VO2 max?*
 - **Workout:** *Sync Fitbit* logs it, asks to confirm if unsure, and nudges *keep going*. Reaching the
   weekly goal brings the **trophy moment**.
-- **After a clinician visit:** the agent says once that it has read the clinician's notes and that the
-  user's goals stay theirs to set.
+- **Clinician feedback shows up in the pick:** when the user has told Chat their clinician advised
+  moderate exercise, picks stay under 6 MET; when the advice mentions strength, strength picks come first and
+  say "Your clinician suggested it".
 - The settings button opens **Preferences**: ranked activities with access, **equipment at home and at the
-  gym**, **the clinician's notes** (readable and removable), what the agent remembers (declines and notes),
-  the health flag, Fitbit, and a shortcut to the Clinician tab.
+  gym**, **feedback from your clinician** (readable and removable), what the agent remembers (declines and
+  notes), the health flag, Fitbit, and a shortcut to the Summary tab.
 
 Code: `src/screens/TodayScreen.tsx`, `src/state/today.ts`, `src/lib/moves.ts`, `src/components/VideoCard.tsx`,
 `src/screens/PreferencesSheet.tsx`
@@ -150,34 +151,62 @@ Code: `src/screens/ProgressScreen.tsx`, `src/components/Rewards.tsx`, `src/compo
 
 A chat for free-form questions (the old Coach tab), answered from scripts with the user's real numbers.
 The top of the conversation says the agent is a machine learning model and may make mistakes. It answers
-VO2 max questions, brings in the **clinician's notes** when they're relevant ("What did my clinician
-suggest?", today's pick, the goal), and keeps the guardrail for pain or dizziness. Tap a message you sent to
-edit it (*Cancel* / *Save*); saving asks again and replaces the reply. Old `#coach` links open Chat.
+VO2 max questions and keeps the guardrail for pain or dizziness. Tap a message you sent to edit it
+(*Cancel* / *Save*); saving asks again and replaces the reply. Old `#coach` links open Chat.
 
-Code: `src/screens/ChatScreen.tsx`, `src/services/mockResponses.ts`
+**Feedback from the user's clinician comes in here.** There's no clinician mode in the app; after a visit,
+the user tells the agent what the clinician said:
 
-### Clinician
+- **Guided:** the *Add feedback from my clinician* chip (always among the starters, and the button at the
+  bottom of Summary) makes the agent ask "What did your clinician say?" The next message is saved as a note;
+  "never mind" saves nothing.
+- **Direct:** a message that reports advice ("My doctor said to keep it moderate for now", "Dr. Lee's
+  advice: walk every day") is saved straight away. Questions ("What did my clinician suggest?") are answered,
+  not saved.
+- **The agent says what it will do with it**, and only what the app actually does: advice to keep it
+  moderate (or about blood pressure or the heart) keeps picks under 6 MET; strength advice favors strength
+  picks, or offers *Add strength training* if it isn't on the list; a mention of minutes or a goal gets "your
+  goal is still X; change it on Progress if you agreed on a different one"; warning signs get "stop and
+  contact your clinician". The note itself goes into the agent's context as `clinician_notes`.
+- Saved notes are listed on Summary and in Preferences, where they can be removed (which undoes their effect).
 
-Used at a visit, on the user's own phone, so no clinician account is needed. **The clinician reviews and
-suggests; the user decides.**
+Code: `src/screens/ChatScreen.tsx`, `src/services/mockResponses.ts`, `src/services/clinicianChat.ts`,
+`src/lib/clinicianNotes.ts`
 
-- **Consent first.** Every time the tab opens, a pop-up asks: *"Share your summary with your clinician?
-  If you'd like your clinician to review your activity, please hand your phone to them now. They'll see a
-  summary of your records and can leave notes for the agent. You'll decide on any changes to your goals
-  together."* *Not now* goes back to the previous tab.
-- **At a glance:** a few plain sentences (average MET-hours over the last 4 weeks, as a share of the
-  guideline and in minutes of moderate activity; weeks at goal and active days; main activities and the share
-  of vigorous minutes; VO2 max trend; the current goal, set by the user), then four key numbers.
-- **To discuss:** health condition, pain reports, health-related things the user typed, the longest stretch
-  without activity, and why workouts get skipped.
-- **Detail:** weekly MET-hours for the last 6 weeks against each week's goal, and the activity mix.
-- **Notes for the agent (optional):** name, role and free-text suggestions, with one-tap starters (*Build
-  up gradually*, *Moderate intensity only for now*, *Add two strength days a week*, *Stop and call if…*).
-  The agent uses the notes as **context** in later conversations. They don't change the goal or any limit.
-- **Hand back:** *Save notes and hand back* (or *Done, hand back* with no changes). The user and clinician
-  talk it through in person, and the user changes their goal on Progress if they decide to.
+### Summary
 
-Code: `src/screens/ClinicianScreen.tsx`, `src/services/clinicianSummary.ts`
+The user's activity at a glance, made to be read by **both the user** (who may have low health literacy)
+**and their clinician**. The user can show it at a visit; the phone is never handed over and there's no
+clinician mode.
+
+- **Two levels on one page.** A *Simple* / *Details for clinicians* switch at the top. Simple shows each
+  card's plain sentence and picture. Details adds a grey box under each card with the clinical form of the
+  same numbers: MET-hours, percent of the 7.5 MET-hour guideline, MET bands, data sources.
+- **Plain units.** Activity is shown as **brisk minutes a week** (moderate-equivalent minutes: MET-hours ÷ 3
+  × 60), the unit the guideline's "150 minutes" uses, so vigorous minutes count about double. Days, minutes
+  and "higher is better" replace MET-hours in the simple view.
+- **Cards, each one plain sentence and one picture:**
+  - *How much you move:* "On average, about 184 minutes of brisk activity a week. That's more than the
+    recommended 150 minutes." A bar with a marker at 150 (and the user's goal, if different).
+  - *Week by week:* bars for the last 6 weeks with a dashed goal line; weeks that reached the goal are green
+    with a trophy, others a neutral blue, and this week is lighter. "You reached your goal in 3 of the last
+    4 weeks."
+  - *How often you move:* a dot calendar of the last 4 weeks (filled = active day). "You were active on about
+    5 days a week."
+  - *How hard you work:* one stacked bar of light, moderate and vigorous minutes, each explained in everyday
+    terms ("breathing faster, but you can still talk"; "hard to say more than a few words").
+  - *What you do:* minutes a week per activity.
+  - *Heart and lung fitness:* the VO2 max trend by month, called a "fitness score" with "higher is better" in
+    the simple view and VO2 max in mL/kg/min with Details.
+  - *Worth mentioning to your clinician:* things the user told the app (a health condition, "something
+    hurts", health notes they typed, a long gap, the most common reason for skipping), in plain words.
+  - *From your clinician:* the feedback saved from Chat, what the agent is doing because of it, and *Add
+    feedback from your clinician*, which opens Chat with the agent asking.
+- **Never alarming.** No red anywhere; weeks short of the goal are a neutral color, and the wording is
+  encouraging at every level ("That's a start toward the recommended 150 minutes. Every minute counts.").
+- Old `#clinician` links open Summary.
+
+Code: `src/screens/SummaryScreen.tsx`, `src/services/summary.ts`
 
 ### Showcase
 
@@ -196,8 +225,8 @@ the user's name for it and counts at the bottom of the effort band Fitbit measur
 **Demo controls** (right side on desktop): switch scenario (*Alex*, *On a roll* → goal raise, *Tough month*
 → goal cut, *Fresh start*), pretend it's a different day, restart today's check-in, simulate a Fitbit
 sync, **show the how-to video example** (30 min at the gym → a pick with a video → *Show me how*),
-**simulate a clinician visit** (adds sample notes from "Dr. Rivera"), jump to Progress or the Clinician
-tab, reset, and show the backend: the **verifier's checks** on the current suggestion and the prompt the
+**tell Chat what the clinician said** (sends a sample message: blood pressure, keep it moderate, add two
+strength days), jump to Progress or Summary, reset, and show the backend: the **verifier's checks** on the current suggestion and the prompt the
 agent would receive.
 
 ## Changes on Oct 28, 2026
@@ -207,6 +236,9 @@ are above in *What's in the demo*; the short form of each decision is also in th
 below. Merged in pull request #13.
 
 ### 1. Clinician tab: a summary to check, notes for the agent, goals stay with the user
+
+*Replaced on Nov 2, 2026: the tab is now **Summary**, and there's no hand-over; see
+[Changes on Nov 2, 2026](#changes-on-nov-2-2026).*
 
 **What changed:** The tab now opens (after consent) on a digestible summary of the user's data: a few
 plain sentences (average MET-hours over the last 4 weeks, as a share of the guideline and as minutes of
@@ -323,7 +355,7 @@ guideline is written in them and they're what the app can count from each workou
 ### Also added
 
 - **Simulate a clinician visit** in the demo panel: adds sample notes from "Dr. Rivera" so the notes flow
-  can be shown without filling in the tab.
+  can be shown without filling in the tab. *(Replaced Nov 2 by "Tell Chat what the clinician said".)*
 - The backend (Jev) understands "gym" as a place.
 
 ### Things to know
@@ -346,6 +378,71 @@ yet map to activities, so the ranker can't build workouts around them. A real
 - **New MET values.** The new entries (01216, 17358, 02055, 02040, 02048, 02049) were transcribed from the
   [2024 Adult Compendium](https://pacompendium.com/adult-compendium/) on Oct 28, 2026. Like the rest of
   `src/lib/activities.ts`, they should be re-checked before anything beyond the demo.
+
+## Changes on Nov 2, 2026
+
+One change to the Clinician page, what was built and why. The short form of each decision is also in the
+*Design decisions* log below.
+
+### The Clinician tab becomes Summary, and clinician feedback comes in through Chat
+
+**Requested:** Call the tab "Summary". Its visualizations should be interpretable by both users (with
+relatively low health literacy) and clinicians. Clinicians should be able to use insights from the tab to
+give additional feedback, which the agent then uses as context for its suggestions. For now, remove handing
+the phone to the clinician; if needed, the user enters the clinician's feedback through the Chat tab.
+
+**What changed:**
+- **Renamed and opened up.** The tab is *Summary*, with a summary icon. There's no consent pop-up, no
+  hand-over and no clinician form: it's an ordinary tab with the tab bar, like the others.
+- **One page, two reading levels.** Every card leads with one plain sentence and one simple picture: brisk
+  minutes a week against the recommended 150, week-by-week bars with a goal line, a dot calendar of active
+  days, a light / moderate / vigorous bar explained in everyday terms, minutes per activity, the fitness score
+  trend, and things worth mentioning at a visit. A *Details for clinicians* switch adds the clinical numbers
+  under each card (MET-hours, percent of guideline, MET bands, sources).
+- **Feedback through Chat.** *Add feedback from my clinician* (a Chat starter, and a button on Summary) makes
+  the agent ask what the clinician said and save the answer. A message like "My doctor said…" is saved
+  directly. The agent says what it will do with it.
+- **The agent uses it for suggestions.** Saved feedback goes into the agent's context. Two kinds also shape
+  the picks, always toward caution: "moderate" (or blood pressure / heart) keeps picks under 6 MET, and
+  strength advice favors strength picks (with an offer to add strength to the list). Picks influenced by it
+  say "Your clinician suggested it". The goal is never changed; the agent points to Progress instead.
+- **Visible and removable.** Saved feedback is listed on Summary and in Preferences. Removing a note undoes
+  its effect.
+- Removed: the consent pop-up, the clinician's notes form and its one-tap starters, the clinician's name and
+  role fields, *Save notes and hand back*, and the one-time "I've read your clinician's notes" message on Today
+  (the agent now confirms in Chat, where the user typed it). Saves with old notes keep them as the first entry.
+
+**Why:**
+- **One page for both readers** means the user and clinician look at the same thing during a visit, and
+  the user isn't shown a page they can't read. Leading with plain words and familiar units (minutes, days,
+  "higher is better") follows plain-language health communication practice; the clinical numbers are one
+  tap away rather than mixed in.
+- **Brisk minutes** match the guideline people are most likely to have heard ("150 minutes a week") and
+  avoid MET-hours, which most users won't know. Counting vigorous minutes double keeps the number faithful to
+  the guideline.
+- **No red, encouraging wording** keeps the "reward, never penalize" rule from Oct 28 on this page too.
+- **No hand-over for now** removes a consent step and a clinician-facing mode that would need its own design
+  and testing. The user stays in control of their phone and what's recorded, and the clinician needs no
+  account or training.
+- **Chat as the way in** keeps one place to talk to the agent. Feedback in the user's own words is natural,
+  and the guided chip helps people who aren't sure how to phrase it.
+- **Only cautious effects** (moderate only, favor strength) because the app is reading a user's paraphrase of
+  medical advice. Making picks gentler is safe if the parsing is wrong; changing the goal is not, so that stays
+  with the user.
+
+### Things to know (Nov 2)
+
+- **The feedback is the user's paraphrase.** The app can't verify it came from a clinician or that it was
+  understood correctly. That's why it only ever makes picks gentler, and why the agent repeats back what it
+  saved.
+- **Reading the feedback is keyword-based in the demo** (`src/lib/clinicianNotes.ts`): "moderate", "go easy",
+  "blood pressure" and "heart" turn on moderate-only; "strength", "weights" and "resistance" favor strength. A
+  real model would read it better, but the rule (only cautious effects) should stay.
+- **Plain-language claims need review.** The everyday descriptions of light, moderate and vigorous activity,
+  "brisk minutes", and calling VO2 max a "fitness score" should get Sarah's review, and ideally testing with a
+  few users with low health literacy, before real use.
+- **Removed for now, not forever.** A clinician-facing mode (hand-over or a separate clinician login) could
+  come back later; the summary's *Details* view is the starting point for it.
 
 ## Design guidelines
 
@@ -395,9 +492,8 @@ flowchart TD
 4. **Weekly review (end of week).** The *Last week* section of Progress shows last week's total and trophy,
    then offers to raise, lower or keep the goal. Planning the next week happens in the same tab.
 
-The Clinician tab sits outside these loops. The user opens it during a visit and agrees to share their
-records. The clinician reviews a summary and can leave notes, which the agent uses as context from then on.
-Goals stay the user's to set.
+The Summary tab sits outside these loops. The user can show it at a visit; afterwards they tell the agent in
+Chat what their clinician said, and the agent uses it as context from then on. Goals stay the user's to set.
 
 ### Onboarding
 
@@ -550,27 +646,29 @@ weeks.
 - **Lower:** if the user is under half the goal 3 weeks in a row, offer half the goal.
 - The same rules apply at every goal level, including below 7.5. A goal below 7.5 is labeled a stepping stone.
 - The *Last week* section of Progress makes the offer and the user accepts, keeps or types their own goal.
-  The user always makes the final call: nothing changes until they tap, and clinicians don't set goals.
+  The user always makes the final call: nothing changes until they tap, and clinician feedback never
+  changes the goal.
 
 Code: `src/lib/goal.ts`, `src/screens/ProgressScreen.tsx`
 
-### Clinician tab
+### Summary tab and clinician feedback
 
-**Instruction (Oct 28):** The tab gives the clinician a digestible summary of the user's data. Instead of
-setting the user's goal, the clinician checks the summary and gives suggestions; the user makes the final
-decisions about their goals. After hand-back the user and clinician talk directly, and the clinician can add
-optional notes that the agent uses as context in later conversations.
+**Instruction (Nov 2):** Call the tab "Summary". Its visualizations should be interpretable by both users
+(with relatively low health literacy) and clinicians. Clinicians use the insights to give additional
+feedback, which the agent uses as context to give suggestions. No hand-over for now: the user enters the
+clinician's feedback through Chat.
 
-- The user hands their phone to the clinician during a visit, so no clinician account is needed.
-- Opening the tab always asks for consent first; the records stay hidden until the user agrees.
-- The summary leads with plain sentences and four key numbers, then things to discuss, then the detail.
-- Notes are optional free text (name and role too). They go into the agent's context as
-  `clinician_notes`, with an instruction to use them when relevant but not to treat them as a goal or rule.
-- Nothing the clinician enters changes the goal, intensity or session length. The user can read and
-  remove the notes in Preferences.
-- The old goal template (MET-hours, intensity, session length, review date, precautions) was removed.
+- One page for both readers: a plain sentence and a simple picture per card, with *Details for clinicians*
+  for the clinical numbers.
+- Plain units (brisk minutes, days, "higher is better"); no red; encouraging wording at every level.
+- Clinician feedback is typed in Chat (guided by *Add feedback from my clinician*, or directly as "My doctor
+  said…"), saved as a list of notes, and sent to the agent as `clinician_notes`.
+- Feedback only makes picks more cautious (moderate only) or favors strength; it never changes the goal.
+- Notes are listed on Summary and in Preferences and can be removed, which undoes their effect.
+- *Replaces the Oct 28 Clinician tab* (hand-over with consent, summary, and notes typed by the clinician).
 
-Code: `src/screens/ClinicianScreen.tsx`, `src/services/clinicianSummary.ts`
+Code: `src/screens/SummaryScreen.tsx`, `src/services/summary.ts`, `src/services/clinicianChat.ts`,
+`src/lib/clinicianNotes.ts`
 
 ### Tap first, type anytime
 
@@ -595,7 +693,7 @@ Add a guardrail to check calculation outputs. Describe each agent's task in natu
 - The coach talks to the user. A verifier checks each suggestion before the user sees it.
 - All numbers come from plain code (the calculator), never from a language model.
 - The verifier checks the MET source, the arithmetic, the time fit, preferences, repetition, the health
-  flag, equipment where the user is, and session length. The demo panel shows its results.
+  flag or clinician advice to keep it moderate, equipment where the user is, and session length. The demo panel shows its results.
 - The agent's brief says it's a machine learning model that can make mistakes, and that it must never point
   out a missed day or a broken streak.
 - Each agent's task is written as a short plain-English brief that anyone on the team can edit.
@@ -632,7 +730,7 @@ later decision changes an earlier one, the earlier row says so instead of being 
 | Oct 27, 2026 | Progress | *(Calendar replaced Oct 28, below.)* Past weeks are shown one month at a time, picked with *Year* and *Month* dropdowns, instead of a Weekly / Monthly / Quarterly switch. It opens on the latest month; only months with data are listed. The section is called *Month by month*. | One view is simpler than three, and a month is the right size for a calendar: big enough to see a pattern, small enough to read. The dropdowns jump straight to any month instead of scrolling through all of them. |
 | Oct 28, 2026 | All | **Rebrand around VO2 max.** The welcome screen, Progress and the Today card lead with VO2 max (Fitbit's estimate and its monthly trend). MET-hours stay the weekly unit, explained as the training that raises VO2 max; 1 MET = 3.5 mL/kg/min ties the two. | VO2 max is better known than MET-hours. It's not the same thing, though: MET-hours measure the work, VO2 max is fitness, so the app never equates them. |
 | Oct 28, 2026 | Today, Progress, Showcase | **Rewards simplified:** a sign-in streak (flame) and a trophy for each week that reaches its goal. Bronze, silver and gold daily medals are gone. A missed day quietly resets the streak; no message mentions it. *Month by month* shows flame bands for past streaks and a trophy per goal week. | Fewer reward types are easier to read. Rewards should only add up; pointing out a miss feels like a penalty. |
-| Oct 28, 2026 | Clinician | The clinician reviews a **summary** and leaves **optional notes for the agent**; the goal template is gone. The user decides on goals after talking with the clinician. | The user owns their goals. The clinician's input still shapes what the agent says, as context. |
+| Oct 28, 2026 | Clinician | *(Replaced Nov 2, below.)* The clinician reviews a **summary** and leaves **optional notes for the agent**; the goal template is gone. The user decides on goals after talking with the clinician. | The user owns their goals. The clinician's input still shapes what the agent says, as context. |
 | Oct 28, 2026 | Chat | The Coach tab is renamed **Chat**. The top of every conversation (Chat and Today) says the agent is a machine learning model and may make mistakes. | Clearer name; users should know they're talking to a model that can be wrong. |
 | Oct 28, 2026 | Today, onboarding | **Gym** is a place option. Onboarding asks for equipment at home, then at the gym, by photo, typed list or chips. Suggestions only use equipment where the user is, and strength or interval picks list a circuit built from it. | Equipment-aware plans, like Volt Athletics: a pick the user can't do with what's there is a wasted decision. |
 | Oct 28, 2026 | Today | *Show me how* shares a short how-to video in the conversation, one move at a time. | Some picks (a spin bike, a goblet squat, the salsa basic step) are easier to start once you've seen them done. |
@@ -642,9 +740,9 @@ later decision changes an earlier one, the earlier row says so instead of being 
 | Oct 28, 2026 | Today, Progress | The streak counts **days the app was opened**, not days with activity, and today counts as soon as the app opens. Progress shows the best streak next to the current one. | Matches the request (streak by sign-in). Counting today on open means the number never shows a "pending" or at-risk state, and the best run keeps a past streak worth something after a reset. |
 | Oct 28, 2026 | Today, Progress | **Nothing marks a miss.** After a missed day the agent opens with "Welcome back." instead of the streak count. On Progress, days with activity get a green check and other days a plain circle; in *Month by month*, days without a sign-in are small neutral dots. There's no "streak lost" message and no "why did you miss?" question. | The team asked to only reward and never penalize. A visible gap or a question about the miss reads as blame. |
 | Oct 28, 2026 | Progress | *Month by month* joins consecutive sign-in days into one flame band, ends each goal week with a trophy on a gold row, and lists the month's trophies, best streak and days with the app. | One calendar shows both rewards: streaks read as unbroken bands, trophies as gold rows, at a glance. |
-| Oct 28, 2026 | Clinician | The summary leads with **plain sentences**, then four numbers (MET-hours a week, weeks at goal, active days, VO2 max), then *To discuss* (health condition, pain reports, health-related notes the user typed, longest gap, skip reasons), then the weekly chart and activity mix. | A clinician has minutes during a visit. Sentences answer "how is this person doing?" first; the detail is there if they want it. |
-| Oct 28, 2026 | Clinician | Notes are **optional** free text with one-tap starters (*Build up gradually*, *Moderate intensity only for now*, *Add two strength days a week*, *Stop and call if…*). The consent pop-up now says the clinician will "review your activity" and "leave notes for the agent", and that goals are decided together. | Starters save typing for the common suggestions without turning them into settings. The consent text has to match what the clinician can now do. |
-| Oct 28, 2026 | Clinician, Today, Chat, Preferences | After a visit the agent says **once** on Today that it read the notes and that goals stay the user's; Chat quotes them when relevant (*What did my clinician suggest?*, today's pick, the goal). The user can read and remove the notes in Preferences. Nothing in the notes changes the goal, intensity or session length. | The notes are about the user, so the user should see what the agent is using. Mentioning them once avoids repeating it every day. |
+| Oct 28, 2026 | Clinician | *(Replaced Nov 2, below.)* The summary leads with **plain sentences**, then four numbers (MET-hours a week, weeks at goal, active days, VO2 max), then *To discuss* (health condition, pain reports, health-related notes the user typed, longest gap, skip reasons), then the weekly chart and activity mix. | A clinician has minutes during a visit. Sentences answer "how is this person doing?" first; the detail is there if they want it. |
+| Oct 28, 2026 | Clinician | *(Replaced Nov 2, below.)* Notes are **optional** free text with one-tap starters (*Build up gradually*, *Moderate intensity only for now*, *Add two strength days a week*, *Stop and call if…*). The consent pop-up now says the clinician will "review your activity" and "leave notes for the agent", and that goals are decided together. | Starters save typing for the common suggestions without turning them into settings. The consent text has to match what the clinician can now do. |
+| Oct 28, 2026 | Clinician, Today, Chat, Preferences | *(Replaced Nov 2, below.)* After a visit the agent says **once** on Today that it read the notes and that goals stay the user's; Chat quotes them when relevant (*What did my clinician suggest?*, today's pick, the goal). The user can read and remove the notes in Preferences. Nothing in the notes changes the goal, intensity or session length. | The notes are about the user, so the user should see what the agent is using. Mentioning them once avoids repeating it every day. |
 | Oct 28, 2026 | Chat, Today | The machine-learning notice sits **at the top of the conversation** on both Chat and Today, and the agent's brief tells it the same. | Today is also a conversation with the agent. Putting the notice before the first message means it's read before anything the agent says. |
 | Oct 28, 2026 | Today | At the **gym**, only indoor activities are suggested. *Gym* is hidden at check-in for someone who said they don't use one; if they type "gym" anyway, the agent assumes a typical gym. | Suggesting a hike to someone standing in a gym is a wasted decision. Hiding an option that doesn't apply keeps the check-in short. |
 | Oct 28, 2026 | Today | Strength and interval picks list a **circuit built from the equipment on hand** (dumbbells → goblet squat and dumbbell row; bands → band row; nothing → bodyweight squat and incline push-up). New Compendium entries back the equipment-based picks: 01216, 17358, 02055, 02040, 02048, 02049. | Like Volt Athletics, the user gets a workout they can do with what's there, not just an activity name. Every option still maps to a Compendium code, so the MET math stays checkable. |
@@ -653,6 +751,14 @@ later decision changes an earlier one, the earlier row says so instead of being 
 | Oct 28, 2026 | Onboarding | The reply box reads feedback **clause by clause**: an item in a clause with "no", "not", "don't have", "isn't there" or "wrong" is removed; any other item is added. "Looks right" confirms; small talk ("thanks, that's all") changes nothing. | People correct in one sentence ("no kettlebell, but I also have a jump rope"). Splitting on "but", "also", "plus" and commas handles that without making them use the chips. |
 | Oct 28, 2026 | Onboarding, Preferences | A generic one-word name (rope, mat, band, bench, rack) only matches a listed item when nothing but filler comes before it, so "battle rope" becomes a tag instead of a jump rope. Custom tags are saved and sent to the agent, but don't drive the ranker yet. | Matching "rope" inside "battle rope" would silently record the wrong equipment. Keeping the tag out of the ranker avoids suggesting workouts the app can't calculate. |
 | Oct 28, 2026 | All | Old links and saves keep working: `#coach` opens Chat, `#week` and `#medals` open Progress, and saves from before the change get sign-in days, VO2 max readings and empty clinician notes filled in, with old medal messages dropped. A *Simulate a clinician visit* demo button adds sample notes from "Dr. Rivera". | Testers' bookmarks and saved demo states shouldn't break. The demo button lets the notes flow be shown without filling in the tab during a presentation. |
+| Nov 2, 2026 | Summary | The Clinician tab is renamed **Summary** and becomes an ordinary tab: no consent pop-up, no hand-over, no clinician form. Old `#clinician` links open it. | Requested. Removes a mode that needs its own design and testing, and keeps the user in control of their phone. |
+| Nov 2, 2026 | Summary | **One page, two reading levels:** each card has one plain sentence and one simple picture; a *Details for clinicians* switch adds the clinical numbers (MET-hours, percent of guideline, MET bands, sources) in a grey box under each card. | Both readers look at the same page at a visit. Plain-language first, with detail one tap away, rather than mixing jargon into the user's view. |
+| Nov 2, 2026 | Summary | Activity is shown as **brisk minutes a week** (MET-hours ÷ 3 × 60) against "the recommended 150". Effort levels are explained in everyday terms; VO2 max is a "fitness score" where "higher is better". | People know "150 minutes a week" far better than MET-hours. Moderate-equivalent minutes keep the number true to the guideline (vigorous counts double). |
+| Nov 2, 2026 | Summary | Seven cards in a fixed order: how much, week by week, how often, how hard, what you do, heart and lung fitness, worth mentioning, then feedback from your clinician. Each card answers one question. | One idea per card is easier to follow, and the order goes from the headline to the detail, then to what to discuss. |
+| Nov 2, 2026 | Summary | **No red.** Weeks short of the goal are a neutral blue, reached weeks green with a trophy, and the headline is encouraging at every level. | The Oct 28 rule (reward, never penalize) applies here too; red reads as failure, especially to a user showing the page to their clinician. |
+| Nov 2, 2026 | Chat | Clinician feedback is entered in **Chat**: the *Add feedback from my clinician* chip (and Summary's button) makes the agent ask; "My doctor said…" is saved directly; questions about the clinician are answered, not saved; "never mind" cancels. | Requested. One place to talk to the agent; the guided prompt helps people unsure how to phrase it. |
+| Nov 2, 2026 | Chat, Today | Saved feedback is agent context. Only **cautious** effects are automatic: "moderate" / blood pressure / heart keeps picks under 6 MET, strength advice favors strength picks (with an offer to add strength to the list). The agent repeats what it saved and says what it will do; it never changes the goal. | The note is the user's paraphrase of medical advice. Making picks gentler is safe even if it's misread; changing the goal isn't, so that stays with the user. |
+| Nov 2, 2026 | Summary, Preferences | Saved feedback is a **list of notes**, shown with dates on Summary and in Preferences, each removable; removing one undoes its effect. Older saves keep their single note as the first entry. | The user should always see, and be able to undo, what the agent is acting on. |
 
 Still open:
 
@@ -690,7 +796,7 @@ cautious option shown for each one.
 | Question | Why it matters | What the app does for now |
 |---|---|---|
 | **Light activity and the goal.** Should activity under 3 MET (a slow walk, desk band sets) count toward the weekly MET-hour goal, or only be logged? | The activity guideline counts only moderate (3+ MET) and vigorous (6+ MET) activity, but desk moves are the only option on 0-minute days. | Light activity is logged and shown, but adds nothing to the goal. Setting: `LIGHT_COUNTS_TOWARD_GOAL` in `src/lib/met.ts` (off). |
-| **Weekly upper limit.** Is there an evidence-based upper limit on weekly MET-hours? | It sets when the coach stops "keep going" nudges and suggests rest, which weeks get flagged in the Clinician tab, and how high an automatic goal raise can go. | No limit is set. Raises follow the rounding rule only, and the Clinician tab says the limit isn't set yet. Setting: `WEEKLY_UPPER_LIMIT` in `src/lib/goal.ts` (`null`). |
+| **Weekly upper limit.** Is there an evidence-based upper limit on weekly MET-hours? | It sets when the coach stops "keep going" nudges and suggests rest, which weeks get flagged on the Summary tab, and how high an automatic goal raise can go. | No limit is set. Raises follow the rounding rule only, and nothing is flagged until it is. Setting: `WEEKLY_UPPER_LIMIT` in `src/lib/goal.ts` (`null`). |
 | **Floor for goal cuts.** Halving after 3 low weeks can repeat. Below what goal should the app stop cutting and suggest talking with a clinician instead? | Repeated halving could take the goal far below anything meaningful without anyone reviewing it. | No floor. Each cut is only an offer the user must accept, and any goal below 7.5 is labeled a stepping stone back to the guideline. |
 
 The same list is at the end of the *PHA App Workflow* doc.
@@ -711,7 +817,7 @@ The same list is at the end of the *PHA App Workflow* doc.
 src/
   lib/            Pure logic, unit-tested: activities + MET values, MET-hours, daily targets,
                   streaks and trophies, goal rules, equipment, moves and how-to videos,
-                  suggestion ranker, verifier checks, weeks by month
+                  reading clinician feedback, suggestion ranker, verifier checks, weeks by month
   data/           Demo scenarios: about 6 months of past weeks + this week each (shaped like PMData
                   exercise logs), sign-in days, equipment and monthly VO2 max estimates, and the
                   sample photos' scripted analysis (samplePhotos.ts)
@@ -720,7 +826,8 @@ src/
     agent.ts        Agent interface; MockAgent (today) and HttpAgent (example for later)
     answers.ts      Grounded answers to the one-tap questions
     mockResponses.ts  The pre-written Chat-tab script. Edit this to change demo answers
-    clinicianSummary.ts  The plain-language summary on the Clinician tab
+    summary.ts      The Summary tab's numbers, in plain and clinical forms
+    clinicianChat.ts  Chat turns that save the clinician's feedback
     context.ts      Builds the structured user context the agent sees
     prompts.ts      Plain-English task briefs for the coach and verifier agents
     store.ts        Persistence; localStorage today, swap for a database later

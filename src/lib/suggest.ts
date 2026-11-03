@@ -52,6 +52,8 @@ export interface SuggestInput {
    * (older profiles): then nothing is filtered by equipment.
    */
   equipmentHere?: string[];
+  /** A kind of activity to favor, from the user's clinician ("add strength days") */
+  favorKind?: ActivityKind;
   energy: Energy;
   /** A family id the user said they're in the mood for, or "surprise" */
   mood: string;
@@ -201,6 +203,11 @@ function scoreOne(f: ActivityFamily, v: ActivityVariant, d: number, input: Sugge
   if (moodDecline) score -= 2.5;
 
   if (input.access[f.id] === "sometimes") score -= 0.7;
+
+  if (input.favorKind && f.kind === input.favorKind) {
+    score += 1.5;
+    reasons.unshift("Your clinician suggested it");
+  }
 
   // Equipment where the user is: prefer the variant that uses it.
   const uses = equipmentOf(f, v).filter((e) => input.equipmentHere?.includes(e));

@@ -53,12 +53,12 @@ export function DemoPanel({ go }: { go: (s: Screen) => void }) {
         <button className="btn btn-quiet" disabled={!state.onboarded} onClick={() => { dispatch({ type: "sync" }); go("today"); }}>Simulate a Fitbit sync</button>
         <button className="btn btn-quiet" disabled={!state.onboarded} onClick={() => { dispatch({ type: "videoExample" }); go("today"); }}>Show the how-to video example</button>
         <button className="btn btn-quiet" disabled={!state.onboarded} onClick={() => { dispatch({ type: "overlay", overlay: null }); go("progress"); }}>Open Progress</button>
-        <button className="btn btn-quiet" disabled={!state.onboarded} onClick={() => { dispatch({ type: "overlay", overlay: null }); go("clinician"); }}>Open the Clinician tab</button>
-        <button className="btn btn-quiet" disabled={!state.onboarded || !!state.clinician.note.trim()} onClick={() => {
-          dispatch({ type: "clinicianNotes", notes: { name: "Dr. Rivera", role: "Physician", note: "Blood pressure is a little high. Keep to moderate intensity for now and try adding two strength days a week. Recheck in 3 months.", updated: new Date().toISOString() } });
-          dispatch({ type: "setToday", index: state.todayIndex });
-          go("today");
-        }}>Simulate a clinician visit</button>
+        <button className="btn btn-quiet" disabled={!state.onboarded} onClick={() => { dispatch({ type: "overlay", overlay: null }); go("summary"); }}>Open Summary</button>
+        <button className="btn btn-quiet" disabled={!state.onboarded} onClick={() => {
+          dispatch({ type: "overlay", overlay: null });
+          dispatch({ type: "clinicianChat", text: "My doctor said my blood pressure is a little high, so keep to moderate exercise for now and add two strength days a week." });
+          go("chat");
+        }}>Tell Chat what the clinician said</button>
         <button className="btn btn-quiet" onClick={() => { dispatch({ type: "reset" }); go("onboarding"); }}>Reset demo</button>
       </div>
 

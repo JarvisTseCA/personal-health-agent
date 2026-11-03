@@ -14,7 +14,7 @@ function when(daysAgo: number): string {
   return `${daysAgo} days ago`;
 }
 
-export function PreferencesSheet({ onClose, openClinician }: { onClose: () => void; openClinician: () => void }) {
+export function PreferencesSheet({ onClose, openSummary }: { onClose: () => void; openSummary: () => void }) {
   const { state, dispatch } = useStore();
   const p = state.profile;
   const others = PICKABLE.filter((f) => !p.enjoyed.includes(f.id));
@@ -68,18 +68,21 @@ export function PreferencesSheet({ onClose, openClinician }: { onClose: () => vo
 
       <Equipment />
 
-      {state.clinician.note.trim() && (
+      {state.clinician.entries.length > 0 && (
         <div className="field">
           <label className="lbl">From your clinician</label>
-          <div className="clin-note">
-            <p className="xs muted" style={{ marginBottom: 4 }}>
-              {[state.clinician.name, state.clinician.role].filter(Boolean).join(", ") || "Your clinician"}
-              {state.clinician.updated ? `, ${new Date(state.clinician.updated).toLocaleDateString(undefined, { month: "short", day: "numeric" })}` : ""}
-            </p>
-            <p className="small" style={{ whiteSpace: "pre-wrap" }}>{state.clinician.note}</p>
-          </div>
-          <p className="xs muted" style={{ marginTop: 6 }}>The agent uses these notes as context. They don't change your goal: you decide that.</p>
-          <button className="btn btn-ghost small-btn" style={{ marginTop: 4 }} onClick={() => dispatch({ type: "forgetClinicianNotes" })}>Remove these notes</button>
+          <ul className="memory-list">
+            {state.clinician.entries.map((n) => (
+              <li key={n.id}>
+                <div>
+                  <b className="small">"{n.text}"</b>
+                  <p className="xs muted">Told to the agent in Chat, {new Date(n.at).toLocaleDateString(undefined, { month: "short", day: "numeric" })}</p>
+                </div>
+                <button className="btn btn-ghost small-btn" onClick={() => dispatch({ type: "forgetClinicianNote", id: n.id })}>Forget</button>
+              </li>
+            ))}
+          </ul>
+          <p className="xs muted" style={{ marginTop: 6 }}>The agent uses these when it suggests workouts. They don't change your goal: you decide that.</p>
         </div>
       )}
 
@@ -128,10 +131,10 @@ export function PreferencesSheet({ onClose, openClinician }: { onClose: () => vo
         </div>
         <div className="switch-row">
           <div>
-            <b className="small">Clinician</b>
-            <p className="xs muted">At a visit, hand your phone to your clinician to review your summary and leave notes</p>
+            <b className="small">Summary for your clinician</b>
+            <p className="xs muted">Show it at a visit, then tell the agent in Chat what they said</p>
           </div>
-          <button className="btn btn-quiet small-btn" onClick={openClinician}>Open</button>
+          <button className="btn btn-quiet small-btn" onClick={openSummary}>Open</button>
         </div>
       </div>
 

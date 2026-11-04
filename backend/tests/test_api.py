@@ -158,6 +158,16 @@ def test_suggest_with_mock_end_to_end(client):
     assert log[0]["id"] == data["log_id"] and log[0]["error"] is None
 
 
+def test_suggest_prints_each_step_in_the_terminal(client, caplog):
+    with caplog.at_level("INFO", logger="pha"):
+        log_id = client.post("/api/suggest", json=REQ).json()["log_id"]
+    text = caplog.text
+    for step in ["[1] Check-in: 60 min · home", "[2] Ask Jev #1", "[3] Ask Jev #2", "[4] Sent to app: lead"]:
+        assert step in text
+    assert f"Saved as suggestion_log #{log_id}" in text
+    assert "Prompt #1" not in text  # the full JSON only shows at DEBUG
+
+
 def test_suggest_with_live_jev(client, monkeypatch):
     monkeypatch.setenv("TYPESAFE_API_KEY", "test-key")
     calls = []
@@ -178,15 +188,17 @@ def test_suggest_with_live_jev(client, monkeypatch):
     assert (data["lead"]["variant_id"], data["lead"]["duration_min"]) == ("yoga-power", 60)
 
 
-def test_jev_error_is_logged_and_returns_502(client, monkeypatch):
+def test_jev_error_is_logged_and_returns_502(client, monkeypatch, caplog):
     monkeypatch.setenv("TYPESAFE_API_KEY", "test-key")
 
     def boom(body):
         raise main.JevError("Jev returned 401: bad key")
 
     monkeypatch.setattr(main, "call_jev", boom)
-    res = client.post("/api/suggest", json=REQ)
+    with caplog.at_level("INFO", logger="pha"):
+        res = client.post("/api/suggest", json=REQ)
     assert res.status_code == 502
+    assert "✗ Failed: Jev returned 401: bad key" in caplog.text
     assert client.get("/api/suggestions/log").json()["items"][0]["error"] == "Jev returned 401: bad key"
 
 

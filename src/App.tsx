@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState, type ComponentType } from "react";
 import { DemoPanel } from "./components/DemoPanel";
-import { ChatIcon, ProgressIcon, ShowcaseIcon, SummaryIcon, TodayIcon } from "./components/Icons";
+import { ChatIcon, ProgressIcon, GearIcon, SummaryIcon, TodayIcon } from "./components/Icons";
 import { ChatScreen } from "./screens/ChatScreen";
 import { Onboarding } from "./screens/Onboarding";
 import { PreferencesSheet } from "./screens/PreferencesSheet";
@@ -16,7 +16,7 @@ const TABS: Array<{ id: Screen; label: string; Icon: ComponentType<{ className?:
   { id: "progress", label: "Progress", Icon: ProgressIcon },
   { id: "chat", label: "Chat", Icon: ChatIcon },
   { id: "summary", label: "Summary", Icon: SummaryIcon },
-  { id: "showcase", label: "Showcase", Icon: ShowcaseIcon },
+  { id: "showcase", label: "Settings", Icon: GearIcon },
 ];
 
 const SCREENS: Screen[] = ["onboarding", "today", "progress", "chat", "summary", "showcase"];
@@ -73,7 +73,7 @@ export default function App() {
   return (
     <div className="desk">
       <section className="desk-intro">
-        <h1>Make It Count</h1>
+        <h1>VO2 Max Pal</h1>
         <p>
           We help you raise your VO2 max, the best single measure of cardio fitness, without having to plan a thing.
           Each day the agent hands you one workout that fits your time, the equipment where you are, and the activities

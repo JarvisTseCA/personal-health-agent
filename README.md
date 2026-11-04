@@ -1,4 +1,4 @@
-# Make It Count: Personal Health Agent (demo)
+# VO2 Max Pal: Personal Health Agent (demo)
 
 A mobile-style web app that helps busy adults **raise their VO2 max** without having to plan. Each day it
 hands the user one workout that fits their time, the equipment where they are and the activities they

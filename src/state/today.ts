@@ -1,7 +1,7 @@
 /**
  * The daily loop from the workflow doc, as pure state transitions:
  *
- *   1 Check in (time, place, energy, mood)
+ *   1 Check in: confirm today's time (from the weekly plan or the calendar), then place and energy
  *   2 Suggest one pick + 2 backups → accept, or "not today" + a reason → new pick
  *   3 Questions at any point (answered from answers.ts)
  *   4 Workout → Fitbit sync → confirm if unsure → credit, trophy, "keep going"
@@ -14,6 +14,7 @@ import { getFamily, getVariant, PICKABLE } from "../lib/activities";
 import { howTos } from "../lib/moves";
 import { countsTowardGoal, fmt, fmtGoal, minutesFor, UNCONFIRMED_MET, withCredit, type Session } from "../lib/met";
 import { WEEKLY_UPPER_LIMIT } from "../lib/goal";
+import { ALL_FROM_PLAN, SLOT_MINUTES, type DaySlot } from "../lib/plan";
 import { afterDecline, DECLINE_LABEL, suggest, type DeclineReason, type Energy, type Place, type Suggestion } from "../lib/suggest";
 import { matchActivity, parseEnergy, parseMinutes, parsePlace, parseReason, parseYesNo } from "../lib/freeText";
 import { answer, QUESTIONS, type QuestionId } from "../services/answers";
@@ -51,18 +52,49 @@ export function startDay(state: AppState): AppState {
   const n = ctx.streak.current;
   const hello = n >= 2 ? `Day ${n} in a row. ` : "Welcome back. ";
   let opener: string;
-  if (ctx.trophy) {
-    opener = `${hello}You've already earned this week's trophy, so anything today is a bonus. How much time do you have?`;
-  } else if (off) {
-    opener = `${hello}Today is marked off, so there's no target. Got a few minutes anyway?`;
+  if (off) {
+    opener = ctx.trophy
+      ? `${hello}You've already earned this week's trophy, and today is marked off. Got a few minutes anyway?`
+      : `${hello}Today is marked off, so there's no target. Got a few minutes anyway?`;
   } else {
-    opener = `${hello}You're at ${fmt(ctx.week.done)} of ${fmtGoal(ctx.goal)} MET-hours this week. Today's target is ${fmt(ctx.todayTarget)}. How much time do you have today?`;
+    const status = ctx.trophy
+      ? "You've already earned this week's trophy, so anything today is a bonus."
+      : `You're at ${fmt(ctx.week.done)} of ${fmtGoal(ctx.goal)} MET-hours this week. Today's target is ${fmt(ctx.todayTarget)}.`;
+    opener = `${hello}${status} ${timeConfirmQuestion(st)}`;
   }
   const entries = [agent(opener)];
   return {
     ...st,
-    today: { dayKey: dayKeyOf(st), step: "time", checkIn: {}, entries, exclude: [], boost: false, nudged: false },
+    // A planned day starts by confirming its time; an off day asks if there's any time at all.
+    today: { dayKey: dayKeyOf(st), step: off ? "time" : "time-confirm", checkIn: {}, entries, exclude: [], boost: false, nudged: false },
   };
+}
+
+/** Today's planned minutes: from the weekly plan, or from the calendar block if the user edited it. */
+export function plannedMinutes(state: AppState): number {
+  return SLOT_MINUTES[state.plan[state.todayIndex]];
+}
+
+/**
+ * The check-in doesn't ask "how much time do you have?". It confirms the time
+ * the user already gave, says where it came from, and invites more:
+ *   "Your weekly plan has 30 min for today. Keep it, or do you want to exercise more or less?"
+ * Yes keeps it; No opens the time list.
+ */
+export function timeConfirmQuestion(state: AppState): string {
+  const m = plannedMinutes(state);
+  const fromCalendar = state.planSource?.[state.todayIndex] === "calendar";
+  if (m === 0) return "Your weekly plan has no exercise time today, just desk moves. Keep it, or do you want to exercise more?";
+  const has = fromCalendar
+    ? `You changed today's exercise block on your calendar to ${m} min.`
+    : `Your weekly plan has ${m} min for today.`;
+  return `${has} Keep it, or do you want to exercise more or less?`;
+}
+
+/** Yes: keep today's planned time. No: pick another time from the list. */
+export function confirmTime(state: AppState, keep: boolean, typed?: string): AppState {
+  if (keep) return answerTime(state, typed ?? "Yes", plannedMinutes(state));
+  return setToday(push(state, user(typed ?? "No"), agent("How much time do you have today?")), { step: "time" });
 }
 
 // Traveling isn't a button: Outside covers it. Typing "hotel" or "airport" in Other still works.
@@ -72,8 +104,26 @@ export const PLACE_OPTIONS: Array<[string, Place]> = [["Home", "home"], ["Gym", 
 export const ENERGY_OPTIONS: Array<[string, Energy]> = [["Up for a challenge", "challenge"], ["Normal", "normal"]];
 export const REMIND_OPTIONS = ["In 30 min", "In 1 hour", "This evening"];
 
-export function answerTime(state: AppState, label: string, minutes: number): AppState {
+/**
+ * The time for today. `slot` is set when it was picked from the time list: on
+ * a planned day, a different pick replaces the day's time and its calendar
+ * block, and the rest of the week is re-split. Typed minutes ("25 min") count
+ * for today's suggestion only.
+ */
+export function answerTime(state: AppState, label: string, minutes: number, slot?: DaySlot): AppState {
   let s = push(state, user(label));
+  const i = s.todayIndex;
+  if (slot && s.plan[i] !== "off" && slot !== "off" && slot !== s.plan[i]) {
+    s = {
+      ...s,
+      plan: s.plan.map((x, d) => (d === i ? slot : x)),
+      planSource: (s.planSource ?? ALL_FROM_PLAN).map((x, d) => (d === i ? "plan" : x)),
+    };
+    const ctx = buildAgentContext(s);
+    s = push(s, agent(SLOT_MINUTES[slot] === 0
+      ? "Got it. I've cleared today's exercise block from your calendar."
+      : `Got it. I've changed today's exercise block on your calendar to ${SLOT_MINUTES[slot]} min, so today's target is now ${fmt(ctx.todayTarget)} MET-hours.`));
+  }
   s = setToday(s, { checkIn: { ...s.today.checkIn, minutes } });
   if (minutes === 0) {
     // No time: skip the rest of the check-in and go straight to desk moves.
@@ -435,6 +485,15 @@ const DECLINE_WORDS = /\b(not today|no thanks|no thank|something else|don't want
 export function freeText(state: AppState, text: string): AppState {
   const t = state.today;
   switch (t.step) {
+    case "time-confirm": {
+      if (/\b(off|day off|sick|rest day|resting|not today)\b/i.test(text)) return takeDayOff(state, text);
+      const yn = parseYesNo(text);
+      if (yn !== null) return confirmTime(state, yn, text);
+      if (/\b(more|less|longer|shorter|change|different)\b/i.test(text)) return confirmTime(state, false, text);
+      const m = parseMinutes(text);
+      if (m !== null) return answerTime(state, text, Math.min(m, 120));
+      return push(state, user(text), agent("Tap Yes to keep today's time, or No to pick a different one."));
+    }
     case "time": {
       if (/\b(off|day off|sick|rest day|resting|not today)\b/i.test(text)) return takeDayOff(state, text);
       const m = parseMinutes(text);
@@ -520,7 +579,7 @@ export function withRewind(prev: AppState, next: AppState): AppState {
   if (!after.slice(n).some((e) => e.role === "user" && !e.rewind)) return next;
   const { entries: _drop, ...today } = prev.today;
   const rewind: TodayRewind = {
-    entryCount: n, today, plan: prev.plan, sessions: prev.sessions, declines: prev.declines, profile: prev.profile,
+    entryCount: n, today, plan: prev.plan, planSource: prev.planSource, sessions: prev.sessions, declines: prev.declines, profile: prev.profile,
     notes: prev.notes, painReports: prev.painReports, syncCount: prev.syncCount,
   };
   const entries = after.map((e, i) => (i >= n && e.role === "user" && !e.rewind ? { ...e, rewind } : e));
@@ -534,7 +593,7 @@ export function editAnswer(state: AppState, entryId: string): AppState {
   if (!r) return state;
   return {
     ...state,
-    plan: r.plan ?? state.plan, sessions: r.sessions, declines: r.declines, profile: r.profile, notes: r.notes, painReports: r.painReports, syncCount: r.syncCount,
+    plan: r.plan ?? state.plan, planSource: r.planSource ?? state.planSource, sessions: r.sessions, declines: r.declines, profile: r.profile, notes: r.notes, painReports: r.painReports, syncCount: r.syncCount,
     today: { ...r.today, entries: state.today.entries.slice(0, r.entryCount) },
   };
 }

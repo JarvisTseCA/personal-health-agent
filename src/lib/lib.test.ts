@@ -7,7 +7,7 @@ import { howTos, movesFor } from "./moves";
 import { goalOffer } from "./goal";
 import { runsOf, streakOf, trophyEarned } from "./rewards";
 import { creditFor, intensityOf, metHours, minutesFor, totalsFor, withCredit } from "./met";
-import { dailyTargets, migratePlan, SLOT_ROWS, unplannedLeft, type WeekPlan } from "./plan";
+import { ALL_FROM_PLAN, applyCalendarEdit, dailyTargets, migratePlan, migrateSources, shorterSlot, SLOT_ROWS, unplannedLeft, type WeekPlan } from "./plan";
 import { slotForMinutes } from "./freeText";
 import { afterDecline, challengePlan, suggest, type SuggestInput } from "./suggest";
 import { verifySuggestion } from "./verify";
@@ -390,5 +390,38 @@ describe("day options", () => {
     expect(t[0]).toBe(0);
     expect(t[3]).toBe(0);
     expect(t[5] / t[1]).toBeCloseTo(4.5);
+  });
+});
+
+describe("calendar exercise blocks", () => {
+  it("shortening a block steps down the time list and stops at 5 min", () => {
+    expect(shorterSlot("45")).toBe("30");
+    expect(shorterSlot("30")).toBe("10");
+    expect(shorterSlot("10")).toBe("5");
+    expect(shorterSlot("5")).toBeNull();
+    expect(shorterSlot("off")).toBeNull();
+    expect(shorterSlot("0")).toBeNull();
+  });
+
+  it("an edited block changes only that day and marks it as from the calendar", () => {
+    const plan: WeekPlan = ["30", "off", "30", "10", "off", "45", "10"];
+    const r = applyCalendarEdit(plan, ALL_FROM_PLAN, 5, "30");
+    expect(r.plan).toEqual(["30", "off", "30", "10", "off", "30", "10"]);
+    expect(r.sources[5]).toBe("calendar");
+    expect(r.sources.filter((x) => x === "calendar")).toHaveLength(1);
+  });
+
+  it("a shorter block re-splits the rest of the goal over the other days", () => {
+    const plan: WeekPlan = ["30", "30", "30", "30", "30", "30", "30"];
+    const done = [0, 0, 0, 0, 0, 0, 0];
+    const before = dailyTargets(7.5, plan, done, 2);
+    const after = dailyTargets(7.5, applyCalendarEdit(plan, ALL_FROM_PLAN, 4, "10").plan, done, 2);
+    expect(after[4]).toBeLessThan(before[4]);
+    expect(after[5]).toBeGreaterThan(before[5]);
+  });
+
+  it("old saves without sources read as all from the plan", () => {
+    expect(migrateSources(undefined)).toEqual(ALL_FROM_PLAN);
+    expect(migrateSources(["plan", "calendar"])[1]).toBe("calendar");
   });
 });

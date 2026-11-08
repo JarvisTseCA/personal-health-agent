@@ -100,9 +100,12 @@ The daily loop, and the screen the app opens on.
   Each opens Progress.
 - **"This agent is a machine learning model and may make mistakes"** sits at the top of the conversation,
   as it does in Chat.
-- **Check-in:** bubbles for time (*Off*, 0, 5, 10, 30, 45+ min), where they'll exercise (**Home, Gym**,
+- **Check-in:** the coach confirms today's time and says where it came from: "Your weekly plan has 30 min
+  for today. Keep it, or do you want to exercise more or less?" (or "You changed today's exercise block on
+  your calendar to 10 min…"). *Yes* keeps it; *No* opens the time bubbles (*Off*, 0, 5, 10, 30, 45+ min),
+  and a new pick replaces today's time and its calendar block. Then where they'll exercise (**Home, Gym**,
   Office, Outside) and how they feel. *Gym* is hidden for someone who said they don't use one. *Off* makes
-  today a day off; *0 min* offers desk moves.
+  today a day off; *0 min* offers desk moves. On an off day the coach asks whether there's any time at all.
 - **Edit an answer:** tap any answer you sent for its time and a pencil, which goes back to that question.
 - **Suggestion:** one pick, three buttons: *Let's start*, *Remind me later* (the agent asks when) and
   *Give me another option*. The pick only uses equipment that's where the user is today ("Uses the
@@ -224,7 +227,8 @@ the user's name for it and counts at the bottom of the effort band Fitbit measur
 
 **Demo controls** (right side on desktop): switch scenario (*Alex*, *On a roll* → goal raise, *Tough month*
 → goal cut, *Fresh start*), pretend it's a different day, restart today's check-in, simulate a Fitbit
-sync, **show the how-to video example** (30 min at the gym → a pick with a video → *Show me how*),
+sync, **simulate a calendar edit** (the user shortens today's exercise block on their calendar: 45 → 30 →
+10 → 5 min; the check-in restarts and names the calendar as the source), **show the how-to video example** (30 min at the gym → a pick with a video → *Show me how*),
 **tell Chat what the clinician said** (sends a sample message: blood pressure, keep it moderate, add two
 strength days), jump to Progress or Summary, reset, and show the backend: the **verifier's checks** on the current suggestion and the prompt the
 agent would receive.
@@ -478,11 +482,14 @@ flowchart TD
 1. **Onboarding (once).** The user connects Fitbit and answers one health question. The app then watches a
    week of Fitbit data. On day 8 the user confirms the workouts the app detected, adds activities they
    enjoy and plans the first week.
-2. **Weekly planning (every Sunday).** The user marks the days they can't exercise. The weekly goal is split
-   over the other days by how much time each one has. The plan can change mid-week, and what's left is
-   re-split.
+2. **Weekly planning (every Sunday).** The user enters how much free time they have on each day (or marks it
+   off), and the app takes those numbers as true. The weekly goal is split over the days by how much time
+   each one has. Each day's time goes on the user's own calendar as an exercise block, next to their other
+   events. If the user edits a block there, that day's time follows it. Empty calendar space never counts as
+   free time. The plan can change mid-week, and what's left is re-split.
 3. **The daily loop.**
-   1. *Check in:* the user taps how much time they have, where they'll exercise and how they feel.
+   1. *Check in:* the coach confirms today's time and its source (weekly plan or calendar) and asks if they
+      want more or less, then where they'll exercise and how they feel.
    2. *Suggest:* the coach gives one pick with three buttons: *Let's start*, *Remind me later* or *Give me
       another option*. A reason for turning it down can still be typed, and the coach saves it.
    3. *Ask:* at any point the user can tap or type a question, such as *What's a MET?*
@@ -530,15 +537,25 @@ exercise at all, and let them change the plan mid-week, with the remaining goal 
 - The weekly goal never drops because of off days; their share moves to the other days, weighted by minutes.
 - *Update my goals* works at any point; so does tapping *Off* at Today's time question. Every change, and every Fitbit sync, re-splits what's left.
 - Today's target is fixed at the start of the day, so it doesn't move during a workout.
+- **Calendar blocks.** Each day's time is an exercise block on the user's calendar (one calendar, so they see
+  exercise next to everything else). `planSource` records whether a day's time came from the weekly plan or
+  from the user editing its block on the calendar; the check-in names that source. The calendar is
+  simulated in the demo: *Simulate a calendar edit* shortens today's block to the next shorter time.
+- Free time only comes from what the user said or from their edited blocks, never from gaps in the calendar.
 
-Code: `src/lib/plan.ts`, `src/screens/ProgressScreen.tsx`
+Code: `src/lib/plan.ts` (`DaySource`, `shorterSlot`, `applyCalendarEdit`), `src/screens/ProgressScreen.tsx`
 
 ### Daily check-in
 
 **Instruction:** Ask for the user's preferences and availability each day.
 
-- Three quick questions, each answered with one tap: time today (*Off*, or 0, 5, 10, 30 or 45+ min), where they'll
-  exercise (home, gym, office, outside), and how they feel (*Up for a challenge* or *Normal*).
+- The time isn't asked from scratch. The coach confirms the time the user already gave and names its source,
+  phrased to invite more: "Your weekly plan has 30 min for today. Keep it, or do you want to exercise more or
+  less?" *Yes* keeps it. *No* opens the time list (*Off*, or 0, 5, 10, 30 or 45+ min); a different pick
+  replaces today's time and its calendar block, and the coach says the new target. Typed minutes ("25 min")
+  count for today's suggestion only.
+- Then two quick questions, each answered with one tap: where they'll exercise (home, gym, office, outside),
+  and how they feel (*Up for a challenge* or *Normal*).
 - There's no "what are you in the mood for?" question: the coach picks, to avoid decision fatigue.
 - Feeling tired isn't a button, to nudge toward moving, but typing it works and the pick gets easier.
 - *Up for a challenge* aims for 1.5× today's target, through a harder pace rather than a longer session;
@@ -759,6 +776,7 @@ later decision changes an earlier one, the earlier row says so instead of being 
 | Nov 2, 2026 | Chat | Clinician feedback is entered in **Chat**: the *Add feedback from my clinician* chip (and Summary's button) makes the agent ask; "My doctor said…" is saved directly; questions about the clinician are answered, not saved; "never mind" cancels. | Requested. One place to talk to the agent; the guided prompt helps people unsure how to phrase it. |
 | Nov 2, 2026 | Chat, Today | Saved feedback is agent context. Only **cautious** effects are automatic: "moderate" / blood pressure / heart keeps picks under 6 MET, strength advice favors strength picks (with an offer to add strength to the list). The agent repeats what it saved and says what it will do; it never changes the goal. | The note is the user's paraphrase of medical advice. Making picks gentler is safe even if it's misread; changing the goal isn't, so that stays with the user. |
 | Nov 2, 2026 | Summary, Preferences | Saved feedback is a **list of notes**, shown with dates on Summary and in Preferences, each removable; removing one undoes its effect. Older saves keep their single note as the first entry. | The user should always see, and be able to undo, what the agent is acting on. |
+| Nov 8, 2026 | Today, Progress | The check-in confirms today's time instead of asking for it, names where it came from (the weekly plan, or the user's edit to that day's calendar block) and asks "Keep it, or do you want to exercise more or less?". *Yes* keeps it; *No* opens the time list, and a new pick replaces the day's time and its calendar block. Each day's time is an exercise block on the user's own calendar; empty calendar space never counts as free time. | Proposal feedback: the user already gave their time in the weekly session, so asking again is redundant. Naming the source builds trust, and the question nudges toward more exercise. One calendar lets users see exercise next to everything else. |
 
 Still open:
 

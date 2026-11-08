@@ -27,6 +27,7 @@ import type { AppState } from "../state/types";
 
 /** What the Other box says at each step. Every step that asks something gets one. */
 const OTHER_PLACEHOLDER: Partial<Record<TodayStep, string>> = {
+  "time-confirm": "Other: e.g. 45 min today",
   time: "Other: e.g. 25 min, or an hour",
   place: "Other: e.g. at the park",
   energy: "Other: tell me how you feel",
@@ -234,10 +235,16 @@ export function TodayScreen({ go, openPrefs }: { go: (s: Screen) => void; openPr
           </div>
         )}
 
+        {t.step === "time-confirm" && (
+          <Bubbles label="Keep today's time">
+            <button className="chip chip-strong" onClick={() => dispatch({ type: "confirmTime", keep: true })}>Yes</button>
+            <button className="chip" onClick={() => dispatch({ type: "confirmTime", keep: false })}>No</button>
+          </Bubbles>
+        )}
         {t.step === "time" && (
           <TimeOptions
             label="Time today"
-            onPick={(s) => dispatch(s === "off" ? { type: "dayOff" } : { type: "time", label: SLOT_LABEL[s], minutes: SLOT_MINUTES[s] })}
+            onPick={(s) => dispatch(s === "off" ? { type: "dayOff" } : { type: "time", label: SLOT_LABEL[s], minutes: SLOT_MINUTES[s], slot: s })}
           />
         )}
         {t.step === "place" && (

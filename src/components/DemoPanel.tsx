@@ -51,6 +51,7 @@ export function DemoPanel({ go }: { go: (s: Screen) => void }) {
         {!state.onboarded && <button className="btn btn-quiet" onClick={skipOnboarding}>Skip onboarding</button>}
         <button className="btn btn-quiet" disabled={!state.onboarded} onClick={() => { dispatch({ type: "restartDay" }); go("today"); }}>Start today's check-in over</button>
         <button className="btn btn-quiet" disabled={!state.onboarded} onClick={() => { dispatch({ type: "sync" }); go("today"); }}>Simulate a Fitbit sync</button>
+        <button className="btn btn-quiet" disabled={!state.onboarded} title="The user shortens today's exercise block on their calendar" onClick={() => { dispatch({ type: "calendarEdit" }); go("today"); }}>Simulate a calendar edit</button>
         <button className="btn btn-quiet" disabled={!state.onboarded} onClick={() => { dispatch({ type: "videoExample" }); go("today"); }}>Show the how-to video example</button>
         <button className="btn btn-quiet" disabled={!state.onboarded} onClick={() => { dispatch({ type: "overlay", overlay: null }); go("progress"); }}>Open Progress</button>
         <button className="btn btn-quiet" disabled={!state.onboarded} onClick={() => { dispatch({ type: "overlay", overlay: null }); go("summary"); }}>Open Summary</button>

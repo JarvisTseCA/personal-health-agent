@@ -2,7 +2,7 @@ import type { EquipmentProfile, WeekRecord } from "../data/mockFitbit";
 import type { Session } from "../lib/met";
 import type { Video } from "../lib/moves";
 import type { ClinicianNote } from "../lib/clinicianNotes";
-import type { WeekPlan } from "../lib/plan";
+import type { DaySource, WeekPlan } from "../lib/plan";
 import type { Access, Constraint, DeclineReason, Energy, Place, Suggestion } from "../lib/suggest";
 
 export type UsualTime = "under1" | "1to2" | "2to3" | "3plus";
@@ -67,7 +67,7 @@ export interface CheckIn {
 }
 
 export type TodayStep =
-  | "time" | "place" | "energy" | "mood"
+  | "time-confirm" | "time" | "place" | "energy" | "mood"
   | "suggested" | "reason" | "remind" | "reminded"
   | "accepted" | "confirm" | "confirm-other" | "nudge" | "wrap";
 
@@ -90,6 +90,8 @@ export interface TodayRewind {
   today: Omit<TodayState, "entries">;
   /** Missing on rewind points saved before "Off" could change the plan */
   plan?: WeekPlan;
+  /** Missing on rewind points saved before calendar blocks */
+  planSource?: DaySource[];
   sessions: Session[];
   declines: DeclineRecord[];
   profile: UserProfile;
@@ -140,6 +142,8 @@ export interface AppState {
   goal: number;
   goalSource: "default" | "recap";
   plan: WeekPlan;
+  /** Where each day's time came from: the weekly plan, or an exercise block the user edited on their calendar */
+  planSource: DaySource[];
   sessions: Session[];
   history: WeekRecord[];
   /** Days this week the user opened the app (today is added when the day starts) */

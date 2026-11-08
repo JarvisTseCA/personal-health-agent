@@ -30,6 +30,40 @@ export type WeekPlan = DaySlot[];
 
 export const DEFAULT_PLAN: WeekPlan = ["30", "off", "30", "10", "off", "45", "10"];
 
+/**
+ * Where a day's time came from. The weekly planning session sets every day
+ * ("plan"), and the app puts each day's time on the user's calendar as an
+ * exercise block. If the user edits a block on their calendar, that day's
+ * time follows the block ("calendar"). Empty space on the calendar is never
+ * treated as free time: only these two sources count.
+ */
+export type DaySource = "plan" | "calendar";
+export const ALL_FROM_PLAN: DaySource[] = Array(7).fill("plan");
+
+/** Saves from before calendar blocks: every day came from the plan. */
+export function migrateSources(sources: readonly string[] | undefined): DaySource[] {
+  return Array.from({ length: 7 }, (_, i) => (sources?.[i] === "calendar" ? "calendar" : "plan"));
+}
+
+/**
+ * Demo stand-in for the user shortening a day's exercise block on their
+ * calendar: the next shorter time on the list (45 → 30 → 10 → 5). Null when
+ * the day has no block to shorten (off, desk moves only, or already 5 min).
+ */
+export function shorterSlot(slot: DaySlot): DaySlot | null {
+  const order: DaySlot[] = ["45", "30", "10", "5"];
+  const i = order.indexOf(slot);
+  return i < 0 || i === order.length - 1 ? null : order[i + 1];
+}
+
+/** A day's exercise block was changed on the calendar: the plan follows it. */
+export function applyCalendarEdit(plan: WeekPlan, sources: DaySource[], day: number, slot: DaySlot): { plan: WeekPlan; sources: DaySource[] } {
+  return {
+    plan: plan.map((s, i) => (i === day ? slot : s)),
+    sources: sources.map((s, i) => (i === day ? "calendar" : s)),
+  };
+}
+
 /** Saves from before the time list: Short → 10, Medium → 30, Long → 45 min. */
 const LEGACY: Record<string, DaySlot> = { short: "10", medium: "30", long: "45" };
 export function migratePlan(plan: readonly string[]): WeekPlan {

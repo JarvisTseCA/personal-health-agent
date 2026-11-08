@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useMemo, useReducer, useRef, type ReactNode } from "react";
 import { PERSONAS } from "../data/mockFitbit";
 import { fmt, withCredit, type Session } from "../lib/met";
-import { migratePlan, type DaySlot, type WeekPlan } from "../lib/plan";
+import { ALL_FROM_PLAN, applyCalendarEdit, migratePlan, migrateSources, shorterSlot, SLOT_MINUTES, type DaySlot, type WeekPlan } from "../lib/plan";
 import type { Access, DeclineReason, Energy, Place, Suggestion } from "../lib/suggest";
 import type { QuestionId } from "../services/answers";
 import { buildAgentContext, type AgentContext } from "../services/context";
@@ -34,7 +34,7 @@ function migrateClinician(c: unknown): ClinicianNotes {
   return { entries: [{ id: "cn-migrated", text: old.name?.trim() ? `${old.name.trim()} said: ${text}` : text, at: old.updated ?? new Date().toISOString() }] };
 }
 
-function personaState(personaId: string): Pick<AppState, "personaId" | "sessions" | "history" | "declines" | "notes" | "plan" | "goal" | "signIns" | "vo2"> {
+function personaState(personaId: string): Pick<AppState, "personaId" | "sessions" | "history" | "declines" | "notes" | "plan" | "planSource" | "goal" | "signIns" | "vo2"> {
   const p = PERSONAS.find((x) => x.id === personaId) ?? PERSONAS[0];
   return {
     personaId: p.id,
@@ -43,6 +43,7 @@ function personaState(personaId: string): Pick<AppState, "personaId" | "sessions
     declines: p.declines.map((d, i) => ({ id: `pd-${i}`, ...d })),
     notes: [],
     plan: p.plan,
+    planSource: ALL_FROM_PLAN,
     goal: p.goal,
     signIns: p.signInsThisWeek,
     vo2: p.vo2,
@@ -87,7 +88,9 @@ export type Action =
   | { type: "setSlot"; day: number; slot: DaySlot }
   | { type: "setToday"; index: number }
   | { type: "loadPersona"; personaId: string }
-  | { type: "time"; label: string; minutes: number }
+  | { type: "confirmTime"; keep: boolean }
+  | { type: "time"; label: string; minutes: number; slot?: DaySlot }
+  | { type: "calendarEdit" }
   | { type: "dayOff" }
   | { type: "place"; label: string; place: Place }
   | { type: "energy"; label: string; energy: Energy }
@@ -136,7 +139,7 @@ function reduce(state: AppState, action: Action): AppState {
     case "hydrate":
       return action.state;
     case "completeOnboarding":
-      return Today.startDay({ ...state, onboarded: true, profile: action.profile, plan: action.plan });
+      return Today.startDay({ ...state, onboarded: true, profile: action.profile, plan: action.plan, planSource: ALL_FROM_PLAN });
     case "updateProfile":
       return { ...state, profile: { ...state.profile, ...action.patch } };
     case "setAccess":
@@ -168,9 +171,19 @@ function reduce(state: AppState, action: Action): AppState {
     case "forgetDecline":
       return { ...state, declines: state.declines.filter((d) => d.id !== action.id) };
     case "setSlot": {
+      // A change on Progress is a new weekly plan for that day; its calendar block follows.
       const plan = [...state.plan];
       plan[action.day] = action.slot;
-      return { ...state, plan };
+      const planSource = state.planSource.map((x, i) => (i === action.day ? "plan" : x));
+      return { ...state, plan, planSource };
+    }
+    case "calendarEdit": {
+      // Demo control: the user shortens today's exercise block on their calendar.
+      const slot = shorterSlot(state.plan[state.todayIndex]);
+      if (!slot) return { ...state, toast: "Today has no exercise block to shorten." };
+      const edited = applyCalendarEdit(state.plan, state.planSource, state.todayIndex, slot);
+      const next = Today.startDay({ ...state, plan: edited.plan, planSource: edited.sources });
+      return { ...next, toast: `Calendar: today's exercise block is now ${SLOT_MINUTES[slot]} min.` };
     }
     case "setToday":
       return Today.startDay({ ...state, todayIndex: action.index });
@@ -178,7 +191,8 @@ function reduce(state: AppState, action: Action): AppState {
       const next = { ...state, ...personaState(action.personaId), syncCount: 0, painReports: 0, clinician: DEFAULT_CLINICIAN, goalSource: "default" as const, recapHandled: false };
       return Today.startDay(state.onboarded ? { ...next, profile: personaProfile(next) } : next);
     }
-    case "time": return Today.answerTime(state, action.label, action.minutes);
+    case "confirmTime": return Today.confirmTime(state, action.keep);
+    case "time": return Today.answerTime(state, action.label, action.minutes, action.slot);
     case "dayOff": return Today.takeDayOff(state);
     case "place": return Today.answerPlace(state, action.label, action.place);
     case "energy": return Today.answerEnergy(state, action.label, action.energy);
@@ -262,13 +276,20 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         // Saves from before streaks, VO2 max and clinician notes: fill those in from the persona.
         const persona = personaState(s.personaId ?? "alex");
         const extra = {
+          planSource: migrateSources(s.planSource),
           signIns: s.signIns ?? persona.signIns,
           vo2: s.vo2 ?? persona.vo2,
           clinician: migrateClinician(s.clinician),
           chat: s.chat ?? [],
         };
         const today = { ...s.today, entries: (s.today?.entries ?? []).filter((e) => (e.role as string) !== "medal") };
-        dispatch({ type: "hydrate", state: { ...initialState(), ...s, ...plans, ...extra, today, overlay: null, toast: null } });
+        let loaded: AppState = { ...initialState(), ...s, ...plans, ...extra, today, overlay: null, toast: null };
+        // A save still sitting on the old opener ("How much time do you have today?") on a planned day:
+        // restart the check-in so it confirms the planned time instead.
+        if (loaded.onboarded && today.step === "time" && today.entries.length === 1 && loaded.plan[loaded.todayIndex] !== "off") {
+          loaded = Today.startDay(loaded);
+        }
+        dispatch({ type: "hydrate", state: loaded });
       }
       hydrated.current = true;
     });

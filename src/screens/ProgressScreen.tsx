@@ -142,7 +142,7 @@ function ThisWeek() {
         </div>
         {editing && (
           <p className="small muted plan-help">
-            Mark days you can't exercise as Off, and pick how much time you have on the others (0 min means desk moves only). What's left of the goal is split over the days by their time, so changing a day re-plans the rest.
+            Mark days you can't exercise as Off, and pick how much time you have on the others (0 min means desk moves only). What's left of the goal is split over the days by their time, so changing a day re-plans the rest. Each day's time goes on your calendar as an exercise block; if you change a block there, the plan follows it.
           </p>
         )}
         <ul className="days">
@@ -172,7 +172,9 @@ function ThisWeek() {
                       </span>
                     </div>
                   ) : (
-                    !editing && slot !== "off" && i >= t && here.length === 0 && <span className="xs muted">{SLOT_HINT[slot]}</span>
+                    !editing && slot !== "off" && i >= t && here.length === 0 && (
+                      <span className="xs muted">{state.planSource[i] === "calendar" ? `${SLOT_MINUTES[slot]} min, changed on your calendar` : SLOT_HINT[slot]}</span>
+                    )
                   )}
                   {here.map((s) => {
                     const { family, variant } = getVariant(s.variantId);

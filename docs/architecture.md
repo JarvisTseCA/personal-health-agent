@@ -13,6 +13,8 @@ Screens ──► useStore() ──► AppState (React reducer)
    │      MET-hours, daily targets, streak/trophies, goal offer   lib/met.ts, plan.ts, rewards.ts, goal.ts
    │
    ├─► Today flow (check-in → pick → decline/questions → sync)    state/today.ts
+   │      check-in confirms today's planned time and its source:  lib/plan.ts (DaySource)
+   │      the weekly plan, or the user's edited calendar block
    │      suggest() shows the in-app ranker's pick right away     lib/suggest.ts
    │      the backend's Jev pick replaces it when it arrives      services/backend.ts → backend/
    │      verifySuggestion() checks whatever is shown             lib/verify.ts
@@ -168,3 +170,16 @@ coach's replies, and parse free-text "Other" notes into structured preferences.
 - Never point out a missed day or a broken streak.
 - Symptoms like chest pain or dizziness: stop and contact a clinician (see the `safety` script).
 - Never let a model produce numbers; MET-hours come from the calculator and the verifier compares them.
+
+## Planned: calendar exercise blocks
+
+The weekly planning session is the source of free time: the user says how much they have each day, and the
+app takes it as true. The app then writes each day's time to the user's own Google Calendar as an exercise
+block, so exercise sits next to their other events. It reads back only the blocks it created: if the user
+moves, shortens or deletes one, that day's time follows the block and the rest of the week is re-split.
+Gaps in the calendar are never treated as free time.
+
+In the demo the calendar is simulated. `AppState.planSource` records, per day, whether its time came from
+the plan or from an edited block, and *Simulate a calendar edit* in the demo panel stands in for the user
+shortening today's block. Going live needs Google Calendar write access to events.
+

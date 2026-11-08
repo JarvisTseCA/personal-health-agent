@@ -267,7 +267,7 @@ describe("editing an earlier answer", () => {
     expect(s.today.step).toBe("suggested");
     const time = s.today.entries.find((e) => e.text === "30 min")!;
     const back = T.editAnswer(s, time.id);
-    expect(back.today.step).toBe("time");
+    expect(back.today.step).toBe("time-confirm");
     expect(back.today.entries).toHaveLength(1); // just the coach's opening question
     expect(back.today.checkIn.minutes).toBeUndefined();
     // A new answer carries on from there.
@@ -321,4 +321,54 @@ it("a typed 'can't, my bike is broken' on a pick rules that activity out", () =>
   const fam = s.today.current!.lead.familyId;
   s = T.freeText(s, "can't, my bike is broken");
   expect(s.profile.access[fam]).toBe("no");
+});
+
+describe("confirming today's time", () => {
+  // Alex's plan: Wednesday (the demo's today) is 30 min.
+  it("names the weekly plan as the source and invites more", () => {
+    const s = onboarded();
+    expect(s.today.step).toBe("time-confirm");
+    expect(s.today.entries[0].text).toMatch(/Your weekly plan has 30 min for today\. Keep it, or do you want to exercise more or less\?$/);
+  });
+
+  it("Yes keeps the planned time and moves on to place", () => {
+    const s = T.confirmTime(onboarded(), true);
+    expect(s.today.checkIn.minutes).toBe(30);
+    expect(s.today.step).toBe("place");
+    expect(s.plan).toEqual(onboarded().plan);
+  });
+
+  it("No opens the time list; a new pick replaces today's time and re-splits the week", () => {
+    const start = onboarded();
+    let s = T.confirmTime(start, false);
+    expect(s.today.step).toBe("time");
+    expect(s.today.entries.at(-1)?.text).toBe("How much time do you have today?");
+    s = T.answerTime(s, "45+ min", 45, "45");
+    expect(s.plan[s.todayIndex]).toBe("45");
+    expect(buildAgentContext(s).todayTarget).toBeGreaterThan(buildAgentContext(start).todayTarget);
+    expect(s.today.entries.some((e) => /changed today's exercise block on your calendar to 45 min/.test(e.text))).toBe(true);
+    expect(s.today.step).toBe("place");
+  });
+
+  it("names the calendar when the user edited today's block there", () => {
+    const s0 = onboarded();
+    const s = T.startDay({ ...s0, plan: s0.plan.map((x, i) => (i === s0.todayIndex ? "10" : x)), planSource: s0.planSource.map((x, i) => (i === s0.todayIndex ? "calendar" : x)) });
+    expect(s.today.entries[0].text).toMatch(/You changed today's exercise block on your calendar to 10 min\. Keep it/);
+    expect(T.confirmTime(s, true).today.checkIn.minutes).toBe(10);
+  });
+
+  it("an off day still asks whether there's any time, without a plan to confirm", () => {
+    const s0 = onboarded();
+    const s = T.startDay({ ...s0, plan: s0.plan.map((x, i) => (i === s0.todayIndex ? "off" : x)) });
+    expect(s.today.step).toBe("time");
+    expect(s.today.entries[0].text).toMatch(/Today is marked off/);
+  });
+
+  it("typed answers: yes, no, 'more' and minutes", () => {
+    const s = onboarded();
+    expect(T.freeText(s, "yes please").today.checkIn.minutes).toBe(30);
+    expect(T.freeText(s, "no").today.step).toBe("time");
+    expect(T.freeText(s, "I want more today").today.step).toBe("time");
+    expect(T.freeText(s, "25 min").today.checkIn.minutes).toBe(25);
+  });
 });

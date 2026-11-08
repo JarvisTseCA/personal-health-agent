@@ -79,7 +79,7 @@ export function plannedMinutes(state: AppState): number {
  * The check-in doesn't ask "how much time do you have?". It confirms the time
  * the user already gave, says where it came from, and invites more:
  *   "Your weekly plan has 30 min for today. Keep it, or do you want to exercise more or less?"
- * Yes keeps it; No opens the time list.
+ * The two buttons say what they do: "Keep 30 min" and "Pick a different time".
  */
 export function timeConfirmQuestion(state: AppState): string {
   const m = plannedMinutes(state);
@@ -91,10 +91,17 @@ export function timeConfirmQuestion(state: AppState): string {
   return `${has} Keep it, or do you want to exercise more or less?`;
 }
 
-/** Yes: keep today's planned time. No: pick another time from the list. */
+/** The button that keeps today's planned time: "Keep 30 min", or "Keep desk moves" on a 0-min day. */
+export function keepTimeLabel(state: AppState): string {
+  const m = plannedMinutes(state);
+  return m > 0 ? `Keep ${m} min` : "Keep desk moves";
+}
+export const CHANGE_TIME_LABEL = "Pick a different time";
+
+/** Keep today's planned time, or pick another from the time list. */
 export function confirmTime(state: AppState, keep: boolean, typed?: string): AppState {
-  if (keep) return answerTime(state, typed ?? "Yes", plannedMinutes(state));
-  return setToday(push(state, user(typed ?? "No"), agent("How much time do you have today?")), { step: "time" });
+  if (keep) return answerTime(state, typed ?? keepTimeLabel(state), plannedMinutes(state));
+  return setToday(push(state, user(typed ?? CHANGE_TIME_LABEL), agent("How much time do you have today?")), { step: "time" });
 }
 
 // Traveling isn't a button: Outside covers it. Typing "hotel" or "airport" in Other still works.
@@ -492,7 +499,7 @@ export function freeText(state: AppState, text: string): AppState {
       if (/\b(more|less|longer|shorter|change|different)\b/i.test(text)) return confirmTime(state, false, text);
       const m = parseMinutes(text);
       if (m !== null) return answerTime(state, text, Math.min(m, 120));
-      return push(state, user(text), agent("Tap Yes to keep today's time, or No to pick a different one."));
+      return push(state, user(text), agent(`Tap "${keepTimeLabel(state)}", or "${CHANGE_TIME_LABEL}" to change it.`));
     }
     case "time": {
       if (/\b(off|day off|sick|rest day|resting|not today)\b/i.test(text)) return takeDayOff(state, text);

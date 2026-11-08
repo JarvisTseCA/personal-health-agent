@@ -102,7 +102,7 @@ The daily loop, and the screen the app opens on.
   as it does in Chat.
 - **Check-in:** the coach confirms today's time and says where it came from: "Your weekly plan has 30 min
   for today. Keep it, or do you want to exercise more or less?" (or "You changed today's exercise block on
-  your calendar to 10 min…"). *Yes* keeps it; *No* opens the time bubbles (*Off*, 0, 5, 10, 30, 45+ min),
+  your calendar to 10 min…"). *Keep 30 min* keeps it; *Pick a different time* opens the time bubbles (*Off*, 0, 5, 10, 30, 45+ min),
   and a new pick replaces today's time and its calendar block. Then where they'll exercise (**Home, Gym**,
   Office, Outside) and how they feel. *Gym* is hidden for someone who said they don't use one. *Off* makes
   today a day off; *0 min* offers desk moves. On an off day the coach asks whether there's any time at all.
@@ -551,7 +551,7 @@ Code: `src/lib/plan.ts` (`DaySource`, `shorterSlot`, `applyCalendarEdit`), `src/
 
 - The time isn't asked from scratch. The coach confirms the time the user already gave and names its source,
   phrased to invite more: "Your weekly plan has 30 min for today. Keep it, or do you want to exercise more or
-  less?" *Yes* keeps it. *No* opens the time list (*Off*, or 0, 5, 10, 30 or 45+ min); a different pick
+  less?" *Keep 30 min* keeps it. *Pick a different time* opens the time list (*Off*, or 0, 5, 10, 30 or 45+ min); a different pick
   replaces today's time and its calendar block, and the coach says the new target. Typed minutes ("25 min")
   count for today's suggestion only.
 - Then two quick questions, each answered with one tap: where they'll exercise (home, gym, office, outside),
@@ -776,7 +776,7 @@ later decision changes an earlier one, the earlier row says so instead of being 
 | Nov 2, 2026 | Chat | Clinician feedback is entered in **Chat**: the *Add feedback from my clinician* chip (and Summary's button) makes the agent ask; "My doctor said…" is saved directly; questions about the clinician are answered, not saved; "never mind" cancels. | Requested. One place to talk to the agent; the guided prompt helps people unsure how to phrase it. |
 | Nov 2, 2026 | Chat, Today | Saved feedback is agent context. Only **cautious** effects are automatic: "moderate" / blood pressure / heart keeps picks under 6 MET, strength advice favors strength picks (with an offer to add strength to the list). The agent repeats what it saved and says what it will do; it never changes the goal. | The note is the user's paraphrase of medical advice. Making picks gentler is safe even if it's misread; changing the goal isn't, so that stays with the user. |
 | Nov 2, 2026 | Summary, Preferences | Saved feedback is a **list of notes**, shown with dates on Summary and in Preferences, each removable; removing one undoes its effect. Older saves keep their single note as the first entry. | The user should always see, and be able to undo, what the agent is acting on. |
-| Nov 8, 2026 | Today, Progress | The check-in confirms today's time instead of asking for it, names where it came from (the weekly plan, or the user's edit to that day's calendar block) and asks "Keep it, or do you want to exercise more or less?". *Yes* keeps it; *No* opens the time list, and a new pick replaces the day's time and its calendar block. Each day's time is an exercise block on the user's own calendar; empty calendar space never counts as free time. | Proposal feedback: the user already gave their time in the weekly session, so asking again is redundant. Naming the source builds trust, and the question nudges toward more exercise. One calendar lets users see exercise next to everything else. |
+| Nov 8, 2026 | Today, Progress | The check-in confirms today's time instead of asking for it, names where it came from (the weekly plan, or the user's edit to that day's calendar block) and asks "Keep it, or do you want to exercise more or less?". *Keep 30 min* keeps it; *Pick a different time* opens the time list, and a new pick replaces the day's time and its calendar block. The buttons name the planned time rather than saying Yes/No, which read as ambiguous. Each day's time is an exercise block on the user's own calendar; empty calendar space never counts as free time. | Proposal feedback: the user already gave their time in the weekly session, so asking again is redundant. Naming the source builds trust, and the question nudges toward more exercise. One calendar lets users see exercise next to everything else. |
 
 Still open:
 

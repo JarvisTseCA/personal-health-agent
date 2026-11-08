@@ -17,7 +17,7 @@ import { DECLINE_LABEL, type DeclineReason, type Suggestion } from "../lib/sugge
 import { QUESTIONS, type QuestionId } from "../services/answers";
 import { equipmentAt } from "../services/context";
 import { useStore } from "../state/store";
-import { CONFIRM_CHOICES, ENERGY_OPTIONS, hasHowTo, PLACE_OPTIONS, REMIND_OPTIONS } from "../state/today";
+import { CHANGE_TIME_LABEL, CONFIRM_CHOICES, ENERGY_OPTIONS, hasHowTo, keepTimeLabel, PLACE_OPTIONS, REMIND_OPTIONS } from "../state/today";
 import { TimeOptions } from "../components/TimeOptions";
 import { SLOT_LABEL, SLOT_MINUTES } from "../lib/plan";
 import type { Screen, TodayStep } from "../state/types";
@@ -237,8 +237,8 @@ export function TodayScreen({ go, openPrefs }: { go: (s: Screen) => void; openPr
 
         {t.step === "time-confirm" && (
           <Bubbles label="Keep today's time">
-            <button className="chip chip-strong" onClick={() => dispatch({ type: "confirmTime", keep: true })}>Yes</button>
-            <button className="chip" onClick={() => dispatch({ type: "confirmTime", keep: false })}>No</button>
+            <button className="chip chip-strong" onClick={() => dispatch({ type: "confirmTime", keep: true })}>{keepTimeLabel(state)}</button>
+            <button className="chip" onClick={() => dispatch({ type: "confirmTime", keep: false })}>{CHANGE_TIME_LABEL}</button>
           </Bubbles>
         )}
         {t.step === "time" && (

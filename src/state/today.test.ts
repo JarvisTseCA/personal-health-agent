@@ -331,14 +331,20 @@ describe("confirming today's time", () => {
     expect(s.today.entries[0].text).toMatch(/Your weekly plan has 30 min for today\. Keep it, or do you want to exercise more or less\?$/);
   });
 
-  it("Yes keeps the planned time and moves on to place", () => {
+  it("the buttons say what they do", () => {
+    expect(T.keepTimeLabel(onboarded())).toBe("Keep 30 min");
+    expect(T.CHANGE_TIME_LABEL).toBe("Pick a different time");
+  });
+
+  it("Keep 30 min keeps the planned time and moves on to place", () => {
     const s = T.confirmTime(onboarded(), true);
+    expect(s.today.entries.find((e) => e.role === "user")?.text).toBe("Keep 30 min");
     expect(s.today.checkIn.minutes).toBe(30);
     expect(s.today.step).toBe("place");
     expect(s.plan).toEqual(onboarded().plan);
   });
 
-  it("No opens the time list; a new pick replaces today's time and re-splits the week", () => {
+  it("Pick a different time opens the time list; a new pick replaces today's time and re-splits the week", () => {
     const start = onboarded();
     let s = T.confirmTime(start, false);
     expect(s.today.step).toBe("time");

@@ -10,11 +10,13 @@ FastAPI backend for the Personal Health Agent.
 
 Run from backend/:  uvicorn app.main:app --reload --port 8000
 Each /api/suggest prints its steps in that terminal; LOG_LEVEL=DEBUG in .env adds the full JSON.
+On startup the activity CSV is copied into the `activities` table (activities.py).
 """
 import json
 import logging
 import os
 import time
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any, Dict
 
@@ -29,13 +31,29 @@ log = logging.getLogger("pha")
 from fastapi import Body, FastAPI, HTTPException  # noqa: E402
 from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
 
-from . import db  # noqa: E402
+from . import activities, db  # noqa: E402
 from .jev import JevError, call_jev, has_api_key, jev_model, mock_activity, mock_durations  # noqa: E402
 from .prompt import build_activity_request, build_duration_request  # noqa: E402
 from .schemas import SuggestRequest, SuggestResponse  # noqa: E402
 from .suggest import AnswerError, assemble, pick_activities  # noqa: E402
 
-app = FastAPI(title="Personal Health Agent backend")
+
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    """When the backend starts: replace the `activities` table with the CSV, so the two always match."""
+    try:
+        total = activities.load()
+    except activities.ActivityTableError as e:
+        log.error("✗ Activities: %s", e)
+        raise
+    log.info(
+        "Activities: %d loaded from %s (%d marked exercise_rec)",
+        total, activities.CSV_PATH.name, activities.count(recommended=True),
+    )
+    yield
+
+
+app = FastAPI(title="Personal Health Agent backend", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origin_regex=r"http://(localhost|127\.0\.0\.1)(:\d+)?",

@@ -86,10 +86,11 @@ Tests: `.venv/bin/python -m pytest` (from `backend/`).
 
 | File | What it does |
 |---|---|
-| `backend/app/prompt.py` | Builds the prompts for both calls: `state` (the check-in variables), the activity question, and the duration questions. **Edit this to tune the prompt.** |
+| `backend/app/prompt.py` | Builds the prompts for both calls: `state` (the check-in variables), the activity question, and the duration questions. **Edit this to tune the prompt.** The prompts for `/api/suggest/table` are at the bottom of the file. |
 | `backend/app/jev.py` | Calls Jev with the API key; the mock used when there's no key |
 | `backend/app/suggest.py` | After call 1, picks the activity and two backups; after call 2, gives each its own minutes and reasons |
-| `backend/app/db.py` | SQLite: the app state, and a log of every prompt and answer |
+| `backend/app/activities.py` | The activity table: copies the CSV into SQLite when the backend starts, and picks the rows that fit a user today |
+| `backend/app/db.py` | SQLite: the app state, a log of every prompt and answer, and the activity table |
 | `backend/app/main.py` | The API routes |
 | `backend/app/schemas.py` | Request and response shapes |
 | `src/services/backend.ts` | The frontend side: builds the request, turns picks back into suggestions with MET-hours |
@@ -99,6 +100,8 @@ Tests: `.venv/bin/python -m pytest` (from `backend/`).
 | Route | |
 |---|---|
 | `POST /api/suggest` | Check-in variables and options in, pick and backups out (plus the prompt and Jev's answers) |
+| `POST /api/suggest/table` | The same, with the options taken from the activity table (next section). Not used by the app yet |
+| `GET /api/activities` | The activity table. `?place=gym`, `?heading=Bicycling` (repeatable) and `?recommended=false` narrow or widen it |
 | `GET / PUT / DELETE /api/state` | Load, save, forget the app state |
 | `GET /api/suggestions/log?limit=20` | Recent prompts and answers |
 | `GET /api/health` | Is the backend up, and is Jev live or mocked? |
@@ -106,12 +109,72 @@ Tests: `.venv/bin/python -m pytest` (from `backend/`).
 The database file is `backend/data/pha.db` (git-ignored). To look at recent prompts:
 `sqlite3 backend/data/pha.db "select id, source, error from suggestion_log order by id desc limit 5"`.
 
+## Done in the backend: suggestions from the activity table (not in the app yet)
+
+The app still picks from its own small activity library (`src/lib/activities.ts`) and calls
+`POST /api/suggest`. The backend can now also suggest from the team's activity table. The app isn't
+switched over yet.
+
+**The activity table.** `activity_tables/2024_compendium_exercise_recommendations.csv` lists the 2024
+Adult Compendium's activities, each marked with where it can be done, whether it needs equipment or a
+partner, and whether it is an exercise to recommend (`exercise_rec`). Each time the backend starts, it
+copies the CSV into the `activities` table in SQLite. So the CSV is the only place to edit: change it and
+restart the backend. A mistake in the CSV (a MET value that isn't a number, a code used twice) stops the
+backend from starting and names the line.
+
+`activity_code`, the 5-digit Compendium code, is the id. The frontend library stores the same code for
+each of its activities (`code`), so both sides can point at the same activity.
+
+**`POST /api/suggest/table`** does the same job as `/api/suggest`, with the options taken from the table:
+
+```
+check-in variables ──► filter the ──► Call 1: which ──► Call 2: which activity? ──► Call 3: how long? ──► pick + 2
+and picked_codes        table          heading?          1 question per heading       1 question per        backups
+(from the frontend)     (code)         1 question        (Jev's top three)            picked activity
+```
+
+1. The frontend sends the check-in variables as before, but no options. It sends `picked_codes`
+   instead: the Compendium codes of the activities the user picked before (chosen in onboarding, or
+   suggestions they accepted), favorites first.
+2. **Filter.** `candidates()` in `activities.py` keeps the rows marked `exercise_rec` that can be done
+   where the user is (gym, home or outside), need no partner and are 3 MET or more (light activity
+   doesn't count toward the goal). What the user likes is the `major_heading` of what they picked
+   before (Bicycling, Walking, …), and only those headings are kept. Nothing picked yet means no
+   preference, so every heading stays. `exclude_headings` drops a heading (after "Did this recently");
+   a health limit or `below_met` caps the MET value.
+3. **Call 1, which heading.** One Choice question whose options are the headings that have a
+   candidate today. Skipped when there is only one.
+4. **Call 2, which activity.** One question for each of Jev's top three headings. The options are
+   that heading's candidates, named by their code. The best activity of the top heading is the pick
+   and the best of the next two are the backups, so the three are different kinds of activity.
+5. **Call 3, how long.** As in `/api/suggest`: one question for each picked activity.
+
+Why the heading comes first: one user can have hundreds of candidates, more than a question takes
+(255 options). And if every row were one option, a heading with many rows would outweigh a heading
+with few on numbers alone.
+
+Each pick comes back with `activity_code`, `major_heading`, `activity_description`, `met_value` and
+`duration_min`, so the app can show it without its own copy of the table. `GET /api/activities`
+returns the table itself.
+
+To switch the app over: send `picked_codes` instead of `options`, call `/api/suggest/table`, and show
+the pick from those fields. MET-hours still come from the calculator in `src/lib`.
+
+Not handled yet:
+
+- Equipment isn't filtered. The table says whether an activity needs equipment, not which. Jev sees
+  the user's equipment list in `state`.
+- The table has columns for the gym, home and outside. Anywhere else (the office) has no candidates,
+  and the app keeps its own pick.
+- "Up for a challenge" gives Jev the 1.5× aim but not the user's usual session length, because the
+  table doesn't say which rows are paces of the same activity.
+
 ## Next: store user data in proper tables
 
-Today SQLite has two tables: `app_state` (the whole app state as one JSON document per user, the
-same thing localStorage held) and `suggestion_log`. Once the team settles the schema, split the app
-state into tables and update `backend/app/db.py` and the `UserRepository` in `src/services/store.ts`.
-A starting draft:
+Today SQLite has three tables: `app_state` (the whole app state as one JSON document per user, the
+same thing localStorage held), `suggestion_log` and `activities` (the copy of the activity CSV). Once
+the team settles the schema, split the app state into tables and update `backend/app/db.py` and the
+`UserRepository` in `src/services/store.ts`. A starting draft:
 
 | Table | Columns |
 |---|---|

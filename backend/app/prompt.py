@@ -14,10 +14,11 @@ probability for every option.
 
 Jev API reference: https://docs.typesafe.ai/api/system-one.md
 """
+import re
 from typing import Any, Dict, List
 
 from . import challenge
-from .schemas import Option, SuggestRequest
+from .schemas import Option, SuggestBase, SuggestRequest, TableSuggestRequest
 
 # Open question for the team: what order should these factors be weighed in?
 # For now: mood > energy > favorites rank > variety. Placeholder until the
@@ -74,7 +75,7 @@ def _days_ago_text(days: int) -> str:
     return f"{days} days ago"
 
 
-def build_state(req: SuggestRequest) -> Dict[str, Any]:
+def build_state(req: SuggestBase) -> Dict[str, Any]:
     """Everything Jev should know about the user today, in plain words.
 
     Names come from the frontend, which has the full activity library; ids
@@ -161,3 +162,150 @@ def build_duration_request(req: SuggestRequest, picked: List[Option], model: str
         for o in picked
     }
     return {"model": model, "state": build_state(req), "questions": questions}
+
+
+# --- From the activity table (POST /api/suggest/table) -----------------------
+# Here the options are rows of the activity table (activities.candidates), and
+# a suggestion takes three calls:
+#
+# 1. Which heading? One question; the options are the major_headings that
+#    have a candidate today (Bicycling, Walking, ...).
+# 2. Which activity? One question per heading Jev ranked highest (up to
+#    three), so the pick and the backups are different kinds of activity.
+# 3. How long? One question per activity picked in call 2, as above.
+#
+# Why the heading comes first: one user can have hundreds of candidates, more
+# than a question takes (255 options). And if every row were one option, a
+# heading with 54 rows would outweigh one with 15 on numbers alone.
+#
+# The wording below is a first draft made from the sentences above; the same
+# open questions for the team apply.
+
+HEADING_INSTRUCTIONS = (
+    "Pick the kind of activity this person is most likely to enjoy and actually do today. "
+    "Weigh, in order: what they are in the mood for, their energy today, the kinds they picked "
+    "before (earlier in that list means liked more), and variety (avoid what they did yesterday "
+    "or declined recently). On a low-energy day prefer a kind with lighter options."
+)
+
+TABLE_ACTIVITY_INSTRUCTIONS = (
+    "Pick the one {heading} activity this person is most likely to enjoy and actually do today. "
+    "On a low-energy day prefer lighter options. When they want a challenge, prefer a harder pace "
+    "over an easier pace done for longer. The equipment list is what the user said they have "
+    "here; use it as a reference."
+)
+
+# Same rule as DURATION_INSTRUCTIONS; only the first sentence differs, because a
+# table description is longer than a name ("Walking, treadmill, 3.5 to 3.9 mph, 0% grade").
+TABLE_DURATION_INSTRUCTIONS = (
+    "How long should today's session of this activity be: {activity}? It is {met} MET, so 1 MET-hour "
+    "takes about {min_per_met_hour} minutes. Aim to cover the MET-hours still needed today without "
+    "going far past it. A shorter session they will finish beats a longer one they will "
+    "skip, especially on a low-energy day."
+)
+
+# The table has no "usual session length" for an activity yet, so this is shorter than
+# CHALLENGE_DURATION_INSTRUCTIONS.
+TABLE_CHALLENGE_DURATION_INSTRUCTIONS = (
+    " They are up for a challenge: aim for about {aim} MET-hours (1.5x today's target), and let "
+    "a harder pace earn the extra rather than a much longer session."
+)
+
+Row = Dict[str, Any]  # one row of the activity table
+
+
+def heading_key(heading: str) -> str:
+    """The option name for a heading: "Water Activities" → "water_activities"."""
+    return re.sub(r"[^a-z0-9]+", "_", heading.lower()).strip("_")
+
+
+def table_activity_question(heading: str) -> str:
+    """The name of the activity question for one heading, e.g. "activity_in_bicycling"."""
+    return "activity_in_" + heading_key(heading)
+
+
+def table_duration_question(row: Row) -> str:
+    """The name of the duration question for one activity, e.g. "duration_01216"."""
+    return "duration_" + row["activity_code"]
+
+
+def group_by_heading(rows: List[Row]) -> Dict[str, List[Row]]:
+    """Candidates sorted into their major_heading: {"Bicycling": [...], "Walking": [...]}."""
+    groups: Dict[str, List[Row]] = {}
+    for r in rows:
+        groups.setdefault(r["major_heading"], []).append(r)
+    return groups
+
+
+def build_table_state(req: TableSuggestRequest, liked: List[str]) -> Dict[str, Any]:
+    """The same state as build_state, plus the kinds of activity the user picked before.
+
+    `liked` is the major_heading of each picked activity, favorites first
+    (activities.headings_of). An empty list means nothing was picked yet.
+    """
+    state: Dict[str, Any] = {}
+    for key, value in build_state(req).items():
+        if key != "favorites_in_order":
+            state[key] = value
+            continue
+        if req.enjoyed:
+            state[key] = value
+        state["kinds_of_activity_picked_before"] = liked
+    return state
+
+
+def _examples(rows: List[Row]) -> List[str]:
+    """Up to three descriptions that show a heading's range: its lightest, a middle and its hardest row."""
+    by_met = sorted(rows, key=lambda r: r["met_value"])
+    spots = sorted({0, len(by_met) // 2, len(by_met) - 1})
+    return [by_met[i]["activity_description"] for i in spots]
+
+
+def build_heading_request(
+    state: Dict[str, Any], by_heading: Dict[str, List[Row]], liked: List[str], model: str
+) -> Dict[str, Any]:
+    """Call 1: which kind of activity? One option per heading that has a candidate today."""
+    options = {}
+    for heading, rows in by_heading.items():
+        mets = [r["met_value"] for r in rows]
+        text = (
+            f"{heading}. {len(rows)} activities fit today, {min(mets):g} to {max(mets):g} MET. "
+            f"For example: {'; '.join(_examples(rows))}."
+        )
+        if heading in liked:
+            text += f" Picked before (#{liked.index(heading) + 1})."
+        options[heading_key(heading)] = text
+    return {
+        "model": model,
+        "state": state,
+        "questions": {"heading": {"type": "choice", "instructions": HEADING_INSTRUCTIONS, "criteria": options}},
+    }
+
+
+def build_table_activity_request(state: Dict[str, Any], by_heading: Dict[str, List[Row]], model: str) -> Dict[str, Any]:
+    """Call 2: which activity, asked once for each heading given. The option names are activity codes."""
+    questions = {
+        table_activity_question(heading): {
+            "type": "choice",
+            "instructions": TABLE_ACTIVITY_INSTRUCTIONS.format(heading=heading),
+            "criteria": {r["activity_code"]: f"{r['activity_description']} ({r['met_value']:g} MET)" for r in rows},
+        }
+        for heading, rows in by_heading.items()
+    }
+    return {"model": model, "state": state, "questions": questions}
+
+
+def build_table_duration_request(
+    req: TableSuggestRequest, state: Dict[str, Any], picked: List[Row], model: str
+) -> Dict[str, Any]:
+    """Call 3: how long, asked once for each activity picked in call 2."""
+    options = {str(d): f"{d} minutes" for d in req.durations}
+    questions = {}
+    for r in picked:
+        text = TABLE_DURATION_INSTRUCTIONS.format(
+            activity=r["activity_description"], met=f"{r['met_value']:g}", min_per_met_hour=round(60 / r["met_value"])
+        )
+        if req.boost:
+            text += TABLE_CHALLENGE_DURATION_INSTRUCTIONS.format(aim=round(challenge.challenge_aim(req), 2))
+        questions[table_duration_question(r)] = {"type": "choice", "instructions": text, "criteria": options}
+    return {"model": model, "state": state, "questions": questions}

@@ -157,3 +157,19 @@ class TableSuggestResponse(BaseModel):
     jev_request: dict
     jev_answers: Dict[str, dict]
     log_id: int
+
+
+class ChatMessage(BaseModel):
+    role: Literal["user", "assistant"]
+    content: str
+
+
+class ChatRequest(BaseModel):
+    """What the Chat tab sends to POST /api/chat (HttpAgent in src/services/agent.ts).
+
+    `system` is the prompt the app built for the model that writes, with the user's numbers in it.
+    `messages` is the conversation so far, oldest first; the last user message is the one to answer.
+    """
+
+    system: str = ""
+    messages: List[ChatMessage]

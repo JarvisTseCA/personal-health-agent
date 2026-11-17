@@ -1,0 +1,104 @@
+5 PERSONAS: VO2 MAX PAL
+========================
+
+PROMPT
+------
+Create five evidence-informed UX personas for VO₂ Max Pal, a personal health assistant that helps busy adults plan aerobic exercise around their available time, preferences, and equipment, with the goal of improving cardiorespiratory fitness. Use published All of Us wearable research to identify observable inputs and PubMed-indexed accelerometer studies to ground the activity patterns. For each persona, give the wearable pattern, one goal in the user's own words, the main constraint, and one distinct workflow with a testable success criterion. Cite the evidence for each pattern and label the goals, constraints, and proposed workflows as design assumptions. Include cases that test onboarding, short exercise windows, workouts concentrated on a few days, irregular schedules, and fitness progress tracking.
+
+
+PERSONAS
+--------
+
+1. MAYA · Getting started
+
+Wearable pattern and evidence:
+  Low activity across most days with adequate device wear. A UK Biobank accelerometer study identified an "Inactive" profile. (pmc.ncbi.nlm.nih.gov)
+
+What they want from the app:
+  "I have 10 minutes and no equipment. What can I actually do today?"
+
+UI and workflow to test:
+  Start with one doable session. Ask for available time, setting, and preferred effort. Offer a short session, let her swap it, and show her completed minutes at the end of the week.
+
+
+2. ALEX · Fits exercise into short windows
+
+Wearable pattern and evidence:
+  Movement comes in short bursts, with relatively little sustained activity. UK Biobank researchers identified patterns that differed by both total activity and how it accumulated in bouts. (PMC)
+
+What they want from the app:
+  "I have three 10-minute windows this week. Can you build a plan around those?"
+
+UI and workflow to test:
+  Plan around individual time blocks. Let Alex enter three short windows, match activities to each window's location and equipment, and show how the sessions add up toward a weekly estimated MET-hour goal.
+
+
+3. JORDAN · Exercises on two days
+
+Wearable pattern and evidence:
+  Most moderate-to-vigorous activity falls on one or two days. Khurshid et al. identified this pattern using wrist accelerometry in UK Biobank. (jamanetwork.com)
+
+What they want from the app:
+  "I can do two longer workouts. Can the app work with that schedule?"
+
+UI and workflow to test:
+  Use a flexible weekly planner. Let Jordan pick any two days. If one falls through, offer to move or shorten the session and show the updated weekly plan.
+
+
+4. SAM · Active at work, rotating schedule
+
+Wearable pattern and evidence:
+  A shift-work accelerometer study found that activity differed by work schedule. Rotating-shift workers accumulated more light activity than regular daytime workers. (pubmed.ncbi.nlm.nih.gov)
+
+What they want from the app:
+  "I walk a lot on shift. Help me see what I'm already doing and fit in cardio on my days off."
+
+UI and workflow to test:
+  Ask which days are workdays and days off. Show total movement alongside planned aerobic sessions. If a shift changes, let Sam move the workout with one tap.
+
+
+5. PRIYA · Trains regularly and wants to see progress
+
+Wearable pattern and evidence:
+  Moderate-to-vigorous activity is spread across the week, consistent with the regularly active group in Khurshid et al. A wearable validation review also found substantial individual error in estimated VO₂ max. (jamanetwork.com)
+
+What they want from the app:
+  "I already exercise four days a week. Is my fitness improving?"
+
+UI and workflow to test:
+  Open on trends. Show training volume and estimated MET-hours alongside any available wearable VO₂ max estimate, with the source and date visible. If the device provides no estimate, still show training progress.
+
+
+NOTES
+-----
+
+For your MVP, I'd demo Maya -> Alex -> Priya to show three distinct paths through the same app: starting a plan, fitting it into real life, and reviewing progress. The activity catalog can use your existing exercise_rec, location, equipment, and partner fields to filter options, with session duration as a planning input.
+
+Using All of Us: Fulda et al. analyzed 11 million days of All of Us Fitbit data using step count, peak cadence, and heart rate per step. That gives you a source for choosing wearable inputs. For the UI, let wearable data suggest a pattern and let the user confirm what shaped it. A low-step day could reflect low activity or incomplete wear, so show data gaps before using that day to tailor a plan.
+
+
+EVIDENCE BASE FOR 5 PERSONAS
+----------------------------
+
+Maya · Low activity across the week
+  Clark et al., 2021
+
+Alex · Activity in short bouts
+  Cai et al., 2026
+
+Jordan and Priya · Activity concentrated on one or two days versus spread across the week
+  Khurshid et al., 2023
+
+Sam · Physical activity patterns in shift workers
+  Loprinzi, 2015
+
+Priya · Accuracy of wearable VO₂ max estimates
+  Molina-Garcia et al., 2022
+
+All of Us · Fitbit-derived steps, cadence, and heart rate per step
+  Fulda et al., 2026
+
+All of Us · Fitbit wear time and data quality
+  Bailey et al., 2025
+
+

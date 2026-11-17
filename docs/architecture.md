@@ -126,6 +126,7 @@ A starting draft:
 | `equipment` | user_id, place (`home` / `gym`), equipment_id; plus a "no gym" flag on `profiles` |
 | `sign_ins` | user_id, date (one row per day the app was opened; the streak is computed from these) |
 | `vo2_max` | user_id, month, ml_kg_min, source (`fitbit`) |
+| `fitbit_tokens` | user_id, access_token, refresh_token, expires_at, scope (already in SQLite) |
 | `check_ins` | user_id, date, minutes, place, energy, mood |
 | `chat_messages` | id, user_id, role, text, created_at |
 
@@ -153,13 +154,69 @@ model that writes text, so it will use a different model than Jev.
 Ideas once it's connected: run `VERIFIER_BRIEF` (prompts.ts) as a second agent that checks the
 coach's replies, and parse free-text "Other" notes into structured preferences.
 
-## Later: real Fitbit data
+## Done: real Fitbit data
 
-- **Research datasets** (Fitabase, PMData, LifeSnaps): write loaders that map each exercise row to a
-  `Session` (`variantId` via a lookup table from the dataset's activity names to Compendium entries).
-  `src/data/mockFitbit.ts` already uses the PMData-style shape.
-- **Live data**: Fitbit Web API (OAuth on the backend), pulling activity logs and active zone
-  minutes into the `sessions` table on sync.
+The backend reads the user's own Fitbit through the **Google Health API**, which replaced the Fitbit Web
+API when Google turned that off on Nov 2, 2026. Without a Google OAuth client in `backend/.env` (or
+without the backend), Fitbit stays simulated exactly as before.
+
+```
+Connect (new tab) ──► Google sign-in ──► /api/fitbit/callback ──► tokens saved in SQLite
+Sync Fitbit ──► /api/fitbit/sync?since=… ──► exercise + vo2-max data points ──► src/lib/fitbit.ts
+                                             (every page, token refreshed)     workouts → Sessions,
+                                                                                weeks → history,
+                                                                                readings → monthly VO2 max
+```
+
+- **The backend only reshapes Google's JSON** (`backend/app/fitbit_data.py`): local clock times, minutes,
+  heart rate zone minutes. Tokens never reach the browser.
+- **The frontend decides what each workout was** (`src/lib/fitbit.ts`). Fitbit's exercise type picks the
+  activity (`EXERCISE_VARIANTS`), and the heart rate zones pick the effort: mostly vigorous or peak is the
+  very active band, anything else fairly active. Types with no matching activity become *Other activity*
+  under Fitbit's name for them and count at the bottom of their band.
+- **Today's newest workout goes through the usual confirm step** (`syncFitbit` in `src/state/today.ts`).
+  It is logged when it matches the accepted plan, otherwise the coach asks *Right?*. Earlier workouts are
+  counted as Fitbit labelled them, and a re-sync keeps whatever the user confirmed.
+- **Six months come in on each sync:** 26 weeks of workouts become `history` (starting at the first week
+  with any), and VO2 max becomes one value a month, the month's latest reading, carried into months
+  without one.
+
+### Set it up
+
+You need a Google account that has a Fitbit linked to it.
+
+1. In the [Google Cloud console](https://console.cloud.google.com/projectcreate), create a project.
+2. Enable the [Google Health API](https://console.cloud.google.com/apis/library/health.googleapis.com) for it.
+3. On [Branding](https://console.cloud.google.com/auth/branding), set up the consent screen (External).
+4. On [Audience](https://console.cloud.google.com/auth/audience), add your Google account as a test user.
+5. On [Data Access](https://console.cloud.google.com/auth/scopes), add the scope
+   `https://www.googleapis.com/auth/googlehealth.activity_and_fitness.readonly`.
+6. On [Clients](https://console.cloud.google.com/auth/clients), create a **Web application** client with the
+   authorized redirect URI `http://localhost:8000/api/fitbit/callback`.
+7. Paste its client ID and secret into `backend/.env` as `GOOGLE_HEALTH_CLIENT_ID` and
+   `GOOGLE_HEALTH_CLIENT_SECRET`, then restart the backend.
+8. Open the app at **http://localhost:5173** (not 127.0.0.1, so the sign-in cookie matches) and connect
+   Fitbit in onboarding or Preferences.
+
+While the project is in Testing mode, Google lets in only the test users and its refresh tokens expire
+after 7 days. The app then says the sign-in has expired and the user connects again.
+
+### API
+
+| Route | |
+|---|---|
+| `GET /api/fitbit/status` | Is a Google client set up, and does this user have tokens? |
+| `GET /api/fitbit/connect` | Redirects to Google's consent page |
+| `GET /api/fitbit/callback` | Google sends the user back here; saves the tokens, checks a Fitbit is linked |
+| `GET /api/fitbit/sync?since=2026-05-18` | Workouts and VO2 max readings since that date |
+| `DELETE /api/fitbit` | Forgets this user's tokens |
+
+### Still open
+
+- **Research datasets** (Fitabase, PMData, LifeSnaps) could feed the same `FitbitData` shape through a
+  loader, for demos with recorded data.
+- Onboarding's observed week still shows the simulated workouts.
+- Past weeks use the current goal and plan, since Fitbit doesn't know them.
 
 ## Guardrails to keep
 

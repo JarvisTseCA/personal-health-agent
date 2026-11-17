@@ -7,16 +7,24 @@ FastAPI backend for the Personal Health Agent.
     DELETE /api/state             forget it
     GET    /api/suggestions/log   recent prompts and Jev answers, for prompt tuning
     GET    /api/health            is the backend up, and is Jev live or mocked?
+    GET    /api/fitbit/status     is real Fitbit set up (client id in .env), and is this user connected?
+    GET    /api/fitbit/connect    → Google's consent page (Google Health API, which replaced the Fitbit Web API)
+    GET    /api/fitbit/callback   Google sends the user back here; saves the tokens
+    GET    /api/fitbit/sync       workouts and VO2 max readings since a date
+    DELETE /api/fitbit            forget this user's Fitbit tokens
 
 Run from backend/:  uvicorn app.main:app --reload --port 8000
 Each /api/suggest prints its steps in that terminal; LOG_LEVEL=DEBUG in .env adds the full JSON.
 """
+import html
 import json
 import logging
 import os
+import secrets
 import time
+from datetime import date
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 from dotenv import load_dotenv
 
@@ -26,10 +34,12 @@ logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO").upper(), format="%
 logging.getLogger("httpx").setLevel(logging.WARNING)  # our own lines already say when Jev is called
 log = logging.getLogger("pha")
 
-from fastapi import Body, FastAPI, HTTPException  # noqa: E402
+from fastapi import Body, FastAPI, HTTPException, Request  # noqa: E402
 from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
+from fastapi.responses import HTMLResponse, RedirectResponse  # noqa: E402
 
 from . import db  # noqa: E402
+from . import google_health as gh  # noqa: E402
 from .jev import JevError, call_jev, has_api_key, jev_model, mock_activity, mock_durations  # noqa: E402
 from .prompt import build_activity_request, build_duration_request  # noqa: E402
 from .schemas import SuggestRequest, SuggestResponse  # noqa: E402
@@ -138,3 +148,88 @@ def delete_state(user_id: str = "demo") -> Dict[str, bool]:
 @app.get("/api/suggestions/log")
 def suggestion_log(limit: int = 20) -> Dict[str, Any]:
     return {"items": db.recent_suggestions(min(max(limit, 1), 200))}
+
+
+# --- Real Fitbit (Google Health API) ------------------------------------------
+# The app opens /connect in a new tab and checks /status until it says connected,
+# so the page the user was on (onboarding, Preferences) keeps its place.
+
+OAUTH_COOKIE = "pha_fitbit_oauth"
+
+
+def _done_page(message: str) -> HTMLResponse:
+    """What the sign-in tab shows at the end. It tries to close itself."""
+    text = html.escape(message)
+    return HTMLResponse(
+        f"<!doctype html><meta charset=utf-8><meta name=viewport content='width=device-width'>"
+        f"<title>VO2 Max Pal</title><body style='font-family:system-ui;padding:24px;line-height:1.5'>"
+        f"<p>{text}</p><p>You can close this tab and go back to VO2 Max Pal.</p>"
+        f"<script>setTimeout(() => window.close(), 1500)</script>"
+    )
+
+
+@app.get("/api/fitbit/status")
+def fitbit_status(user_id: str = "demo") -> Dict[str, bool]:
+    return {"configured": gh.has_credentials(), "connected": db.load_fitbit_tokens(user_id) is not None}
+
+
+@app.get("/api/fitbit/connect")
+def fitbit_connect(user_id: str = "demo") -> RedirectResponse:
+    if not gh.has_credentials():
+        raise HTTPException(503, "Real Fitbit isn't set up: add GOOGLE_HEALTH_CLIENT_ID and GOOGLE_HEALTH_CLIENT_SECRET to backend/.env")
+    state = secrets.token_urlsafe(24)
+    res = RedirectResponse(gh.consent_url(state))
+    # The callback checks it, so only a sign-in this browser started can save tokens.
+    res.set_cookie(OAUTH_COOKIE, f"{user_id}|{state}", max_age=600, httponly=True, samesite="lax")
+    return res
+
+
+@app.get("/api/fitbit/callback", response_class=HTMLResponse)
+def fitbit_callback(request: Request, code: Optional[str] = None, state: Optional[str] = None,
+                    error: Optional[str] = None) -> HTMLResponse:
+    user_id, _, expected = (request.cookies.get(OAUTH_COOKIE) or "").rpartition("|")
+    if error:
+        log.info("── Fitbit sign-in for %s stopped: %s ──", user_id or "?", error)
+        return _done_page(f"Fitbit wasn't connected ({error}).")
+    if not code or not state or not expected or not secrets.compare_digest(state, expected):
+        raise HTTPException(400, "This sign-in didn't start from the app, or took over 10 minutes. Start again from the app.")
+    try:
+        tokens = gh.exchange_code(code)
+        if gh.SCOPE not in tokens["scope"].split():
+            return _done_page("Fitbit wasn't connected: the app needs access to your activity and fitness data.")
+        gh.check_linked(tokens["access_token"])
+    except gh.GoogleHealthError as e:
+        log.warning("    ✗ Fitbit sign-in failed: %s", e)
+        return _done_page(f"Fitbit wasn't connected: {e}")
+    db.save_fitbit_tokens(user_id, tokens)
+    log.info("── Fitbit connected for %s ──", user_id)
+    page = _done_page("Your Fitbit is connected.")
+    page.delete_cookie(OAUTH_COOKIE)
+    return page
+
+
+@app.get("/api/fitbit/sync")
+def fitbit_sync(since: date, user_id: str = "demo") -> Dict[str, Any]:
+    tokens = db.load_fitbit_tokens(user_id)
+    if not tokens:
+        raise HTTPException(401, "Fitbit isn't connected")
+    try:
+        fresh = gh.fresh_tokens(tokens)
+        if fresh is not tokens:
+            db.save_fitbit_tokens(user_id, fresh)
+        data = gh.fetch_data(fresh["access_token"], since)
+    except gh.GoogleHealthError as e:
+        log.warning("    ✗ Fitbit sync failed: %s", e)
+        if e.status == 401:
+            # The refresh token is gone (7 days in Testing mode, or access removed): the user has to reconnect.
+            db.clear_fitbit_tokens(user_id)
+        raise HTTPException(e.status, str(e)) from e
+    log.info("── GET /api/fitbit/sync  user=%s since %s: %d workouts, %d VO2 max readings ──",
+             user_id, since, len(data["workouts"]), len(data["vo2"]))
+    return data
+
+
+@app.delete("/api/fitbit")
+def fitbit_disconnect(user_id: str = "demo") -> Dict[str, bool]:
+    db.clear_fitbit_tokens(user_id)
+    return {"ok": True}

@@ -1,11 +1,13 @@
 """
-SQLite storage. Two tables for now:
+SQLite storage. Three tables for now:
 
 - app_state: the whole app state as one JSON document per user, the same
   thing the frontend used to keep in localStorage. We'll split it into proper
   tables once the team settles the schema (docs/architecture.md has a draft).
 - suggestion_log: every prompt sent to Jev and what came back, so the team can
   review real answers when tuning the prompt.
+- fitbit_tokens: the Google Health API tokens for each user who connected a
+  real Fitbit. They never leave the backend.
 """
 import json
 import os
@@ -34,6 +36,14 @@ CREATE TABLE IF NOT EXISTS suggestion_log (
     jev_answers  TEXT,                   -- Jev's answers (null on error)
     result_json  TEXT,                   -- the pick + backups we returned
     error        TEXT
+);
+CREATE TABLE IF NOT EXISTS fitbit_tokens (
+    user_id       TEXT PRIMARY KEY,
+    access_token  TEXT NOT NULL,
+    refresh_token TEXT,
+    expires_at    REAL NOT NULL,         -- seconds since epoch
+    scope         TEXT NOT NULL,
+    updated_at    TEXT NOT NULL
 );
 """
 
@@ -121,3 +131,27 @@ def recent_suggestions(limit: int) -> List[Dict[str, Any]]:
             d[k] = json.loads(d[k]) if d[k] else None
         out.append(d)
     return out
+
+
+def save_fitbit_tokens(user_id: str, tokens: Dict[str, Any]) -> None:
+    with session() as conn:
+        conn.execute(
+            "INSERT INTO fitbit_tokens (user_id, access_token, refresh_token, expires_at, scope, updated_at) "
+            "VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(user_id) DO UPDATE SET access_token = excluded.access_token, "
+            "refresh_token = excluded.refresh_token, expires_at = excluded.expires_at, scope = excluded.scope, "
+            "updated_at = excluded.updated_at",
+            (user_id, tokens["access_token"], tokens.get("refresh_token"), tokens["expires_at"], tokens["scope"], _now()),
+        )
+
+
+def load_fitbit_tokens(user_id: str) -> Optional[Dict[str, Any]]:
+    with session() as conn:
+        row = conn.execute(
+            "SELECT access_token, refresh_token, expires_at, scope FROM fitbit_tokens WHERE user_id = ?", (user_id,)
+        ).fetchone()
+    return dict(row) if row else None
+
+
+def clear_fitbit_tokens(user_id: str) -> None:
+    with session() as conn:
+        conn.execute("DELETE FROM fitbit_tokens WHERE user_id = ?", (user_id,))

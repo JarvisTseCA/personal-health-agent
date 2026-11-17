@@ -11,6 +11,7 @@
  */
 import { UNPLANNED_BOUTS } from "../data/mockFitbit";
 import { getFamily, getVariant, PICKABLE } from "../lib/activities";
+import type { FitbitImport } from "../lib/fitbit";
 import { howTos } from "../lib/moves";
 import { countsTowardGoal, fmt, fmtGoal, minutesFor, UNCONFIRMED_MET, withCredit, type Session } from "../lib/met";
 import { WEEKLY_UPPER_LIMIT } from "../lib/goal";
@@ -372,6 +373,46 @@ export function sync(state: AppState): AppState {
   let st = { ...state, syncCount: state.syncCount + 1, sessions: [...state.sessions, s] };
   st = push(st, agent(`Looks like ${bout.durationMin} min of ${family.noun} at ${bout.startTime}. Right?`));
   return setToday(st, { step: "confirm", pendingSessionId: s.id });
+}
+
+/**
+ * "Sync Fitbit" with a real Fitbit: the user's own weeks and VO2 max replace
+ * the simulated ones, workouts already synced keep what the user confirmed,
+ * and today's newest workout gets the same reply as the demo sync: logged
+ * when it matches the plan, otherwise "Right?". Other new workouts are
+ * counted as Fitbit labelled them. Before onboarding is done nobody asks.
+ */
+export function syncFitbit(state: AppState, imp: FitbitImport): AppState {
+  const known = new Map(state.sessions.map((s) => [s.id, s]));
+  const fresh = imp.thisWeek.filter((s) => !known.has(s.id));
+  const newToday = fresh.filter((s) => s.dayIndex === imp.todayIndex);
+  const newest = state.onboarded ? newToday.at(-1) : undefined;
+  const sessions = [
+    ...state.sessions.filter((s) => s.source === "manual"),
+    ...imp.thisWeek.filter((s) => known.has(s.id)).map((s) => known.get(s.id)!),
+    ...fresh.filter((s) => s !== newest).map((s) => ({ ...s, confirmed: true })),
+  ];
+  let base: AppState = {
+    ...state, sessions, vo2: imp.vo2, syncCount: state.syncCount + 1,
+    // Past goals and plans aren't in Fitbit; the current ones stand in for them.
+    history: imp.history.map((week) => ({ goal: state.goal, plan: state.plan, sessions: week })),
+  };
+  // With a real Fitbit the app's day is the real day.
+  if (base.todayIndex !== imp.todayIndex) base = startDay({ ...base, todayIndex: imp.todayIndex });
+  if (!state.onboarded) return base;
+  if (!newest) {
+    const earlier = fresh.length === 1 ? "1 earlier workout" : `${fresh.length} earlier workouts`;
+    return push(base, agent(fresh.length ? `Fitbit synced ${earlier}. Nothing new today yet.` : "Fitbit synced. Nothing new today yet."));
+  }
+  const { family } = getVariant(newest.variantId);
+  const acc = base.today.step === "accepted" ? base.today.accepted : undefined;
+  if (acc && acc.familyId === family.id) {
+    const s: Session = { ...newest, variantId: acc.variantId, confirmed: true };
+    const st = push({ ...base, sessions: [...base.sessions, s] }, agent(`Fitbit synced: ${s.durationMin} min at ${s.startTime}, matching your plan, so I logged it.`));
+    return afterCredit(base, st, s);
+  }
+  const st = push({ ...base, sessions: [...base.sessions, newest] }, agent(`Looks like ${newest.durationMin} min of ${newest.customName ?? family.noun} at ${newest.startTime}. Right?`));
+  return setToday(st, { step: "confirm", pendingSessionId: newest.id });
 }
 
 /** The variant of a family closest to what Fitbit measured. */

@@ -17,6 +17,8 @@ export interface UserProfile {
   /** Set at onboarding or by a "something hurts" decline: no vigorous suggestions */
   hasHealthCondition: boolean;
   fitbitConnected: boolean;
+  /** Connected to the user's real Fitbit through the backend (Google Health API). Missing or false: simulated. */
+  fitbitLive?: boolean;
   /** Equipment at home and at the gym. Missing on older saves: then nothing is filtered by equipment. */
   equipment?: EquipmentProfile;
 }

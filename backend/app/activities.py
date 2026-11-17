@@ -14,10 +14,14 @@ the backend from starting and names the line that is wrong.
 `activity_code` is the 5-digit Compendium code, e.g. "01216". The frontend
 library uses the same code (`code` in src/lib/activities.ts), so both sides
 can point at the same activity.
+
+`candidates()` picks, out of the whole table, the activities that fit one
+user today. Jev can't be handed every row (a question takes 255 options at
+most), so this runs first. It is not connected to /api/suggest yet.
 """
 import csv
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 from . import db
 
@@ -112,3 +116,119 @@ def count(recommended: bool = False) -> int:
     sql = "SELECT COUNT(*) FROM activities" + (" WHERE exercise_rec = 1" if recommended else "")
     with db.session() as conn:
         return int(conn.execute(sql).fetchone()[0])
+
+
+# The table has one 0/1 column per place. A place without a column (office,
+# traveling) has no candidates yet.
+PLACE_COLUMN = {"gym": "loc_gym", "home": "at_home", "outside": "loc_outside"}
+
+
+def _marks(values: List[Any]) -> str:
+    """"?, ?, ?" for a list of three, to put a list into a query safely."""
+    return ", ".join("?" * len(values))
+
+
+def _rows(where: List[str], values: List[Any]) -> List[Dict[str, Any]]:
+    """The rows of the table that meet every condition in `where`, in code order."""
+    sql = "SELECT * FROM activities" + (f" WHERE {' AND '.join(where)}" if where else "") + " ORDER BY activity_code"
+    with db.session() as conn:
+        return [dict(r) for r in conn.execute(sql, values)]
+
+
+def catalog(
+    recommended: bool = True, headings: Iterable[str] = (), place: Optional[str] = None
+) -> List[Dict[str, Any]]:
+    """The table as it is, for whoever wants to read it (GET /api/activities).
+
+    Unlike candidates(), nothing is decided here: partner activities are
+    included, and `place` is optional. By default only the rows marked as an
+    exercise to recommend; `recommended=False` gives every row.
+    """
+    where: List[str] = []
+    values: List[Any] = []
+    if recommended:
+        where.append("exercise_rec = 1")
+    keep = list(headings)
+    if keep:
+        where.append(f"major_heading IN ({_marks(keep)})")
+        values += keep
+    if place is not None:
+        if place not in PLACE_COLUMN:
+            return []
+        where.append(f"{PLACE_COLUMN[place]} = 1")
+    return _rows(where, values)
+
+
+def headings_of(codes: Iterable[str]) -> List[str]:
+    """The major_heading of each activity code, each heading once, in the order given.
+
+    This turns "activities the user picked before" into "headings the user
+    likes": ["01216", "17358"] → ["Bicycling", "Walking"]. A code that is not
+    in the table is skipped.
+    """
+    wanted = [str(c).strip().zfill(5) for c in codes]
+    if not wanted:
+        return []
+    with db.session() as conn:
+        found = {
+            r["activity_code"]: r["major_heading"]
+            for r in conn.execute(
+                f"SELECT activity_code, major_heading FROM activities WHERE activity_code IN ({_marks(wanted)})", wanted
+            )
+        }
+    headings: List[str] = []
+    for code in wanted:
+        heading = found.get(code)
+        if heading and heading not in headings:
+            headings.append(heading)
+    return headings
+
+
+def candidates(
+    place: str,
+    headings: Iterable[str] = (),
+    exclude_headings: Iterable[str] = (),
+    min_met: Optional[float] = None,
+    below_met: Optional[float] = None,
+) -> List[Dict[str, Any]]:
+    """The activities in the table that fit this user today, in code order.
+
+    Always:
+    - marked as an exercise to recommend (exercise_rec = 1)
+    - can be done at `place`: "gym", "home" or "outside". Any other place → no candidates.
+    - needs no partner (need_friends = 0); the app doesn't ask whether one is around
+
+    Only when given:
+    - headings: keep these major_headings only, e.g. what the user picked before
+      (see headings_of). Empty means no preference, so nothing is filtered by it.
+    - exclude_headings: drop these major_headings, e.g. after "Did this recently"
+    - min_met: keep met_value at or above this, e.g. 3 while light activity doesn't count toward the goal
+    - below_met: keep met_value under this, e.g. 6 for someone who shouldn't do vigorous activity
+
+    Equipment is not filtered: the table only says whether an activity needs
+    some, not which.
+
+    Example: candidates("gym", headings=["Bicycling"], below_met=6) → the
+    stationary-bike rows under 6 MET.
+    """
+    column = PLACE_COLUMN.get(place)
+    if column is None:
+        return []
+    where = ["exercise_rec = 1", f"{column} = 1", "need_friends = 0"]
+    values: List[Any] = []
+
+    keep = list(headings)
+    if keep:
+        where.append(f"major_heading IN ({_marks(keep)})")
+        values += keep
+    drop = list(exclude_headings)
+    if drop:
+        where.append(f"major_heading NOT IN ({_marks(drop)})")
+        values += drop
+    if min_met is not None:
+        where.append("met_value >= ?")
+        values.append(min_met)
+    if below_met is not None:
+        where.append("met_value < ?")
+        values.append(below_met)
+    return _rows(where, values)

@@ -132,3 +132,154 @@ def test_the_backend_does_not_start_on_a_csv_with_a_mistake(tmp_path, monkeypatc
     with pytest.raises(activities.ActivityTableError, match="line 3: met_value 'fast' is not a number"):
         with TestClient(main.app):
             pass
+
+
+# ---- candidates(): which activities fit this user today ----
+
+# More lines as they are in the real CSV. After the description the columns are:
+# intensity_high, intensity_low, loc_gym, at_home, loc_outside, needs_equipment, need_friends, exercise_rec
+BIKE_HARD = 'Bicycling,01220,6.0,"Bicycling, stationary, 90-100 watts, moderate to vigorous",1,0,1,0,0,1,0,1'
+MOUNTAIN = 'Bicycling,01003,14.0,"Bicycling, mountain, uphill, vigorous",1,0,0,0,1,1,0,1'  # outside only
+TREADMILL = 'Walking,17358,4.8,"Walking, treadmill, 3.5 to 3.9 mph (5.6 to 6.3 km/h), 0% grade",0,1,1,0,0,1,0,1'
+BIRDS = 'Walking,17085,2.5,"Bird watching, walking and stopping",0,1,1,1,1,0,0,1'  # gym, home and outside
+RUN = 'Running,12028,6.5,"Running, 4 to 4.2 mph (13 min/mile)",0,1,1,1,1,0,0,1'  # gym, home and outside
+COACH = 'Sports,15142,8.0,"Coaching, actively playing sport with players",0,0,1,0,0,0,0,0'  # at the gym, not recommended
+# From the top of the file: BIKE is gym only; BALLROOM is at the gym but needs a partner; DESK is not recommended.
+
+
+@pytest.fixture
+def small_table(tmp_path):
+    activities.load(write_csv(tmp_path, BIKE, BIKE_HARD, MOUNTAIN, BALLROOM, TREADMILL, BIRDS, RUN, COACH, DESK))
+
+
+def codes(rows):
+    return [r["activity_code"] for r in rows]
+
+
+def test_candidates_are_recommended_fit_the_place_and_need_no_partner(small_table):
+    # Left out at the gym: MOUNTAIN (outside only), BALLROOM (partner), COACH and DESK (not recommended).
+    assert codes(activities.candidates("gym")) == ["01216", "01220", "12028", "17085", "17358"]
+    assert codes(activities.candidates("home")) == ["12028", "17085"]
+    assert codes(activities.candidates("outside")) == ["01003", "12028", "17085"]
+
+
+def test_a_place_the_table_has_no_column_for_has_no_candidates(small_table):
+    assert activities.candidates("office") == []
+    assert activities.candidates("traveling") == []
+
+
+def test_a_partner_activity_or_one_not_recommended_never_comes_back(small_table):
+    assert activities.candidates("gym", headings=["Dancing"]) == []  # only BALLROOM, which needs a partner
+    assert activities.candidates("gym", headings=["Sports"]) == []  # only COACH, which is not recommended
+
+
+def test_headings_keep_only_what_the_user_likes(small_table):
+    assert codes(activities.candidates("gym", headings=["Bicycling"])) == ["01216", "01220"]
+    assert codes(activities.candidates("gym", headings=["Bicycling", "Walking"])) == ["01216", "01220", "17085", "17358"]
+
+
+def test_no_headings_means_no_preference(small_table):
+    assert activities.candidates("gym", headings=[]) == activities.candidates("gym")
+    assert len(activities.candidates("gym")) == 5
+
+
+def test_excluded_headings_are_dropped(small_table):
+    """After "Did this recently" on a bike pick: anything but Bicycling."""
+    assert codes(activities.candidates("gym", exclude_headings=["Bicycling"])) == ["12028", "17085", "17358"]
+    assert codes(activities.candidates("gym", headings=["Bicycling", "Walking"], exclude_headings=["Bicycling"])) == ["17085", "17358"]
+    # The only heading they like is the one ruled out: nothing is left.
+    assert activities.candidates("gym", headings=["Bicycling"], exclude_headings=["Bicycling"]) == []
+
+
+def test_met_limits(small_table):
+    # No vigorous activity: under 6 MET. Exactly 6.0 (BIKE_HARD) is out.
+    assert codes(activities.candidates("gym", below_met=6)) == ["01216", "17085", "17358"]
+    # Light activity doesn't count toward the goal: 3 MET and up. BIRDS (2.5) is out.
+    assert codes(activities.candidates("gym", min_met=3)) == ["01216", "01220", "12028", "17358"]
+    assert codes(activities.candidates("gym", min_met=3, below_met=6)) == ["01216", "17358"]
+
+
+def test_a_candidate_carries_every_column(small_table):
+    row = activities.candidates("gym", headings=["Walking"], min_met=3)[0]
+
+    assert row == {
+        "activity_code": "17358",
+        "major_heading": "Walking",
+        "met_value": 4.8,
+        "activity_description": "Walking, treadmill, 3.5 to 3.9 mph (5.6 to 6.3 km/h), 0% grade",
+        "intensity_high": 0, "intensity_low": 1,
+        "loc_gym": 1, "at_home": 0, "loc_outside": 0,
+        "needs_equipment": 1, "need_friends": 0, "exercise_rec": 1,
+    }
+
+
+def test_headings_of_turns_picked_activities_into_headings(small_table):
+    assert activities.headings_of(["01216", "17358", "01220"]) == ["Bicycling", "Walking"]  # each heading once
+    assert activities.headings_of(["17358", "01216"]) == ["Walking", "Bicycling"]  # in the order given
+    assert activities.headings_of(["99999", "1216"]) == ["Bicycling"]  # unknown code skipped; lost zero put back
+    assert activities.headings_of([]) == []
+
+
+def test_the_gym_example_on_the_csv_in_the_repo():
+    """Someone at the gym who picked a stationary bike, ballroom dancing and a treadmill walk before."""
+    activities.load()
+
+    liked = activities.headings_of(["01216", "03030", "17358"])
+    found = activities.candidates("gym", headings=liked)
+
+    assert liked == ["Bicycling", "Dancing", "Walking"]
+    assert 0 < len(found) < len(activities.candidates("gym"))  # fewer than with no preference
+    assert all(
+        r["exercise_rec"] == 1 and r["loc_gym"] == 1 and r["need_friends"] == 0 and r["major_heading"] in liked
+        for r in found
+    )
+
+
+# ---- GET /api/activities: the table, for the frontend to read ----
+
+
+@pytest.fixture
+def client():
+    return TestClient(main.app)  # no `with`: the startup step doesn't run, so the table is what the test loaded
+
+
+def test_the_api_lists_the_recommended_activities(small_table, client):
+    body = client.get("/api/activities").json()
+
+    # COACH and DESK are not recommended. BALLROOM is listed: the table is shown as it is, partner or not.
+    assert codes(body["activities"]) == ["01003", "01216", "01220", "03030", "12028", "17085", "17358"]
+    assert body["count"] == 7
+    assert body["activities"][1] == {
+        "activity_code": "01216",
+        "major_heading": "Bicycling",
+        "met_value": 5.0,
+        "activity_description": "Bicycling, stationary, 60 watts, light to moderate effort",
+        "intensity_high": 0, "intensity_low": 1,
+        "loc_gym": 1, "at_home": 0, "loc_outside": 0,
+        "needs_equipment": 1, "need_friends": 0, "exercise_rec": 1,
+    }
+
+
+def test_the_api_can_list_every_row(small_table, client):
+    body = client.get("/api/activities", params={"recommended": "false"}).json()
+
+    assert body["count"] == 9
+    assert {"11000", "15142"} <= set(codes(body["activities"]))  # DESK and COACH
+
+
+def test_the_api_filters_by_place_and_heading(small_table, client):
+    def get(**params):
+        return codes(client.get("/api/activities", params=params).json()["activities"])
+
+    assert get(place="home") == ["12028", "17085"]
+    assert get(heading="Bicycling") == ["01003", "01216", "01220"]
+    assert get(heading=["Bicycling", "Running"]) == ["01003", "01216", "01220", "12028"]
+    assert get(place="gym", heading="Bicycling") == ["01216", "01220"]
+    assert get(heading="Knitting") == []
+
+
+def test_the_api_rejects_a_place_the_table_does_not_have(small_table, client):
+    res = client.get("/api/activities", params={"place": "office"})
+
+    assert res.status_code == 422
+    assert "Unknown place 'office'" in res.json()["detail"]

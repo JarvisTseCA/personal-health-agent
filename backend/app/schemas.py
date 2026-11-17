@@ -6,6 +6,10 @@ ranked activities, and the options that passed the hard filters (enjoyed,
 accessible, fits the time, allowed by health limits). The backend only turns
 these into a prompt for Jev and Jev's answers into a suggestion. All MET-hour
 math stays in the frontend calculator (src/lib).
+
+POST /api/suggest/table is the same idea with one difference: the options
+come from the activity table in the backend, not from the frontend
+(TableSuggestRequest, TablePick).
 """
 from typing import Dict, List, Literal, Optional
 
@@ -65,7 +69,9 @@ class Limits(BaseModel):
     max_session_min: Optional[int] = None
 
 
-class SuggestRequest(BaseModel):
+class SuggestBase(BaseModel):
+    """What both suggestion routes need to know about the user today."""
+
     user_id: str = "demo"
     weekly_goal_met_hours: float
     done_this_week_met_hours: float
@@ -79,12 +85,36 @@ class SuggestRequest(BaseModel):
     target_met_hours: Optional[float] = Field(default=None, description="Today's full target (a challenge aims for 1.5x this)")
     boost: bool = False  # "Up for a challenge" or "I want more today": aim for 1.5× today's need
     enjoyed: List[Enjoyed]
-    options: List[Option]
     durations: List[int]
     recent: List[Recent] = []
     declines: List[Decline] = []
     limits: Limits = Limits()
     constraint_notes: List[str] = []  # e.g. "Indoors only (weather)"
+
+
+class SuggestRequest(SuggestBase):
+    """POST /api/suggest: the app has already filtered its own activity library and sends the options."""
+
+    options: List[Option]
+
+
+class TableSuggestRequest(SuggestBase):
+    """POST /api/suggest/table: the options come from the activity table, so the app sends none.
+
+    Instead it says what the backend needs to filter the table (activities.candidates).
+    """
+
+    # Not needed here: what the user likes comes from picked_codes.
+    enjoyed: List[Enjoyed] = []
+    # Compendium codes of the activities the user picked before: chosen in onboarding and
+    # suggestions they accepted, favorites first. Empty: no preference, nothing is filtered by it.
+    picked_codes: List[str] = []
+    # major_headings to leave out today, e.g. after "Did this recently" on a Bicycling pick.
+    exclude_headings: List[str] = []
+    # Light activity (under 3 MET) doesn't count toward the goal, so it isn't offered.
+    min_met: Optional[float] = 3.0
+    # Only activities under this MET, e.g. after "Too tired". limits.no_vigorous already means under 6.
+    below_met: Optional[float] = None
 
 
 class Pick(BaseModel):
@@ -100,6 +130,30 @@ class SuggestResponse(BaseModel):
     model: str
     lead: Pick
     backups: List[Pick]
+    jev_request: dict
+    jev_answers: Dict[str, dict]
+    log_id: int
+
+
+class TablePick(BaseModel):
+    """One suggested activity from the activity table, with what the app needs to show it."""
+
+    activity_code: str  # 5-digit Compendium code, the id both sides share
+    major_heading: str
+    activity_description: str
+    met_value: float
+    duration_min: int
+    heading_probability: float  # Jev's probability for this heading (1.0 when there was only one)
+    probability: float  # Jev's probability for this activity among the ones in its heading
+    reasons: List[str]
+
+
+class TableSuggestResponse(BaseModel):
+    source: Literal["jev", "mock"]
+    model: str
+    lead: TablePick
+    backups: List[TablePick]
+    candidate_count: int  # how many activities in the table fit today, before Jev chose
     jev_request: dict
     jev_answers: Dict[str, dict]
     log_id: int

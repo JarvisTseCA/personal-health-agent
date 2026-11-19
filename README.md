@@ -39,6 +39,11 @@ To try it on your phone, connect to the same Wi-Fi and open the "Network" URL Vi
 [docs/architecture.md](docs/architecture.md#run-it), then run `npm run dev` as usual. Suggestions then come from Jev
 and the app's data is saved in SQLite. Without the backend, the app works exactly as the demo above.
 
+**With a real Fitbit:** add a Google OAuth client to `backend/.env` as described in
+[docs/architecture.md](docs/architecture.md#done-real-fitbit-data), then connect it in onboarding or Preferences. The
+app then shows your own workouts and VO2 max from the Google Health API, which replaced the Fitbit Web API on
+Nov 2, 2026. Without the client, Fitbit stays simulated.
+
 ## What's in the demo
 
 The app has five tabs: **Today · Progress · Chat · Summary · Showcase**. Onboarding runs once before

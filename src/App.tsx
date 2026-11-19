@@ -79,7 +79,7 @@ export default function App() {
           Each day the agent hands you one workout that fits your time, the equipment where you are, and the activities
           you enjoy, then counts it in MET-hours toward the weekly guideline: the training that builds VO2 max.
         </p>
-        <p className="team">Demo build. Fitbit data, VO2 max readings and the agent's replies are simulated.</p>
+        <p className="team">Demo build. Fitbit data and VO2 max readings are simulated unless a real Fitbit is connected through the backend. The agent's replies are scripted.</p>
       </section>
 
       <div className="phone">

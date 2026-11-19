@@ -9,7 +9,7 @@
  * Access and usual weekly time aren't asked: everything starts as available
  * ("Can't access it" on a pick fixes that later), and each day starts at 10 min.
  */
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { BackIcon, WatchIcon } from "../components/Icons";
 import { GearPicker } from "../components/GearPicker";
 import { Flame } from "../components/Rewards";
@@ -21,7 +21,8 @@ import { DAY_NAMES_LONG } from "../lib/met";
 import { SLOT_LABEL, SLOT_MINUTES, type WeekPlan } from "../lib/plan";
 import { TimeOptions } from "../components/TimeOptions";
 import type { Access } from "../lib/suggest";
-import { DEFAULT_PROFILE, useStore } from "../state/store";
+import { DEFAULT_PROFILE, pullFitbit, useStore } from "../state/store";
+import { connectFitbit, fitbitStatus } from "../services/fitbit";
 
 type Step = "welcome" | "fitbit" | "health" | "path" | "observing" | "confirm" | "enjoy" | "home-gear" | "gym-gear" | "plan";
 const ORDER: Step[] = ["fitbit", "health", "path", "observing", "confirm", "enjoy", "home-gear", "gym-gear", "plan"];
@@ -38,6 +39,10 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
   const [about, setAbout] = useState("");
   const [connected, setConnected] = useState(false);
   const [connecting, setConnecting] = useState(false);
+  /** The backend can connect a real Fitbit (a Google OAuth client is set up); otherwise Connect is simulated */
+  const [real, setReal] = useState(false);
+  const [connectFailed, setConnectFailed] = useState(false);
+  useEffect(() => { fitbitStatus().then((s) => setReal(!!s?.configured)); }, []);
   const [enjoyed, setEnjoyed] = useState<string[]>([]);
   const [access, setAccess] = useState<Record<string, Access>>({});
   const [plan, setPlan] = useState<WeekPlan>(START_PLAN);
@@ -118,6 +123,19 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
     else setBout((b) => b + 1);
   };
 
+  /** Google's sign-in opens in a new tab; once the backend has the tokens, the user's own weeks are imported. */
+  const connectReal = () => {
+    setConnecting(true);
+    setConnectFailed(false);
+    connectFitbit().then((ok) => {
+      setConnecting(false);
+      if (!ok) { setConnectFailed(true); return; }
+      setConnected(true);
+      dispatch({ type: "updateProfile", patch: { fitbitConnected: true, fitbitLive: true } });
+      void pullFitbit(dispatch);
+    });
+  };
+
   const toggle = (id: string) => {
     setEnjoyed((e) => (e.includes(id) ? e.filter((x) => x !== id) : [...e, id]));
     setAccess((a) => ({ ...a, [id]: a[id] ?? "have" }));
@@ -187,7 +205,7 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
         <>
           <div className="grow">
             <h1>Connect your Fitbit</h1>
-            <p className="lead">I read your workouts to see how much each one counts. In this demo the data is simulated.</p>
+            <p className="lead">I read your workouts to see how much each one counts.{real ? " You'll sign in with the Google account your Fitbit uses." : " In this demo the data is simulated."}</p>
             <div className="device">
               <div className="device-icon"><WatchIcon /></div>
               <div style={{ flex: 1 }}>
@@ -196,12 +214,13 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
               </div>
               {!connected && (
                 <button className="btn btn-quiet" style={{ minHeight: 40 }} disabled={connecting}
-                  onClick={() => { setConnecting(true); setTimeout(() => { setConnecting(false); setConnected(true); }, 800); }}>
+                  onClick={real ? connectReal : () => { setConnecting(true); setTimeout(() => { setConnecting(false); setConnected(true); }, 800); }}>
                   {connecting ? "Connecting…" : "Connect"}
                 </button>
               )}
             </div>
           </div>
+          {connectFailed && <p className="small muted" role="status">Fitbit wasn't connected. Try again, and finish the sign-in in the tab that opens.</p>}
           <div className="actions">
             <button className="btn btn-primary btn-block" onClick={() => go("health")} disabled={!connected}>Continue</button>
           </div>

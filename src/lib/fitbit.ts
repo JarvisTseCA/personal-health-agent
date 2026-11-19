@@ -43,6 +43,8 @@ export interface FitbitData {
 export interface FitbitImport {
   /** 0 = Monday … 6 = Sunday, from the user's real calendar */
   todayIndex: number;
+  /** This week's Monday, "2026-11-16" */
+  week: string;
   /** This week's workouts; earlier days are confirmed, today's are not yet */
   thisWeek: Session[];
   /** Earlier weeks' workouts, oldest first, starting at the first week with any */
@@ -137,6 +139,16 @@ function dayNumber(date: string): number {
 /** Day 0 was a Thursday; this makes Monday 0 and Sunday 6. */
 const weekdayOf = (day: number) => (day + 3) % 7;
 
+/** Day number → "2026-11-16". */
+function dayDate(day: number): string {
+  return new Date(day * 86_400_000).toISOString().slice(0, 10);
+}
+
+/** The Monday `n` weeks before the week starting on Monday `week`. */
+export function weekBefore(week: string, n: number): string {
+  return dayDate(dayNumber(week) - 7 * n);
+}
+
 function isoDate(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
@@ -193,5 +205,5 @@ export function importFitbit(data: FitbitData, now: Date): FitbitImport {
   }
   // Leading empty weeks are before the user had a Fitbit, not weeks they missed.
   const first = weeks.findIndex((w) => w.length > 0);
-  return { todayIndex, thisWeek, history: first < 0 ? [] : weeks.slice(first), vo2: monthlyVo2(data.vo2, now) };
+  return { todayIndex, week: dayDate(monday), thisWeek, history: first < 0 ? [] : weeks.slice(first), vo2: monthlyVo2(data.vo2, now) };
 }

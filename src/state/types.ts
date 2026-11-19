@@ -160,6 +160,10 @@ export interface AppState {
   chat: ChatMessage[];
   personaId: string;
   syncCount: number;
+  /** Monday of the real week, "2026-11-16", once a real Fitbit has synced */
+  fitbitWeek?: string;
+  /** Fitbit workouts the user said weren't exercise, so a later sync doesn't bring them back */
+  removedFitbitIds?: string[];
   /** "Something hurts" reports, for the Summary tab's things to mention */
   painReports: number;
   overlay: Overlay;

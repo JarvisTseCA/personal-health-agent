@@ -1,3 +1,4 @@
+import html
 from urllib.parse import parse_qs, urlparse
 
 import httpx
@@ -31,11 +32,12 @@ def vo2_point(when="2026-11-03T12:00:00Z", value=41.6):
 class FakeGoogle:
     """Answers like Google's token endpoint and the Health API. `pages` is a list of exercise pages."""
 
-    def __init__(self, pages=None, vo2=None, linked=True, refresh_ok=True):
+    def __init__(self, pages=None, vo2=None, linked=True, refresh_ok=True, code_ok=True):
         self.pages = pages or [[]]
         self.vo2 = vo2 or []
         self.linked = linked
         self.refresh_ok = refresh_ok
+        self.code_ok = code_ok
         self.filters = []
 
     def handle(self, req: httpx.Request) -> httpx.Response:
@@ -46,6 +48,8 @@ class FakeGoogle:
                 if not self.refresh_ok:
                     return httpx.Response(400, json={"error": "invalid_grant"})
                 return httpx.Response(200, json={"access_token": "new-access", "expires_in": 3599, "scope": gh.SCOPE})
+            if not self.code_ok:
+                return httpx.Response(500, json={"error": "backend_error", "error_description": "Internal error 7f3a"})
             return httpx.Response(200, json={"access_token": "access-1", "refresh_token": "refresh-1", "expires_in": 3599, "scope": gh.SCOPE})
         if req.headers.get("Authorization") not in ("Bearer access-1", "Bearer new-access"):
             return httpx.Response(401, json={"error": {"status": "UNAUTHENTICATED"}})
@@ -151,6 +155,13 @@ def test_callback_with_a_different_state_is_refused(client, monkeypatch):
 def test_callback_for_an_account_without_fitbit_does_not_connect(client, monkeypatch):
     res = connect(client, monkeypatch, FakeGoogle(linked=False))
     assert "no Fitbit account linked" in res.text
+    assert client.get("/api/fitbit/status").json()["connected"] is False
+
+
+def test_callback_when_google_fails_shows_a_plain_message_not_googles_reply(client, monkeypatch):
+    res = connect(client, monkeypatch, FakeGoogle(code_ok=False))
+    assert "Fitbit wasn't connected because Google returned an error. Try connecting again." in html.unescape(res.text)
+    assert "backend_error" not in res.text
     assert client.get("/api/fitbit/status").json()["connected"] is False
 
 

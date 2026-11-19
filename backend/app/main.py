@@ -200,7 +200,10 @@ def fitbit_callback(request: Request, code: Optional[str] = None, state: Optiona
         gh.check_linked(tokens["access_token"])
     except gh.GoogleHealthError as e:
         log.warning("    ✗ Fitbit sign-in failed: %s", e)
-        return _done_page(f"Fitbit wasn't connected: {e}")
+        if e.status == 409:  # written for the user: the account has no Fitbit linked
+            return _done_page(f"Fitbit wasn't connected: {e}")
+        # Google's reply goes to the log above, not to the user.
+        return _done_page("Fitbit wasn't connected because Google returned an error. Try connecting again.")
     db.save_fitbit_tokens(user_id, tokens)
     log.info("── Fitbit connected for %s ──", user_id)
     page = _done_page("Your Fitbit is connected.")

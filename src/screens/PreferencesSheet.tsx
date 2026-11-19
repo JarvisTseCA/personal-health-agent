@@ -30,7 +30,10 @@ export function PreferencesSheet({ onClose, openSummary }: { onClose: () => void
     if (p.fitbitLive) {
       disconnectFitbit()
         .then(() => patch({ fitbitConnected: false, fitbitLive: false }))
-        .catch((e: Error) => dispatch({ type: "toast", text: e.message }));
+        .catch((e: Error) => {
+          console.warn("Disconnecting Fitbit failed.", e);
+          dispatch({ type: "toast", text: "Fitbit didn't disconnect. Try again in a minute." });
+        });
       return;
     }
     if (!real) { patch({ fitbitConnected: !p.fitbitConnected }); return; }

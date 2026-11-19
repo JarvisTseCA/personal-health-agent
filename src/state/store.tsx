@@ -334,8 +334,9 @@ export async function pullFitbit(dispatch: React.Dispatch<Action>): Promise<void
     dispatch({ type: "fitbitSync", data: importFitbit(data, now) });
   } catch (e) {
     console.warn("Fitbit sync failed.", e);
+    // The backend's reply stays in the console; the user gets a plain sentence.
     if (e instanceof FitbitDisconnected) dispatch({ type: "updateProfile", patch: { fitbitConnected: false, fitbitLive: false } });
-    dispatch({ type: "toast", text: (e as Error).message });
+    dispatch({ type: "toast", text: e instanceof FitbitDisconnected ? e.message : "Fitbit didn't sync. Try again in a minute." });
   }
 }
 

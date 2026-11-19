@@ -14,8 +14,8 @@ from typing import Any, Dict, List, Tuple
 import httpx
 
 from . import challenge
-from .prompt import duration_question
-from .schemas import Option, SuggestRequest
+from .prompt import Row, duration_question, heading_key, table_activity_question, table_duration_question
+from .schemas import Option, SuggestRequest, TableSuggestRequest
 
 JEV_URL = os.environ.get("JEV_URL", "https://api.typesafe.ai/v1/systemone")
 JEV_TIMEOUT_S = 20.0
@@ -99,4 +99,36 @@ def mock_durations(req: SuggestRequest, picked: List[Option]) -> Dict[str, dict]
             continue
         want = req.needed_met_hours * 60 / o.met if req.needed_met_hours > 0 else 20
         answers[duration_question(o)] = _choice({str(d): -abs(d - want) / 10 for d in req.durations})
+    return answers
+
+
+# --- Mock, from the activity table (POST /api/suggest/table) ------------------
+# The same kind of stand-in for the three table calls.
+
+
+def mock_heading(by_heading: Dict[str, List[Row]], liked: List[str]) -> Dict[str, dict]:
+    """Mock of call 1: a heading the user picked before beats one they didn't; earlier in `liked` beats later."""
+    n = max(1, len(liked))
+    scores = {
+        heading_key(h): (2.0 * (1 - liked.index(h) / n) + 1.0 if h in liked else 0.0)
+        for h in by_heading
+    }
+    return {"heading": _choice(scores)}
+
+
+def mock_table_activities(req: TableSuggestRequest, by_heading: Dict[str, List[Row]]) -> Dict[str, dict]:
+    """Mock of call 2: in each heading, the activity whose MET is closest to a pace that suits today's energy."""
+    pace = 7.0 if req.boost or req.check_in.energy == "challenge" else 3.5 if req.check_in.energy == "low" else 4.5
+    return {
+        table_activity_question(heading): _choice({r["activity_code"]: -abs(r["met_value"] - pace) for r in rows})
+        for heading, rows in by_heading.items()
+    }
+
+
+def mock_table_durations(req: TableSuggestRequest, picked: List[Row]) -> Dict[str, dict]:
+    """Mock of call 3: for each activity, the duration closest to covering today's need at its MET."""
+    answers = {}
+    for r in picked:
+        want = req.needed_met_hours * 60 / r["met_value"] if req.needed_met_hours > 0 else 20
+        answers[table_duration_question(r)] = _choice({str(d): -abs(d - want) / 10 for d in req.durations})
     return answers

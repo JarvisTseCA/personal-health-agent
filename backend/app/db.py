@@ -6,6 +6,8 @@ SQLite storage. Three tables for now:
   tables once the team settles the schema (docs/architecture.md has a draft).
 - suggestion_log: every prompt sent to Jev and what came back, so the team can
   review real answers when tuning the prompt.
+- activities: a copy of the activity CSV, replaced each time the backend
+  starts (activities.py). Same columns as the CSV.
 - fitbit_tokens: the Google Health API tokens for each user who connected a
   real Fitbit. They never leave the backend.
 """
@@ -36,6 +38,20 @@ CREATE TABLE IF NOT EXISTS suggestion_log (
     jev_answers  TEXT,                   -- Jev's answers (null on error)
     result_json  TEXT,                   -- the pick + backups we returned
     error        TEXT
+);
+CREATE TABLE IF NOT EXISTS activities (
+    activity_code        TEXT PRIMARY KEY,   -- 5-digit Compendium code; text, so "01216" keeps its zero
+    major_heading        TEXT NOT NULL,      -- e.g. Bicycling, Dancing, Walking
+    met_value            REAL NOT NULL,
+    activity_description TEXT NOT NULL,      -- the Compendium's own wording
+    intensity_high       INTEGER NOT NULL,   -- this and every column below: 0 | 1
+    intensity_low        INTEGER NOT NULL,
+    loc_gym              INTEGER NOT NULL,
+    at_home              INTEGER NOT NULL,
+    loc_outside          INTEGER NOT NULL,
+    needs_equipment      INTEGER NOT NULL,
+    need_friends         INTEGER NOT NULL,
+    exercise_rec         INTEGER NOT NULL    -- 1 = marked as an exercise to recommend
 );
 CREATE TABLE IF NOT EXISTS fitbit_tokens (
     user_id       TEXT PRIMARY KEY,

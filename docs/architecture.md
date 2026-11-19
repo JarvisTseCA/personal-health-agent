@@ -78,9 +78,10 @@ cp .env.example .env        # then paste your Jev key into TYPESAFE_API_KEY
 
 In a second terminal, from the repo root: `npm run dev`. Vite forwards `/api` to the backend. The
 demo panel's **Backend** section says whether it's connected and whether Jev is live or mocked.
-Without a key, a local mock returns answers in Jev's format, so the whole flow still runs.
+Without a key, a local mock returns answers in Jev's format, so the whole flow still runs. The Chat
+route has its own key, `OPENAI_API_KEY`; see the Chat section below.
 
-Tests: `.venv/bin/python -m pytest` (from `backend/`).
+Tests: `.venv/bin/python -m pytest` (from `backend/`). They never call Jev or ChatGPT, with or without keys in `.env`.
 
 ### Files
 
@@ -90,6 +91,12 @@ Tests: `.venv/bin/python -m pytest` (from `backend/`).
 | `backend/app/jev.py` | Calls Jev with the API key; the mock used when there's no key |
 | `backend/app/suggest.py` | After call 1, picks the activity and two backups; after call 2, gives each its own minutes and reasons |
 | `backend/app/activities.py` | The activity table: copies the CSV into SQLite when the backend starts, and picks the rows that fit a user today |
+| `backend/app/chat_rules.py` | Chat, check 1: reads the urgent keywords and tells whether a message matches one |
+| `backend/app/chat_gate.py` | Chat, check 2: the three yes/no questions for Jev, the thresholds, and the mock used when there's no key. **Edit this to tune the questions.** |
+| `backend/app/chat_replies.py` | Chat: reads the three fixed replies |
+| `backend/app/chat_prompt.py` | Chat: builds the system prompt for the model that writes |
+| `backend/app/chat_writer.py` | Chat: calls ChatGPT with the API key and passes its reply on piece by piece; a placeholder when there's no key |
+| `backend/chat_content/` | The wording of the Chat route, editable without code: `urgent_keywords.csv`, `fixed_replies.csv`, `chat_brief.txt` |
 | `backend/app/db.py` | SQLite: the app state, a log of every prompt and answer, and the activity table |
 | `backend/app/main.py` | The API routes |
 | `backend/app/schemas.py` | Request and response shapes |
@@ -102,9 +109,10 @@ Tests: `.venv/bin/python -m pytest` (from `backend/`).
 | `POST /api/suggest` | Check-in variables and options in, pick and backups out (plus the prompt and Jev's answers) |
 | `POST /api/suggest/table` | The same, with the options taken from the activity table (next section). Not used by the app yet |
 | `GET /api/activities` | The activity table. `?place=gym`, `?heading=Bicycling` (repeatable) and `?recommended=false` narrow or widen it |
+| `POST /api/chat` | A Chat message in, the reply out as streamed plain text (see the Chat section). Not used by the app yet |
 | `GET / PUT / DELETE /api/state` | Load, save, forget the app state |
 | `GET /api/suggestions/log?limit=20` | Recent prompts and answers |
-| `GET /api/health` | Is the backend up, and is Jev live or mocked? |
+| `GET /api/health` | Is the backend up, is Jev live or mocked, and what writes Chat replies? |
 
 The database file is `backend/data/pha.db` (git-ignored). To look at recent prompts:
 `sqlite3 backend/data/pha.db "select id, source, error from suggestion_log order by id desc limit 5"`.
@@ -197,25 +205,100 @@ the team settles the schema, split the app state into tables and update `backend
 turns them into the JSON block injected into the prompt. Move to per-week `date` fields (instead of
 `dayIndex`) at this point.
 
-## Later: a chat model for the Chat tab
+## Done in the backend: the Chat route (not in the app yet)
 
-The Chat tab answers general questions in the user's own words. It's still scripted, and it needs a
-model that writes text, so it will use a different model than Jev.
+The Chat tab answers general questions in the user's own words. In the app it is still scripted
+(`MockAgent`). The backend can now answer for real: `POST /api/chat` takes the message through two
+checks and, if it passes both, has a model write the reply. Jev doesn't write text, so the reply
+comes from ChatGPT.
 
-1. Add `POST /api/chat` to the same FastAPI backend. It receives `{ system, messages }`, forwards them
-   to the chat model's provider and streams the text back. **Keep the API key on the server.**
-   Anything in the frontend is visible to users.
-2. In `src/services/agent.ts`, change the last line to:
-   ```ts
-   export const agent: Agent = new HttpAgent("/api/chat");
-   ```
-   `HttpAgent` already sends `buildSystemPrompt(ctx)` plus the chat history.
-3. Review the prompt in `src/services/prompts.ts`. The demo panel's *What the coach sees* button
-   renders the exact prompt for the current state.
-4. Keep `MockAgent` around for offline demos and tests (e.g. pick it with an env flag).
+```
+the last user ──► 1. urgent keywords ──► 2. Jev: three yes/no ──────► 3. ChatGPT writes the reply
+message              a match gets the       questions. urgent, medical    (its brief repeats the
+                     fixed "urgent"         advice or off topic gets      same three rules)
+                     reply                  its fixed reply
+```
 
-Ideas once it's connected: run `VERIFIER_BRIEF` (prompts.ts) as a second agent that checks the
-coach's replies, and parse free-text "Other" notes into structured preferences.
+1. **Urgent keywords** (`chat_rules.py`). The message is compared with the list in
+   `backend/chat_content/urgent_keywords.csv`: a phrase such as "passed out", or two words in the
+   same sentence such as `chest` and `pressure`. A match gets the fixed `urgent` reply and no model
+   is asked. This check is for the plain cases that must not be missed.
+2. **Jev, three yes/no questions in one request** (`chat_gate.py`). Does the user need urgent help?
+   Are they asking for medical advice? Is the message about exercise, health or this app? Jev
+   answers each with a probability and the code decides, in this order: `urgent` at 0.5 or more,
+   `medical_advice` at 0.7 or more, `about_health_or_app` under 0.3. Each has its own fixed reply;
+   anything else goes on. If Jev can't be reached the route returns an error. It doesn't skip the
+   check.
+3. **The model that writes** (`chat_writer.py`). ChatGPT, through OpenAI's Chat Completions API. Its
+   system prompt (`chat_prompt.py`) is the Chat brief, with the three fixed replies in it word for
+   word, followed by what the app sent as `system`. The brief tells the model to turn down the same
+   three kinds of message, so it is the third and last check.
+
+**What comes back.** Plain text, sent piece by piece as the model writes it. That is what
+`HttpAgent` in `src/services/agent.ts` already reads. A fixed reply arrives in one piece. Two
+response headers say what happened:
+
+| Header | Values |
+|---|---|
+| `X-Chat-Stopped-By` | `keywords`, `jev` or `none` |
+| `X-Chat-Reply` | `urgent`, `medical_advice`, `off_topic`, or `model` when the model wrote the reply |
+
+The backend terminal prints each step, [1] to [5].
+
+**The wording is in three files** in `backend/chat_content/`, so it can change without touching
+code: edit a file, restart the backend. A file that can't be read stops the backend when it starts
+and names the line.
+
+| File | What it holds |
+|---|---|
+| `urgent_keywords.csv` | One keyword per line: `group, text, together_with`. With `together_with` empty the line is a phrase. With it filled, a word from `text` and a word from `together_with` have to be in the same sentence |
+| `fixed_replies.csv` | The three fixed replies: `reply, text` |
+| `chat_brief.txt` | The brief for the model that writes. `[urgent reply]`, `[medical_advice reply]` and `[off_topic reply]` mark where the fixed replies go |
+
+**Settings**, in `backend/.env`:
+
+- `OPENAI_API_KEY`: the key for ChatGPT. Without it the route still runs, and a message that passes
+  both checks gets a placeholder reply.
+- `CHAT_MODEL`: which model writes. The default is `gpt-6-luna`.
+- `OPENAI_BASE_URL`: only for a key that goes through another address than OpenAI's.
+- `TYPESAFE_API_KEY`: the same Jev key as for suggestions. Without it a local mock answers the
+  three questions.
+
+With both keys, a message that isn't stopped by a keyword makes one Jev call, and one ChatGPT call
+if Jev lets it through. What the app sends as `system` (the user's name, progress and clinician
+notes; simulated in the demo) goes to OpenAI together with the conversation.
+
+To try it with the backend running:
+
+```bash
+curl -s -i -X POST http://localhost:8000/api/chat -H 'Content-Type: application/json' -d '{"messages":[{"role":"user","content":"I have high blood pressure, can I do HIIT?"}]}'
+```
+
+To switch the app over: in `src/services/agent.ts`, change the last line to
+
+```ts
+export const agent: Agent = new HttpAgent("/api/chat");
+```
+
+`HttpAgent` already sends `buildSystemPrompt(ctx)` plus the chat history. Keep `MockAgent` for when
+there is no backend (GitHub Pages) and for tests.
+
+Not handled yet:
+
+- The keyword list, the fixed replies, the brief and the wording of Jev's three questions are first
+  drafts. They have not had a clinical review.
+- The thresholds are starting values. The checks have run on a few real messages only; they haven't
+  been measured on labelled examples.
+- Chat messages aren't saved. There is no log like `suggestion_log` for them.
+- Only the last user message is checked.
+- The app's `system` still carries the coach brief written for the Today tab. The Chat brief comes
+  first and wins where the two differ. A cleaner split is for the app to send only the user's data.
+- A message that gives the clinician's feedback ("My doctor said…") is handled in the frontend
+  (`src/services/clinicianChat.ts`) and doesn't reach the backend.
+- The model's reply isn't checked before the user sees it.
+
+Ideas for later: run `VERIFIER_BRIEF` (prompts.ts) as a second agent that checks the coach's
+replies, and parse free-text "Other" notes into structured preferences.
 
 ## Done: real Fitbit data
 
@@ -302,7 +385,7 @@ other's Fitbit.
 - Use `clinician_notes` (the user's paraphrase of their clinician's feedback) as context when relevant; never treat them as a goal.
 - Remind the user it's a machine learning model and can make mistakes (the app shows this at the top of every conversation).
 - Never point out a missed day or a broken streak.
-- Symptoms like chest pain or dizziness: stop and contact a clinician (see the `safety` script).
+- Symptoms like chest pain or dizziness: stop and contact a clinician (see the `safety` script; in the Chat route, the urgent keywords and Jev's `urgent` question).
 - Never let a model produce numbers; MET-hours come from the calculator and the verifier compares them.
 
 ## Planned: calendar exercise blocks

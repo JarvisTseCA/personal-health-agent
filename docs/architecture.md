@@ -201,6 +201,20 @@ You need a Google account that has a Fitbit linked to it.
 While the project is in Testing mode, Google lets in only the test users and its refresh tokens expire
 after 7 days. The app then says the sign-in has expired and the user connects again.
 
+### Use a teammate's Google project
+
+A teammate who already set up the project above can share it, so you skip steps 1 to 6.
+
+1. Send the project owner the Google account your Fitbit is linked to. They add it as a test user on
+   [Audience](https://console.cloud.google.com/auth/audience).
+2. Get the client ID and secret from them privately, never in the repo or a shared channel.
+3. Paste them into your own `backend/.env` and restart the backend.
+4. Open the app at **http://localhost:5173** and connect Fitbit. Google warns that the app is not
+   verified. Click **Continue**.
+
+Each copy of the app keeps its own tokens in its own database (`backend/data/pha.db`), so teammates never see each
+other's Fitbit.
+
 ### API
 
 | Route | |

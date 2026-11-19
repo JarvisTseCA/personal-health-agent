@@ -4,6 +4,8 @@ FastAPI backend for the Personal Health Agent.
     POST   /api/suggest           check-in variables → Jev: which activity → Jev: how long → pick + 2 backups
     POST   /api/suggest/table     the same, with the options taken from the activity table:
                                   filter the table → Jev: which heading → which activity → how long
+    POST   /api/chat              a Chat message → urgent keywords → Jev: three yes/no questions →
+                                  a fixed reply, or the model that writes. Plain text, streamed
     GET    /api/state             load the saved app state
     PUT    /api/state             save it
     DELETE /api/state             forget it
@@ -12,8 +14,9 @@ FastAPI backend for the Personal Health Agent.
     GET    /api/health            is the backend up, and is Jev live or mocked?
 
 Run from backend/:  uvicorn app.main:app --reload --port 8000
-Each /api/suggest prints its steps in that terminal; LOG_LEVEL=DEBUG in .env adds the full JSON.
-On startup the activity CSV is copied into the `activities` table (activities.py).
+Each /api/suggest and /api/chat prints its steps in that terminal; LOG_LEVEL=DEBUG in .env adds the full JSON.
+On startup the activity CSV is copied into the `activities` table (activities.py), and the Chat
+keyword list and fixed replies are read from backend/chat_content/ (chat_rules.py, chat_replies.py).
 """
 import json
 import logging
@@ -21,7 +24,7 @@ import os
 import time
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Iterator, List, Optional, Tuple
 
 from dotenv import load_dotenv
 
@@ -33,8 +36,9 @@ log = logging.getLogger("pha")
 
 from fastapi import Body, FastAPI, HTTPException, Query  # noqa: E402
 from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
+from fastapi.responses import PlainTextResponse, StreamingResponse  # noqa: E402
 
-from . import activities, db  # noqa: E402
+from . import activities, chat_gate, chat_prompt, chat_replies, chat_rules, chat_writer, db  # noqa: E402
 from .jev import (  # noqa: E402
     JevError, call_jev, has_api_key, jev_model, mock_activity, mock_durations,
     mock_heading, mock_table_activities, mock_table_durations,
@@ -44,17 +48,35 @@ from .prompt import (  # noqa: E402
     build_heading_request, build_table_activity_request, build_table_duration_request, build_table_state,
     group_by_heading, table_activity_question,
 )
-from .schemas import SuggestRequest, SuggestResponse, TableSuggestRequest, TableSuggestResponse  # noqa: E402
+from .schemas import (  # noqa: E402
+    ChatRequest, SuggestRequest, SuggestResponse, TableSuggestRequest, TableSuggestResponse,
+)
 from .suggest import (  # noqa: E402
     HEADINGS_TO_ASK, AnswerError, assemble, assemble_table, pick_activities, pick_from_table, rank_headings,
 )
 
 VIGOROUS_MET = 6.0  # "no vigorous activity" means under this, as in the app (src/lib/met.ts)
 
+# What POST /api/chat tells the app besides the reply text, as response headers.
+CHAT_STOPPED_BY = "X-Chat-Stopped-By"  # keywords | jev | none
+CHAT_REPLY = "X-Chat-Reply"            # urgent | medical_advice | off_topic, or "model" when the model wrote it
+
+# The Chat keyword list, fixed replies and brief, read once: when the backend starts, or at the first chat message.
+_chat: Dict[str, Any] = {}
+
+
+def _chat_content() -> Tuple[List[chat_rules.Keyword], Dict[str, str], str]:
+    """(urgent keywords, fixed replies, brief) from the three files in backend/chat_content/."""
+    if not _chat:
+        keywords, replies, brief = chat_rules.read_csv(), chat_replies.read_csv(), chat_prompt.read_brief()
+        _chat.update(keywords=keywords, replies=replies, brief=brief)
+    return _chat["keywords"], _chat["replies"], _chat["brief"]
+
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
-    """When the backend starts: replace the `activities` table with the CSV, so the two always match."""
+    """When the backend starts: replace the `activities` table with the CSV, so the two always match,
+    and read the Chat keyword list, fixed replies and brief, so a file that can't be read stops the backend here."""
     try:
         total = activities.load()
     except activities.ActivityTableError as e:
@@ -63,6 +85,17 @@ async def lifespan(_: FastAPI):
     log.info(
         "Activities: %d loaded from %s (%d marked exercise_rec)",
         total, activities.CSV_PATH.name, activities.count(recommended=True),
+    )
+    try:
+        _chat.clear()
+        keywords, replies, _ = _chat_content()
+    except (chat_rules.KeywordFileError, chat_replies.ReplyFileError, chat_prompt.BriefFileError) as e:
+        log.error("✗ Chat: %s", e)
+        raise
+    log.info(
+        "Chat: %d urgent keywords from %s, %d fixed replies from %s, brief from %s (writer: %s)",
+        len(keywords), chat_rules.CSV_PATH.name, len(replies), chat_replies.CSV_PATH.name,
+        chat_prompt.BRIEF_PATH.name, chat_writer.name(),
     )
     yield
 
@@ -73,6 +106,7 @@ app.add_middleware(
     allow_origin_regex=r"http://(localhost|127\.0\.0\.1)(:\d+)?",
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=[CHAT_STOPPED_BY, CHAT_REPLY],  # so the app can read them from another origin
 )
 
 
@@ -84,7 +118,10 @@ def _top(answer: Dict[str, Any], n: int = 3) -> str:
 
 @app.get("/api/health")
 def health() -> Dict[str, Any]:
-    return {"ok": True, "jev": "live" if has_api_key() else "mock", "model": jev_model()}
+    return {
+        "ok": True, "jev": "live" if has_api_key() else "mock", "model": jev_model(),
+        "chat_writer": chat_writer.name(),  # "placeholder", or the model that writes Chat replies
+    }
 
 
 @app.post("/api/suggest", response_model=SuggestResponse)
@@ -246,6 +283,104 @@ def suggest_from_table(req: TableSuggestRequest) -> TableSuggestResponse:
     return TableSuggestResponse(
         source=source, model=model, lead=lead, backups=picks[1:], candidate_count=len(rows),
         jev_request=jev_request, jev_answers=jev_answers, log_id=log_id,
+    )
+
+
+def _short(text: str, limit: int = 80) -> str:
+    """A message on one terminal line."""
+    text = " ".join(text.split())
+    return text if len(text) <= limit else text[: limit - 1] + "…"
+
+
+def _fixed_reply(name: str, stopped_by: str, step: int) -> PlainTextResponse:
+    """A message that was stopped: the user reads the fixed reply, and no model writes."""
+    _, replies, _ = _chat_content()
+    log.info("[%d] Sent to app: fixed reply \"%s\"", step, name)
+    return PlainTextResponse(replies[name], headers={CHAT_STOPPED_BY: stopped_by, CHAT_REPLY: name})
+
+
+@app.post("/api/chat")
+def chat(req: ChatRequest):
+    """One Chat message in, the reply out as plain text.
+
+    The last user message goes through two checks before any model writes:
+      1. urgent keywords (chat_rules.py): a match gets the fixed "urgent" reply, and Jev isn't asked
+      2. Jev's three yes/no questions (chat_gate.py): urgent, medical advice, or off topic gets its fixed reply
+    A message that passes both goes to the model that writes (chat_writer.py), and its reply is streamed.
+    The model's system prompt is the Chat brief, then what the app sent as `system` (chat_prompt.py).
+
+    Two response headers say what happened: X-Chat-Stopped-By and X-Chat-Reply.
+    """
+    messages = [m.model_dump() for m in req.messages]
+    try:
+        message = chat_gate.latest_user_message(messages)
+    except chat_gate.GateError as e:
+        raise HTTPException(422, str(e)) from e
+    keywords, replies, brief = _chat_content()
+
+    live = has_api_key()
+    model = jev_model() if live else "mock"
+    log.info("── POST /api/chat  (Jev: %s · writer: %s) ──", model, chat_writer.name())
+    log.info("[1] Message: \"%s\"", _short(message))
+
+    # Check 1: urgent keywords. A match stops here.
+    match = chat_rules.check(message, keywords)
+    if match:
+        log.info("[2] Urgent keywords: matched \"%s\" (%s)", match.matched, match.group)
+        return _fixed_reply(chat_rules.REPLY, "keywords", step=3)
+    log.info("[2] Urgent keywords: no match")
+
+    # Check 2: Jev's three questions. If Jev can't be asked, the message is not passed on unchecked.
+    try:
+        jev_request = chat_gate.build_request(messages, model)
+        log.debug("    Prompt: %s", json.dumps(jev_request, ensure_ascii=False))
+        t = time.perf_counter()
+        if live:
+            answers, model = call_jev(jev_request)
+        else:
+            answers = chat_gate.mock_answers(messages)
+        log.info("[3] Ask Jev (urgent? medical advice? about health or the app?)… %.1fs", time.perf_counter() - t)
+        log.debug("    Answer: %s", json.dumps(answers, ensure_ascii=False))
+        decision = chat_gate.decide(answers)
+    except (JevError, chat_gate.GateError) as e:
+        log.warning("    ✗ Failed: %s", e)
+        raise HTTPException(502, str(e)) from e
+    log.info("    %s", " · ".join(f"{name} {p:.2f}" for name, p in decision.probabilities.items()))
+    if decision.reply:
+        return _fixed_reply(decision.reply, "jev", step=4)
+
+    # Both checks passed: the model that writes answers, and each piece goes to the app as it comes.
+    system = chat_prompt.build_system(brief, replies, req.system)
+    log.debug("    System prompt: %s", system)
+    log.info("[4] Passed both checks. Writing (%s)…", chat_writer.name())
+    t = time.perf_counter()
+    reply = chat_writer.write(system, messages)
+    # Wait for the first piece before answering, so a wrong key or model is an error, not an empty reply.
+    try:
+        first = next(reply)
+    except StopIteration:
+        log.warning("    ✗ Failed: the chat model sent no text")
+        raise HTTPException(502, "The chat model sent no text") from None
+    except chat_writer.WriterError as e:
+        log.warning("    ✗ Failed: %s", e)
+        raise HTTPException(502, str(e)) from e
+
+    def pieces() -> Iterator[str]:
+        sent = len(first)
+        yield first
+        try:
+            for piece in reply:
+                sent += len(piece)
+                yield piece
+        except chat_writer.WriterError as e:
+            # Too late for an error status: the first words are already on the user's screen.
+            log.warning("    ✗ Failed after %d characters: %s", sent, e)
+            return
+        log.info("[5] Sent to app: %d characters in %.1fs", sent, time.perf_counter() - t)
+
+    return StreamingResponse(
+        pieces(), media_type="text/plain; charset=utf-8",
+        headers={CHAT_STOPPED_BY: "none", CHAT_REPLY: "model"},
     )
 
 

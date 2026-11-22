@@ -262,3 +262,23 @@ def test_challenge_prompt_names_the_usual_length():
     body = build_duration_request(req, pick_activities(req, ACTIVITY_ANSWERS), "jev-latest")
     assert "usual session today is 30 minutes" in body["questions"]["duration_cycling_steady"]["instructions"]
     assert build_activity_request(req, "jev-latest")["state"]["challenge_aim_met_hours"] == 3.0
+
+
+def test_allowed_origins_come_from_the_setting(monkeypatch):
+    from app import main as m
+    monkeypatch.setenv("ALLOWED_ORIGINS", "https://jarvistseca.github.io/personal-health-agent/, https://example.org ,")
+    assert m.allowed_origins() == ["https://jarvistseca.github.io", "https://example.org"]
+    monkeypatch.delenv("ALLOWED_ORIGINS")
+    assert m.allowed_origins() == []
+
+
+def test_each_browser_has_its_own_saved_state(tmp_path, monkeypatch):
+    from fastapi.testclient import TestClient
+    from app import main as m
+    monkeypatch.setenv("PHA_DB_PATH", str(tmp_path / "s.db"))
+    c = TestClient(m.app)
+    c.put("/api/state?user_id=browser-a", json={"who": "a"})
+    c.put("/api/state?user_id=browser-b", json={"who": "b"})
+    assert c.get("/api/state?user_id=browser-a").json()["state"] == {"who": "a"}
+    assert c.get("/api/state?user_id=browser-b").json()["state"] == {"who": "b"}
+    assert c.get("/api/state").json()["state"] is None  # "demo", the development id, is separate

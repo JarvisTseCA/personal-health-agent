@@ -13,8 +13,10 @@ import { creditFor, DAY_NAMES_LONG, metHours } from "../lib/met";
 import { candidates, type Suggestion } from "../lib/suggest";
 import type { AppState } from "../state/types";
 import { buildAgentContext, buildSuggestInput } from "./context";
+import { USER_ID, userQuery } from "./userId";
 
-export const BASE = import.meta.env.VITE_API_BASE ?? "/api";
+// An empty VITE_API_BASE (the GitHub variable not set) means the same as none.
+export const BASE = import.meta.env.VITE_API_BASE || "/api";
 
 export interface BackendHealth {
   ok: boolean;
@@ -51,6 +53,7 @@ export function buildSuggestRequest(state: AppState) {
   const { options, durations } = candidates(input);
   const c = input.constraint;
   return {
+    user_id: USER_ID,
     weekly_goal_met_hours: ctx.goal,
     done_this_week_met_hours: +ctx.week.done.toFixed(2),
     left_this_week_met_hours: +ctx.left.toFixed(2),
@@ -233,15 +236,15 @@ export async function fetchTableSuggestion(state: AppState, waitMs: number): Pro
 }
 
 export async function loadRemoteState(): Promise<unknown | null> {
-  const res = await fetch(`${BASE}/state`);
+  const res = await fetch(`${BASE}/state${userQuery()}`);
   if (!res.ok) throw new Error(`Load failed: ${res.status}`);
   return (await res.json()).state;
 }
 
 export async function saveRemoteState(state: unknown): Promise<void> {
-  await fetch(`${BASE}/state`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(state) });
+  await fetch(`${BASE}/state${userQuery()}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(state) });
 }
 
 export async function clearRemoteState(): Promise<void> {
-  await fetch(`${BASE}/state`, { method: "DELETE" });
+  await fetch(`${BASE}/state${userQuery()}`, { method: "DELETE" });
 }

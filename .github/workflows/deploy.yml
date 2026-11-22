@@ -2,6 +2,7 @@
 # without installing anything: https://jarvistseca.github.io/personal-health-agent/
 # Pages is enabled with Source = "GitHub Actions" in Settings → Pages.
 # You can also run it by hand from the Actions tab ("Deploy demo" → Run workflow).
+# Hosting the backend and pointing the demo at it: docs/testing-and-hosting.md.
 name: Deploy demo
 
 on:
@@ -29,6 +30,14 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run build
+        env:
+          # Repository variables (Settings → Secrets and variables → Actions → Variables).
+          # API_BASE: the hosted backend plus /api, e.g. https://pha-backend.onrender.com/api.
+          #   Not set: the demo has no backend and keeps the in-app ranker and simulated Fitbit.
+          # SUGGEST_SOURCE: "table" for suggestions from the activity table; not set: the built-in list.
+          # Variables, not secrets: both end up in the published JavaScript. Never put an API key here.
+          VITE_API_BASE: ${{ vars.API_BASE }}
+          VITE_SUGGEST_SOURCE: ${{ vars.SUGGEST_SOURCE }}
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist

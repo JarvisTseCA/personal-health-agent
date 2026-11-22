@@ -1,11 +1,13 @@
 import { withPref, type CategoryPref } from "../lib/categories";
-import { createContext, useContext, useEffect, useMemo, useReducer, useRef, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useReducer, useRef, type ReactNode } from "react";
 import { PERSONAS } from "../data/mockFitbit";
+import { importFitbit, syncSince, type FitbitImport } from "../lib/fitbit";
 import { fmt, withCredit, type Session } from "../lib/met";
 import { ALL_FROM_PLAN, applyCalendarEdit, migratePlan, migrateSources, shorterSlot, SLOT_MINUTES, type DaySlot, type WeekPlan } from "../lib/plan";
 import { migratePlace, type Access, type DeclineReason, type Energy, type Place, type Suggestion } from "../lib/suggest";
 import { buildAgentContext, type AgentContext } from "../services/context";
 import { backendHealth, fetchSuggestion, type BackendSuggestion } from "../services/backend";
+import { fetchFitbitData, FitbitDisconnected } from "../services/fitbit";
 import { repository } from "../services/store";
 import { applyClinicianTurn } from "../services/clinicianChat";
 import * as Today from "./today";
@@ -111,6 +113,7 @@ export type Action =
   | { type: "forgetNote"; id: string }
   | { type: "wantMore" }
   | { type: "sync" }
+  | { type: "fitbitSync"; data: FitbitImport }
   | { type: "confirm"; answer: Today.ConfirmAnswer }
   | { type: "keepGoing"; yes: boolean }
   | { type: "restartDay" }
@@ -218,6 +221,7 @@ function reduce(state: AppState, action: Action): AppState {
     case "forgetNote": return { ...state, notes: state.notes.filter((n) => n.id !== action.id) };
     case "wantMore": return Today.wantMore(state);
     case "sync": return Today.sync(state);
+    case "fitbitSync": return Today.syncFitbit(state, action.data);
     case "confirm": return Today.confirm(state, action.answer);
     case "keepGoing": return Today.keepGoing(state, action.yes);
     case "restartDay":
@@ -319,6 +323,31 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const ctx = useMemo(() => buildAgentContext(state), [state]);
   const value = useMemo(() => ({ state, dispatch, ctx }), [state, ctx]);
   return <StoreContext.Provider value={value}>{children}</StoreContext.Provider>;
+}
+
+/**
+ * Pulls the user's real Fitbit data and hands it to the reducer. When the
+ * backend's sign-in has expired, the connection is turned off so the app
+ * offers to connect again.
+ */
+export async function pullFitbit(dispatch: React.Dispatch<Action>): Promise<void> {
+  const now = new Date();
+  try {
+    const data = await fetchFitbitData(syncSince(now));
+    dispatch({ type: "fitbitSync", data: importFitbit(data, now) });
+  } catch (e) {
+    console.warn("Fitbit sync failed.", e);
+    // The backend's reply stays in the console; the user gets a plain sentence.
+    if (e instanceof FitbitDisconnected) dispatch({ type: "updateProfile", patch: { fitbitConnected: false, fitbitLive: false } });
+    dispatch({ type: "toast", text: e instanceof FitbitDisconnected ? e.message : "Fitbit didn't sync. Try again in a minute." });
+  }
+}
+
+/** What "Sync Fitbit" does: pull the real Fitbit when it's connected, otherwise the demo's simulated sync. */
+export function useFitbitSync(): () => void {
+  const { state, dispatch } = useStore();
+  const live = !!state.profile.fitbitLive;
+  return useCallback(() => (live ? void pullFitbit(dispatch) : dispatch({ type: "sync" })), [live, dispatch]);
 }
 
 export function useStore(): Store {

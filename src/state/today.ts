@@ -11,6 +11,7 @@
  */
 import { UNPLANNED_BOUTS } from "../data/mockFitbit";
 import { getFamily, getVariant, PICKABLE } from "../lib/activities";
+import { HISTORY_WEEKS, weekBefore, type FitbitImport } from "../lib/fitbit";
 import { howTos } from "../lib/moves";
 import { countsTowardGoal, fmt, fmtGoal, minutesFor, UNCONFIRMED_MET, withCredit, type Session } from "../lib/met";
 import { WEEKLY_UPPER_LIMIT } from "../lib/goal";
@@ -382,6 +383,72 @@ export function sync(state: AppState): AppState {
   return setToday(st, { step: "confirm", pendingSessionId: s.id });
 }
 
+/**
+ * "Sync Fitbit" with a real Fitbit: the user's own weeks and VO2 max replace
+ * the simulated ones, workouts already synced keep what the user confirmed,
+ * and today's newest workout gets the same reply as the demo sync: logged
+ * when it matches the plan, otherwise "Right?". Other new workouts are
+ * counted as Fitbit labelled them. Before onboarding is done nobody asks.
+ */
+export function syncFitbit(state: AppState, imp: FitbitImport): AppState {
+  const removed = new Set(state.removedFitbitIds ?? []);
+  const notRemoved = (s: Session) => !removed.has(s.id);
+  // A workout the app already has keeps the user's answers: confirmed, a different activity, their name for it.
+  const seen = new Map([...state.history.flatMap((w) => w.sessions), ...state.sessions].map((s) => [s.id, s]));
+  const asSeen = (s: Session) => seen.get(s.id) ?? s;
+  // Hand-logged workouts aren't in Fitbit, so each keeps the week it was logged in.
+  // Ones logged before the first real sync belong to that sync's week.
+  const manual = [
+    ...state.history.flatMap((w) => w.sessions).filter((s) => s.source === "manual" && s.week),
+    ...state.sessions.filter((s) => s.source === "manual").map((s) => ({ ...s, week: s.week ?? state.fitbitWeek ?? imp.week })),
+  ];
+
+  const thisWeek = imp.thisWeek.filter(notRemoved);
+  const fresh = thisWeek.filter((s) => !seen.has(s.id));
+  const newToday = fresh.filter((s) => s.dayIndex === imp.todayIndex);
+  const newest = state.onboarded ? newToday.at(-1) : undefined;
+  const sessions = [
+    ...manual.filter((s) => s.week === imp.week),
+    ...thisWeek.filter((s) => seen.has(s.id)).map(asSeen),
+    ...fresh.filter((s) => s !== newest).map((s) => ({ ...s, confirmed: true })),
+  ];
+
+  // Earlier weeks: Fitbit's workouts with the user's answers, plus the ones logged by hand.
+  const byWeek = new Map(imp.history.map((w, i) => [
+    weekBefore(imp.week, imp.history.length - i),
+    w.filter(notRemoved).map((s) => ({ ...asSeen(s), confirmed: true })),
+  ]));
+  for (const s of manual) if (s.week! < imp.week) byWeek.set(s.week!, [...(byWeek.get(s.week!) ?? []), s]);
+  const weeks = Array.from({ length: HISTORY_WEEKS }, (_, i) => byWeek.get(weekBefore(imp.week, HISTORY_WEEKS - i)) ?? []);
+  const first = weeks.findIndex((w) => w.length > 0);
+
+  const imported = new Set([...imp.thisWeek, ...imp.history.flat()].map((s) => s.id));
+  let base: AppState = {
+    ...state, sessions, vo2: imp.vo2, syncCount: state.syncCount + 1, fitbitWeek: imp.week,
+    // Past goals and plans aren't in Fitbit; the current ones stand in for them.
+    history: (first < 0 ? [] : weeks.slice(first)).map((week) => ({ goal: state.goal, plan: state.plan, sessions: week })),
+    // Once a workout is older than the sync window it can't come back.
+    removedFitbitIds: [...removed].filter((id) => imported.has(id)),
+  };
+  // With a real Fitbit the app's day is the real day, and a new week starts with no sign-ins.
+  if (state.fitbitWeek && state.fitbitWeek !== imp.week) base = startDay({ ...base, todayIndex: imp.todayIndex, signIns: [] });
+  else if (base.todayIndex !== imp.todayIndex) base = startDay({ ...base, todayIndex: imp.todayIndex });
+  if (!state.onboarded) return base;
+  if (!newest) {
+    const earlier = fresh.length === 1 ? "1 earlier workout" : `${fresh.length} earlier workouts`;
+    return push(base, agent(fresh.length ? `Fitbit synced ${earlier}. Nothing new today yet.` : "Fitbit synced. Nothing new today yet."));
+  }
+  const { family } = getVariant(newest.variantId);
+  const acc = base.today.step === "accepted" ? base.today.accepted : undefined;
+  if (acc && acc.familyId === family.id) {
+    const s: Session = { ...newest, variantId: acc.variantId, confirmed: true };
+    const st = push({ ...base, sessions: [...base.sessions, s] }, agent(`Fitbit synced: ${s.durationMin} min at ${s.startTime}, matching your plan, so I logged it.`));
+    return afterCredit(base, st, s);
+  }
+  const st = push({ ...base, sessions: [...base.sessions, newest] }, agent(`Looks like ${newest.durationMin} min of ${newest.customName ?? family.noun} at ${newest.startTime}. Right?`));
+  return setToday(st, { step: "confirm", pendingSessionId: newest.id });
+}
+
 /** The variant of a family closest to what Fitbit measured. */
 function nearestVariant(familyId: string, met: number): string {
   const f = getFamily(familyId);
@@ -396,7 +463,9 @@ export function confirm(state: AppState, answerId: ConfirmAnswer, typed?: string
   if (!s) return state;
   if (answerId === "other") return setToday(push(state, user("Other…"), agent("What was it?")), { step: "confirm-other" });
   if (answerId === "not-exercise") {
-    const st = { ...state, sessions: state.sessions.filter((x) => x.id !== id) };
+    // Remember a removed Fitbit workout, or the next sync brings it back.
+    const removed = s.source === "fitbit" ? [...(state.removedFitbitIds ?? []), s.id] : state.removedFitbitIds;
+    const st = { ...state, sessions: state.sessions.filter((x) => x.id !== id), removedFitbitIds: removed };
     return setToday(push(st, user(typed ?? "Not exercise"), agent("Thanks, I've removed it.")), { step: "wrap", pendingSessionId: undefined });
   }
   const before = { ...state, sessions: state.sessions.filter((x) => x.id !== id) };

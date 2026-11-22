@@ -13,7 +13,7 @@ import { candidates, type Suggestion } from "../lib/suggest";
 import type { AppState } from "../state/types";
 import { buildAgentContext, buildSuggestInput } from "./context";
 
-const BASE = import.meta.env.VITE_API_BASE ?? "/api";
+export const BASE = import.meta.env.VITE_API_BASE ?? "/api";
 
 export interface BackendHealth {
   ok: boolean;

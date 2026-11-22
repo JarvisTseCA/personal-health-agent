@@ -15,7 +15,7 @@ import { movesFor } from "../lib/moves";
 import { countsTowardGoal, fmt, fmtGoal, intensityOf } from "../lib/met";
 import { DECLINE_LABEL, type DeclineReason, type Suggestion } from "../lib/suggest";
 import { equipmentAt } from "../services/context";
-import { useStore } from "../state/store";
+import { useFitbitSync, useStore } from "../state/store";
 import { CHANGE_TIME_LABEL, CONFIRM_CHOICES, ENERGY_OPTIONS, hasHowTo, keepTimeLabel, PLACE_OPTIONS, REMIND_OPTIONS } from "../state/today";
 import { TimeOptions } from "../components/TimeOptions";
 import { SLOT_LABEL, SLOT_MINUTES } from "../lib/plan";
@@ -141,6 +141,8 @@ function SuggestionCard({ s, lead }: { s: Suggestion; lead: boolean }) {
 
 export function TodayScreen({ go, openPrefs }: { go: (s: Screen) => void; openPrefs: () => void }) {
   const { state, ctx, dispatch } = useStore();
+  const sync = useFitbitSync();
+  const demo = state.profile.fitbitLive ? "" : " (demo)";
   const t = state.today;
   const end = useRef<HTMLDivElement>(null);
   /** The answer whose actions row is open */
@@ -318,7 +320,7 @@ export function TodayScreen({ go, openPrefs }: { go: (s: Screen) => void; openPr
               <span className="small muted">Waiting for your Fitbit to sync</span>
             </div>
             <div className="btn-row">
-              <button className="btn btn-primary" onClick={() => dispatch({ type: "sync" })}>Sync Fitbit (demo)</button>
+              <button className="btn btn-primary" onClick={sync}>Sync Fitbit{demo}</button>
               <button className="btn btn-quiet" onClick={() => dispatch({ type: "decline" })}>Change of plans</button>
             </div>
             <ShowHow />
@@ -355,7 +357,7 @@ export function TodayScreen({ go, openPrefs }: { go: (s: Screen) => void; openPr
           <div className="live">
             <Bubbles label="What next">
               <button className="chip" onClick={() => go("progress")}>See my progress</button>
-              <button className="chip" onClick={() => dispatch({ type: "sync" })}>Sync another workout (demo)</button>
+              <button className="chip" onClick={sync}>Sync another workout{demo}</button>
             </Bubbles>
           </div>
         )}

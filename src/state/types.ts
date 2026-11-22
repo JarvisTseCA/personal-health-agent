@@ -18,6 +18,8 @@ export interface UserProfile {
   /** Set at onboarding or by a "something hurts" decline: no vigorous suggestions */
   hasHealthCondition: boolean;
   fitbitConnected: boolean;
+  /** Connected to the user's real Fitbit through the backend (Google Health API). Missing or false: simulated. */
+  fitbitLive?: boolean;
   /** Equipment at home and at the gym. Missing on older saves: then nothing is filtered by equipment. */
   equipment?: EquipmentProfile;
   /**
@@ -162,6 +164,10 @@ export interface AppState {
   chat: ChatMessage[];
   personaId: string;
   syncCount: number;
+  /** Monday of the real week, "2026-11-16", once a real Fitbit has synced */
+  fitbitWeek?: string;
+  /** Fitbit workouts the user said weren't exercise, so a later sync doesn't bring them back */
+  removedFitbitIds?: string[];
   /** "Something hurts" reports, for the Summary tab's things to mention */
   painReports: number;
   overlay: Overlay;

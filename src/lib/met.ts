@@ -73,6 +73,8 @@ export interface Session {
   avgHeartRate?: number;
   /** What the user called it, when they typed an activity that isn't in the list */
   customName?: string;
+  /** Monday of the real week it was logged in, "2026-11-16"; set on hand-logged workouts once a real Fitbit syncs */
+  week?: string;
 }
 
 export interface SessionWithCredit extends Session {

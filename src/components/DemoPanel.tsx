@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { PERSONAS } from "../data/mockFitbit";
 import { backendHealth, type BackendHealth } from "../services/backend";
+import { fitbitStatus, type FitbitStatus } from "../services/fitbit";
 import { verifySuggestion } from "../lib/verify";
 import { buildSuggestInput } from "../services/context";
 import { buildSystemPrompt } from "../services/prompts";
@@ -18,7 +19,9 @@ export function DemoPanel({ go }: { go: (s: Screen) => void }) {
   const { state, dispatch, ctx } = useStore();
   const [show, setShow] = useState<null | "prompt" | "checks" | "jev">(null);
   const [backend, setBackend] = useState<BackendHealth | null | undefined>(undefined);
+  const [fitbit, setFitbit] = useState<FitbitStatus | null>(null);
   useEffect(() => { backendHealth().then(setBackend); }, []);
+  useEffect(() => { fitbitStatus().then(setFitbit); }, [state.profile.fitbitLive]);
   const picked = state.today.current;
 
   const skipOnboarding = () => {
@@ -71,6 +74,7 @@ export function DemoPanel({ go }: { go: (s: Screen) => void }) {
             : backend === null ? "Python backend not running: suggestions come from the in-app ranker, data stays in this browser."
             : `Python backend connected (SQLite). Jev: ${backend.jev === "live" ? `live, ${backend.model}` : "mock (no API key set)"}.`}
           {picked && ` Current pick from: ${picked.source === "jev" ? "Jev" : picked.source === "mock" ? "mock Jev" : "in-app ranker"}.`}
+          {backend && ` Fitbit: ${!fitbit?.configured ? "simulated (no Google client id in backend/.env)" : fitbit.connected ? "real, connected through the Google Health API" : "real Fitbit set up, not connected yet"}.`}
         </p>
         <div className="seg-toggle">
           <button aria-pressed={show === "jev"} onClick={() => setShow(show === "jev" ? null : "jev")}>Jev prompt</button>

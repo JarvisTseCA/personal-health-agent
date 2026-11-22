@@ -1,9 +1,11 @@
+import { useEffect, useState } from "react";
 import { Sheet } from "../components/Sheet";
 import { getFamily } from "../lib/activities";
 import { DECLINE_LABEL } from "../lib/suggest";
 import { EQUIPMENT, equipmentName, isCustom, parseEquipmentWithCustom, type EquipmentPlace } from "../lib/equipment";
 import { OtherInput } from "../components/OtherInput";
-import { useStore } from "../state/store";
+import { pullFitbit, useStore } from "../state/store";
+import { connectFitbit, disconnectFitbit, fitbitStatus } from "../services/fitbit";
 import { isHidden } from "../state/screens";
 import { TYPICAL_GYM } from "../services/context";
 
@@ -17,6 +19,31 @@ export function PreferencesSheet({ onClose, openSummary, openSettings }: { onClo
   const { state, dispatch } = useStore();
   const p = state.profile;
   const patch = (x: Partial<typeof p>) => dispatch({ type: "updateProfile", patch: x });
+  /** The backend can connect a real Fitbit; otherwise the switch is simulated */
+  const [real, setReal] = useState(false);
+  const [connecting, setConnecting] = useState(false);
+  useEffect(() => { fitbitStatus().then((s) => setReal(!!s?.configured)); }, []);
+
+  const toggleFitbit = () => {
+    if (p.fitbitLive) {
+      disconnectFitbit()
+        .then(() => patch({ fitbitConnected: false, fitbitLive: false }))
+        .catch((e: Error) => {
+          console.warn("Disconnecting Fitbit failed.", e);
+          dispatch({ type: "toast", text: "Fitbit didn't disconnect. Try again in a minute." });
+        });
+      return;
+    }
+    if (!real) { patch({ fitbitConnected: !p.fitbitConnected }); return; }
+    setConnecting(true);
+    connectFitbit().then((ok) => {
+      setConnecting(false);
+      if (!ok) { dispatch({ type: "toast", text: "Fitbit wasn't connected. Finish the sign-in in the tab that opens." }); return; }
+      patch({ fitbitConnected: true, fitbitLive: true });
+      void pullFitbit(dispatch);
+    });
+  };
+  const fitbitLabel = connecting ? "Connecting…" : p.fitbitLive ? "Connected" : p.fitbitConnected ? "Connected (simulated)" : "Not connected";
 
   return (
     <Sheet title="Preferences" onClose={onClose}>
@@ -85,9 +112,9 @@ export function PreferencesSheet({ onClose, openSummary, openSettings }: { onClo
         <div className="switch-row">
           <div>
             <b className="small">Fitbit</b>
-            <p className="xs muted">{p.fitbitConnected ? "Connected (simulated)" : "Not connected"}</p>
+            <p className="xs muted">{fitbitLabel}</p>
           </div>
-          <button className="switch" role="switch" aria-checked={p.fitbitConnected} aria-label="Fitbit connected" onClick={() => patch({ fitbitConnected: !p.fitbitConnected })} />
+          <button className="switch" role="switch" aria-checked={real ? !!p.fitbitLive : p.fitbitConnected} aria-label="Fitbit connected" disabled={connecting} onClick={toggleFitbit} />
         </div>
         {!isHidden("summary") && <div className="switch-row">
           <div>

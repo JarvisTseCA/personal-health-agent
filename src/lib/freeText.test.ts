@@ -14,9 +14,15 @@ describe("free text", () => {
   });
 
   it("reads places, energy and yes/no", () => {
-    expect(parsePlace("stuck at work")).toBe("office");
-    expect(parsePlace("at the gym after work")).toBe("gym");
+    expect(parsePlace("stuck at work")).toBe("indoors_with_others");
+    expect(parsePlace("at the gym after work")).toBe("indoors_with_others");
+    expect(parsePlace("the library")).toBe("indoors_with_others");
+    expect(parsePlace("at home")).toBe("indoors_private");
+    expect(parsePlace("my hotel room")).toBe("indoors_private");
+    expect(parsePlace("in my home office")).toBe("indoors_private");
+    expect(parsePlace("walking in the park")).toBe("outside");
     expect(parsePlace("at my friend's place")).toBeNull();
+    expect(parsePlace("at the airport")).toBeNull();
     expect(parseEnergy("pretty tired")).toBe("low");
     expect(parseEnergy("feeling great")).toBe("challenge");
     expect(parseEnergy("fine")).toBe("normal");

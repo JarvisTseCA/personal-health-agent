@@ -1,12 +1,11 @@
 import { Sheet } from "../components/Sheet";
-import { ArrowIcon, CloseIcon } from "../components/Icons";
-import { getFamily, PICKABLE } from "../lib/activities";
-import { DECLINE_LABEL, type Access } from "../lib/suggest";
+import { getFamily } from "../lib/activities";
+import { DECLINE_LABEL } from "../lib/suggest";
 import { EQUIPMENT, equipmentName, isCustom, parseEquipmentWithCustom, type EquipmentPlace } from "../lib/equipment";
 import { OtherInput } from "../components/OtherInput";
 import { useStore } from "../state/store";
-
-const ACCESS: Array<[Access, string]> = [["have", "Have it"], ["sometimes", "Sometimes"], ["no", "Not right now"]];
+import { isHidden } from "../state/screens";
+import { TYPICAL_GYM } from "../services/context";
 
 function when(daysAgo: number): string {
   if (daysAgo <= 0) return "today";
@@ -14,56 +13,17 @@ function when(daysAgo: number): string {
   return `${daysAgo} days ago`;
 }
 
-export function PreferencesSheet({ onClose, openSummary }: { onClose: () => void; openSummary: () => void }) {
+export function PreferencesSheet({ onClose, openSummary, openSettings }: { onClose: () => void; openSummary: () => void; openSettings: () => void }) {
   const { state, dispatch } = useStore();
   const p = state.profile;
-  const others = PICKABLE.filter((f) => !p.enjoyed.includes(f.id));
   const patch = (x: Partial<typeof p>) => dispatch({ type: "updateProfile", patch: x });
 
   return (
     <Sheet title="Preferences" onClose={onClose}>
       <h2>Preferences</h2>
-      <p className="muted small">The agent only suggests what's on this list, favorite first.</p>
-
+      <p className="muted small">Equipment, health and Fitbit. What you like and your weekly plan are on the Settings tab.</p>
       <div className="field">
-        <label className="lbl">Activities you enjoy</label>
-        <ol className="rank-list">
-          {p.enjoyed.map((id, i) => {
-            const f = getFamily(id);
-            return (
-              <li key={id}>
-                <div className="rank-top">
-                  <span className="rank-n num">{i + 1}</span>
-                  <span className="dot" style={{ background: f.color }} />
-                  <b>{f.name}</b>
-                  <div className="rank-actions">
-                    <button className="mini" aria-label={`Move ${f.name} up`} disabled={i === 0} onClick={() => dispatch({ type: "moveEnjoyed", familyId: id, dir: -1 })}><ArrowIcon /></button>
-                    <button className="mini" aria-label={`Move ${f.name} down`} disabled={i === p.enjoyed.length - 1} onClick={() => dispatch({ type: "moveEnjoyed", familyId: id, dir: 1 })}><ArrowIcon dir="down" /></button>
-                    <button className="mini" aria-label={`Remove ${f.name}`} onClick={() => dispatch({ type: "toggleEnjoyed", familyId: id })}><CloseIcon /></button>
-                  </div>
-                </div>
-                <div className="access-row" role="radiogroup" aria-label={`Access to ${f.name}`}>
-                  {f.needs && <span className="xs muted">Needs {f.needs}:</span>}
-                  {ACCESS.map(([a, label]) => (
-                    <button key={a} role="radio" aria-checked={(p.access[id] ?? "have") === a} className="slot" onClick={() => dispatch({ type: "setAccess", familyId: id, access: a })}>{label}</button>
-                  ))}
-                </div>
-              </li>
-            );
-          })}
-        </ol>
-        {others.length > 0 && (
-          <>
-            <p className="xs muted" style={{ margin: "12px 0 8px" }}>Add more</p>
-            <div className="chips">
-              {others.map((f) => (
-                <button key={f.id} className="chip" onClick={() => dispatch({ type: "toggleEnjoyed", familyId: f.id })}>
-                  <span className="dot" style={{ background: f.color }} />{f.name}
-                </button>
-              ))}
-            </div>
-          </>
-        )}
+        <button className="btn btn-quiet small-btn" onClick={openSettings}>Open Settings</button>
       </div>
 
       <Equipment />
@@ -129,13 +89,13 @@ export function PreferencesSheet({ onClose, openSummary }: { onClose: () => void
           </div>
           <button className="switch" role="switch" aria-checked={p.fitbitConnected} aria-label="Fitbit connected" onClick={() => patch({ fitbitConnected: !p.fitbitConnected })} />
         </div>
-        <div className="switch-row">
+        {!isHidden("summary") && <div className="switch-row">
           <div>
             <b className="small">Summary for your clinician</b>
             <p className="xs muted">Show it at a visit, then tell the agent in Chat what they said</p>
           </div>
           <button className="btn btn-quiet small-btn" onClick={openSummary}>Open</button>
-        </div>
+        </div>}
       </div>
 
       <div className="btn-row" style={{ marginTop: 20 }}>
@@ -149,15 +109,19 @@ export function PreferencesSheet({ onClose, openSummary }: { onClose: () => void
 /** Equipment at home and at the gym: tap to add or remove. */
 function Equipment() {
   const { state, dispatch } = useStore();
-  const eq = state.profile.equipment ?? { home: [], gym: [] };
-  const set = (place: EquipmentPlace, ids: string[] | null) => dispatch({ type: "setEquipment", equipment: { ...eq, [place]: ids } });
+  // Not asked in onboarding. Until the user sets it, home starts empty and the gym starts as a typical one.
+  // There's no "no gym" setting: Gym is always a check-in option.
+  const eq = state.profile.equipment ?? { home: [], gym: [...TYPICAL_GYM] };
+  const set = (place: EquipmentPlace, ids: string[]) => dispatch({ type: "setEquipment", equipment: { ...eq, [place]: ids } });
+  // A gym with nothing listed (older saves) shows, and starts from, a typical gym.
+  const gym = eq.gym ?? TYPICAL_GYM;
   const toggle = (place: EquipmentPlace, id: string) => {
-    const cur = (place === "home" ? eq.home : eq.gym) ?? [];
+    const cur = place === "home" ? eq.home : gym;
     set(place, cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id]);
   };
   /** Typed equipment: known items are selected, anything else is added as the user's own tag. */
   const typed = (place: EquipmentPlace, text: string) => {
-    const cur = (place === "home" ? eq.home : eq.gym) ?? [];
+    const cur = place === "home" ? eq.home : gym;
     const found = parseEquipmentWithCustom(text);
     if (found.length) set(place, [...cur, ...found.filter((id) => !cur.includes(id))]);
   };
@@ -168,20 +132,17 @@ function Equipment() {
           <button key={id} className={`chip${isCustom(id) ? " chip-custom" : ""}`} aria-pressed={cur.includes(id)} onClick={() => toggle(place, id)}>{equipmentName(id)}</button>
         ))}
       </div>
-      <OtherInput placeholder="Add other equipment, e.g. foam roller" label={`Add equipment ${place === "home" ? "at home" : "at the gym"}`} onSubmit={(t) => typed(place, t)} />
+      <OtherInput placeholder="Add other equipment, e.g. foam roller" label={`Add equipment ${place === "home" ? "indoors, private" : "indoors, with others"}`} onSubmit={(t) => typed(place, t)} />
     </>
   );
   return (
     <div className="field">
       <label className="lbl">Equipment</label>
       <p className="xs muted" style={{ marginBottom: 8 }}>Workouts are built from what's where you exercise that day.</p>
-      <p className="small" style={{ fontWeight: 700, margin: "8px 0 6px" }}>At home</p>
+      <p className="small" style={{ fontWeight: 700, margin: "8px 0 6px" }}>Indoors, private <span className="muted" style={{ fontWeight: 400 }}>(home, hotel room)</span></p>
       {chips("home", eq.home)}
-      <div className="switch-row" style={{ marginTop: 14 }}>
-        <b className="small">At the gym</b>
-        <button className="switch" role="switch" aria-checked={eq.gym !== null} aria-label="I use a gym" onClick={() => set("gym", eq.gym === null ? [] : null)} />
-      </div>
-      {eq.gym !== null ? chips("gym", eq.gym) : <p className="xs muted">No gym. Turn this on to add one.</p>}
+      <p className="small" style={{ fontWeight: 700, margin: "14px 0 6px" }}>Indoors, with others <span className="muted" style={{ fontWeight: 400 }}>(gym, office)</span></p>
+      {chips("gym", gym)}
     </div>
   );
 }

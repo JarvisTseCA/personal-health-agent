@@ -7,6 +7,7 @@ import { buildSystemPrompt } from "../services/prompts";
 import { personaProfile, useStore } from "../state/store";
 import { DAY_NAMES_LONG } from "../lib/met";
 import type { Screen } from "../state/types";
+import { isHidden } from "../state/screens";
 
 /**
  * Presenter controls shown beside the phone on wide screens. Not part of
@@ -54,7 +55,7 @@ export function DemoPanel({ go }: { go: (s: Screen) => void }) {
         <button className="btn btn-quiet" disabled={!state.onboarded} title="The user shortens today's exercise block on their calendar" onClick={() => { dispatch({ type: "calendarEdit" }); go("today"); }}>Simulate a calendar edit</button>
         <button className="btn btn-quiet" disabled={!state.onboarded} onClick={() => { dispatch({ type: "videoExample" }); go("today"); }}>Show the how-to video example</button>
         <button className="btn btn-quiet" disabled={!state.onboarded} onClick={() => { dispatch({ type: "overlay", overlay: null }); go("progress"); }}>Open Progress</button>
-        <button className="btn btn-quiet" disabled={!state.onboarded} onClick={() => { dispatch({ type: "overlay", overlay: null }); go("summary"); }}>Open Summary</button>
+        {!isHidden("summary") && <button className="btn btn-quiet" disabled={!state.onboarded} onClick={() => { dispatch({ type: "overlay", overlay: null }); go("summary"); }}>Open Summary</button>}
         <button className="btn btn-quiet" disabled={!state.onboarded} onClick={() => {
           dispatch({ type: "overlay", overlay: null });
           dispatch({ type: "clinicianChat", text: "My doctor said my blood pressure is a little high, so keep to moderate exercise for now and add two strength days a week." });

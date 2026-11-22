@@ -3,7 +3,7 @@
  * Past turns read as a conversation; the live question or card sits at the
  * bottom, so there's always exactly one decision in front of the user.
  */
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { WeekBars, WeekLegend } from "../components/WeekBar";
 import { SettingsIcon } from "../components/Icons";
 import { AiNotice } from "../components/AiNotice";
@@ -14,7 +14,6 @@ import { equipmentName } from "../lib/equipment";
 import { movesFor } from "../lib/moves";
 import { countsTowardGoal, fmt, fmtGoal, intensityOf } from "../lib/met";
 import { DECLINE_LABEL, type DeclineReason, type Suggestion } from "../lib/suggest";
-import { QUESTIONS, type QuestionId } from "../services/answers";
 import { equipmentAt } from "../services/context";
 import { useStore } from "../state/store";
 import { CHANGE_TIME_LABEL, CONFIRM_CHOICES, ENERGY_OPTIONS, hasHowTo, keepTimeLabel, PLACE_OPTIONS, REMIND_OPTIONS } from "../state/today";
@@ -58,14 +57,17 @@ function Bubbles({ children, label }: { children: React.ReactNode; label: string
   return <div className="bubbles" role="group" aria-label={label}>{children}</div>;
 }
 
-function Questions({ ids, how }: { ids: QuestionId[]; how?: boolean }) {
+/**
+ * "Show me how", when the pick has a how-to video. The one-tap questions that used
+ * to sit beside it (What's a MET?, Why this activity?, …) are gone from Today;
+ * typed questions are still answered, and Chat has its own starters.
+ */
+function ShowHow() {
   const { state, dispatch } = useStore();
+  if (!hasHowTo(state)) return null;
   return (
-    <div className="ask-row" role="group" aria-label="Ask the agent">
-      {how && hasHowTo(state) && <button className="ask-chip ask-how" onClick={() => dispatch({ type: "showHow" })}>Show me how</button>}
-      {ids.map((q) => (
-        <button key={q} className="ask-chip" onClick={() => dispatch({ type: "ask", q })}>{QUESTIONS[q]}</button>
-      ))}
+    <div className="ask-row">
+      <button className="ask-chip ask-how" onClick={() => dispatch({ type: "showHow" })}>Show me how</button>
     </div>
   );
 }
@@ -73,7 +75,7 @@ function Questions({ ids, how }: { ids: QuestionId[]; how?: boolean }) {
 /** The circuit for a strength or interval pick, built from the equipment where the user is today. */
 function Circuit({ s }: { s: Suggestion }) {
   const { state } = useStore();
-  const here = equipmentAt(state, state.today.checkIn.place ?? "home") ?? [];
+  const here = equipmentAt(state, state.today.checkIn.place ?? "indoors_private") ?? [];
   const moves = movesFor(s.variantId, here);
   if (!moves.length) return null;
   const uses = [...new Set(moves.map((m) => m.uses).filter(Boolean) as string[])];
@@ -146,8 +148,23 @@ export function TodayScreen({ go, openPrefs }: { go: (s: Screen) => void; openPr
   /** While editing an earlier answer: how to undo, and the old answer to start from */
   const [editing, setEditing] = useState<{ backup: AppState; count: number; text: string } | null>(null);
 
-  useEffect(() => {
-    end.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+  // Keep the latest message in view. A new message scrolls there smoothly. When the feed gets
+  // shorter (editing an earlier answer drops what came after it), jump there at once, before the
+  // browser paints: a smooth scroll in a container whose content just shrank can leave the page
+  // drawn at the old position while clicks land at the new one, so every button seems dead.
+  const shown = useRef(t.entries.length);
+  useLayoutEffect(() => {
+    const shrank = t.entries.length < shown.current;
+    shown.current = t.entries.length;
+    const el = end.current;
+    if (!el) return;
+    if (!shrank) {
+      el.scrollIntoView({ behavior: "smooth", block: "end" });
+      return;
+    }
+    const screen = el.closest(".screen");
+    if (screen) screen.scrollTop = Math.max(0, screen.scrollHeight - screen.clientHeight);
+    else el.scrollIntoView({ block: "end" });
   }, [t.entries.length, t.step, t.current?.showBackups]);
 
   // A new answer ends the edit: the conversation carries on from there.
@@ -249,7 +266,7 @@ export function TodayScreen({ go, openPrefs }: { go: (s: Screen) => void; openPr
         )}
         {t.step === "place" && (
           <Bubbles label="Where you'll exercise">
-            {PLACE_OPTIONS.filter(([, p]) => p !== "gym" || state.profile.equipment?.gym !== null).map(([label, p]) => <button key={p} className="chip" onClick={() => dispatch({ type: "place", label, place: p })}>{label}</button>)}
+            {PLACE_OPTIONS.map(([label, p]) => <button key={p} className="chip" onClick={() => dispatch({ type: "place", label, place: p })}>{label}</button>)}
           </Bubbles>
         )}
         {t.step === "energy" && (
@@ -266,7 +283,7 @@ export function TodayScreen({ go, openPrefs }: { go: (s: Screen) => void; openPr
               <button className="btn btn-quiet" onClick={() => dispatch({ type: "remindLater" })}>Remind me later</button>
               <button className="btn btn-quiet" onClick={() => dispatch({ type: "another" })}>Give me another option</button>
             </div>
-            <Questions how ids={["met", "why", "how"]} />
+            <ShowHow />
           </div>
         )}
 
@@ -304,7 +321,7 @@ export function TodayScreen({ go, openPrefs }: { go: (s: Screen) => void; openPr
               <button className="btn btn-primary" onClick={() => dispatch({ type: "sync" })}>Sync Fitbit (demo)</button>
               <button className="btn btn-quiet" onClick={() => dispatch({ type: "decline" })}>Change of plans</button>
             </div>
-            <Questions how ids={["how", "vo2", "goal"]} />
+            <ShowHow />
           </div>
         )}
 
@@ -340,7 +357,6 @@ export function TodayScreen({ go, openPrefs }: { go: (s: Screen) => void; openPr
               <button className="chip" onClick={() => go("progress")}>See my progress</button>
               <button className="chip" onClick={() => dispatch({ type: "sync" })}>Sync another workout (demo)</button>
             </Bubbles>
-            <Questions ids={["rewards", "vo2"]} />
           </div>
         )}
         {OTHER_PLACEHOLDER[t.step] && (t.step !== "confirm" || pending) && (

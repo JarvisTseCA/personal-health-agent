@@ -1,25 +1,28 @@
-import { useCallback, useEffect, useState, type ComponentType } from "react";
+import { useCallback, useEffect, useMemo, useState, type ComponentType } from "react";
 import { DemoPanel } from "./components/DemoPanel";
 import { ChatIcon, ProgressIcon, GearIcon, SummaryIcon, TodayIcon } from "./components/Icons";
 import { ChatScreen } from "./screens/ChatScreen";
 import { Onboarding } from "./screens/Onboarding";
 import { PreferencesSheet } from "./screens/PreferencesSheet";
 import { ProgressScreen } from "./screens/ProgressScreen";
+import { SettingsScreen } from "./screens/SettingsScreen";
 import { ShowcaseScreen } from "./screens/ShowcaseScreen";
 import { SummaryScreen } from "./screens/SummaryScreen";
 import { TodayScreen } from "./screens/TodayScreen";
 import { useStore } from "./state/store";
 import type { Screen } from "./state/types";
+import { isHidden } from "./state/screens";
+import { buildAgentContext, reachedToday } from "./services/context";
 
 const TABS: Array<{ id: Screen; label: string; Icon: ComponentType<{ className?: string }> }> = [
   { id: "today", label: "Today", Icon: TodayIcon },
   { id: "progress", label: "Progress", Icon: ProgressIcon },
   { id: "chat", label: "Chat", Icon: ChatIcon },
   { id: "summary", label: "Summary", Icon: SummaryIcon },
-  { id: "showcase", label: "Settings", Icon: GearIcon },
+  { id: "settings", label: "Settings", Icon: GearIcon },
 ];
 
-const SCREENS: Screen[] = ["onboarding", "today", "progress", "chat", "summary", "showcase"];
+const SCREENS: Screen[] = ["onboarding", "today", "progress", "chat", "summary", "showcase", "settings"];
 /** Old links: Week and Medals are now part of Progress; Coach is now Chat; Clinician is now Summary. */
 const RENAMED: Record<string, Screen> = { week: "progress", medals: "progress", coach: "chat", clinician: "summary" };
 
@@ -27,7 +30,7 @@ const RENAMED: Record<string, Screen> = { week: "progress", medals: "progress", 
 function readHash(): Screen | null {
   const raw = window.location.hash.replace(/^#\/?/, "");
   const h = (RENAMED[raw] ?? raw) as Screen;
-  return SCREENS.includes(h) ? h : null;
+  return SCREENS.includes(h) && !isHidden(h) ? h : null;
 }
 
 function Clock() {
@@ -41,9 +44,12 @@ function Clock() {
 
 export default function App() {
   const { state, dispatch } = useStore();
+  // A text checkmark (✓) on the Today tab once today's target is reached; gone the next day, when the new day starts at 0.
+  const todayComplete = useMemo(() => state.onboarded && reachedToday(buildAgentContext(state)), [state]);
   const [screen, setScreen] = useState<Screen>(() => readHash() ?? "today");
 
-  const go = useCallback((s: Screen) => {
+  const go = useCallback((to: Screen) => {
+    const s = isHidden(to) ? "today" : to;
     setScreen(s);
     try {
       if (window.location.hash !== `#${s}`) window.history.pushState(null, "", `#${s}`);
@@ -101,21 +107,26 @@ export default function App() {
             {active === "progress" && <ProgressScreen />}
             {active === "summary" && <SummaryScreen go={go} />}
             {active === "showcase" && <ShowcaseScreen />}
+            {active === "settings" && <SettingsScreen />}
           </main>
         )}
 
         {active !== "onboarding" && (
           <nav className="tabbar" aria-label="Main">
-            {TABS.map(({ id, label, Icon }) => (
+            {TABS.filter((t) => !isHidden(t.id)).map(({ id, label, Icon }) => (
               <button key={id} className="tab" aria-current={active === id ? "page" : undefined} onClick={() => go(id)}>
-                <Icon />
+                <span className="tab-icon">
+                  <Icon />
+                  {id === "today" && todayComplete && <span className="tab-badge" aria-hidden>{"\u2713\uFE0E"}</span>}
+                </span>
                 {label}
+                {id === "today" && todayComplete && <span className="sr-only">, today's target reached</span>}
               </button>
             ))}
           </nav>
         )}
 
-        {overlay === "prefs" && <PreferencesSheet onClose={close} openSummary={() => { close(); go("summary"); }} />}
+        {overlay === "prefs" && <PreferencesSheet onClose={close} openSummary={() => { close(); go("summary"); }} openSettings={() => { close(); go("settings"); }} />}
 
         {state.toast && (
           <div className="toast" role="status">

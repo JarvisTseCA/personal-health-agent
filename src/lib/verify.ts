@@ -4,11 +4,12 @@
  * check on the coach's text; here they run in code and the demo panel shows
  * the results ("What the verifier checked").
  */
-import { getFamily, getVariant } from "./activities";
+import { getFamily, getVariant, PICKABLE } from "./activities";
 import { creditFor, fmt, VIGOROUS_MET } from "./met";
 import { fitsPlace, type Suggestion, type SuggestInput } from "./suggest";
 import { equipmentOf } from "./activities";
 import { listEquipment } from "./equipment";
+import { categoryOf } from "./categories";
 
 export interface Check {
   name: string;
@@ -21,8 +22,9 @@ export function verifySuggestion(s: Suggestion, input: SuggestInput, shownCredit
   const { family, variant } = getVariant(s.variantId);
   const recomputed = creditFor(variant.met, s.durationMin);
   const desk = family.fallbackOnly === true;
+  const pickCategory = categoryOf(variant);
   const yesterday = input.recent.some((r) => r.familyId === s.familyId && r.daysAgo === 1);
-  const otherOptions = input.enjoyed.filter((id) => id !== s.familyId && input.access[id] !== "no").length > 0;
+  const otherOptions = PICKABLE.some((f) => f.id !== s.familyId && input.access[f.id] !== "no" && !input.exclude.includes(f.id));
 
   return [
     {
@@ -45,9 +47,19 @@ export function verifySuggestion(s: Suggestion, input: SuggestInput, shownCredit
     },
     {
       name: "Preference",
-      rule: "On the enjoyed list and accessible",
-      ok: desk || (input.enjoyed.includes(s.familyId) && input.access[s.familyId] !== "no"),
-      detail: desk ? "Desk moves are the one allowed exception" : `${getFamily(s.familyId).name} is on the list`,
+      rule: "Accessible and not ruled out today",
+      ok: desk || (input.access[s.familyId] !== "no" && !input.exclude.includes(s.familyId)),
+      detail: desk
+        ? "Desk moves are the one allowed exception"
+        : `${getFamily(s.familyId).name}${input.enjoyed.includes(s.familyId) ? ", liked before" : ", not tried yet"}`,
+    },
+    {
+      name: "Category",
+      rule: "Not in a category the user dislikes (👎)",
+      ok: desk || input.categoryPrefs?.[pickCategory ?? ""] !== "dislike",
+      detail: desk ? "Desk moves are the one allowed exception"
+        : !pickCategory ? "Not in the table's exercise categories"
+        : input.categoryPrefs?.[pickCategory] === "like" ? `${pickCategory}, a category they like` : pickCategory,
     },
     {
       name: "Repetition",

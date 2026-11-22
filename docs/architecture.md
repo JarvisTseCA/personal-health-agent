@@ -142,7 +142,7 @@ and picked_codes        table          heading?          1 question per heading 
 ```
 
 1. The frontend sends the check-in variables as before, but no options. It sends `picked_codes`
-   instead: the Compendium codes of the activities the user picked before (chosen in onboarding, or
+   instead: the Compendium codes of the activities the user picked before (set in Preferences, or
    suggestions they accepted), favorites first.
 2. **Filter.** `candidates()` in `activities.py` keeps the rows marked `exercise_rec` that can be done
    where the user is (gym, home or outside), need no partner and are 3 MET or more (light activity
@@ -309,7 +309,8 @@ replies, and parse free-text "Other" notes into structured preferences.
 
 ## Guardrails to keep
 
-- Only suggest activities from the user's enjoyed list and marked accessible (the code filters options before Jev sees them; the verifier re-checks; desk moves are the one exception).
+- Only suggest activities that aren't marked inaccessible or ruled out today (the code filters options before Jev sees them; the verifier re-checks). Liked activities, learned from accepted suggestions, rank higher but don't limit the options.
+- Never suggest an activity in a category the user disliked (👎 in onboarding or Settings); the app filters these out before Jev sees the options, and the verifier re-checks. Liked categories (👍) are sent as `liked_categories` and rank higher.
 - With a health flag: nothing at 6 MET or more, and suggest checking with a clinician first.
 - Use `clinician_notes` (the user's paraphrase of their clinician's feedback) as context when relevant; never treat them as a goal.
 - Remind the user it's a machine learning model and can make mistakes (the app shows this at the top of every conversation).

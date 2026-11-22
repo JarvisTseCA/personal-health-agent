@@ -103,11 +103,14 @@ export function confirmTime(state: AppState, keep: boolean, typed?: string): App
   return setToday(push(state, user(typed ?? CHANGE_TIME_LABEL), agent("How much time do you have today?")), { step: "time" });
 }
 
-/** The three places, each with the examples shown under its button. */
-export const PLACE_OPTIONS: Array<[string, Place, string]> = [
-  ["Indoors, private", "indoors_private", "Home, hotel room"],
-  ["Indoors, with others", "indoors_with_others", "Gym, office"],
-  ["Outside", "outside", "Park, trail, street"],
+/**
+ * The three places. Indoors, private: home, a hotel room. Indoors, with others: a gym, an office.
+ * Outside: a park, a trail.
+ */
+export const PLACE_OPTIONS: Array<[string, Place]> = [
+  ["Indoors, private", "indoors_private"],
+  ["Indoors, with others", "indoors_with_others"],
+  ["Outside", "outside"],
 ];
 /** Asked again when a typed answer matches none of the three. */
 export const PLACE_AGAIN = "Where will you be: indoors and private, indoors with others, or outside?";

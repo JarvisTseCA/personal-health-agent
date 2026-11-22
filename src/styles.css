@@ -826,8 +826,6 @@ input[type="range"] { width: 100%; accent-color: var(--ink); height: 32px; }
    Liked chips are green, disliked ones rose. Both pass 4.5:1 for their text. */
 .cat-chips { padding-top: 8px; row-gap: 14px; column-gap: 14px; }
 .chip.cat-chip { position: relative; }
-.chip.place-chip { display: inline-flex; flex-direction: column; align-items: flex-start; gap: 2px; text-align: left; }
-.place-examples { font-size: var(--t-xs); color: var(--ink-2); font-weight: 400; }
 .chip.chip-like { border-color: var(--like); background: var(--like); color: #fff; }
 .chip.chip-dislike { border-color: var(--dislike); background: var(--dislike-bg); color: var(--dislike-ink); }
 .pref-badge {

@@ -251,12 +251,7 @@ export function TodayScreen({ go, openPrefs }: { go: (s: Screen) => void; openPr
         )}
         {t.step === "place" && (
           <Bubbles label="Where you'll exercise">
-            {PLACE_OPTIONS.map(([label, p, examples]) => (
-              <button key={p} className="chip place-chip" aria-label={`${label}: ${examples}`} onClick={() => dispatch({ type: "place", label, place: p })}>
-                {label}
-                <span aria-hidden className="place-examples">{examples}</span>
-              </button>
-            ))}
+            {PLACE_OPTIONS.map(([label, p]) => <button key={p} className="chip" onClick={() => dispatch({ type: "place", label, place: p })}>{label}</button>)}
           </Bubbles>
         )}
         {t.step === "energy" && (

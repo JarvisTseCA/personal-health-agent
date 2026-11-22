@@ -117,11 +117,12 @@ Tests: `.venv/bin/python -m pytest` (from `backend/`). They never call Jev or Ch
 The database file is `backend/data/pha.db` (git-ignored). To look at recent prompts:
 `sqlite3 backend/data/pha.db "select id, source, error from suggestion_log order by id desc limit 5"`.
 
-## Done in the backend: suggestions from the activity table (not in the app yet)
+## Done: suggestions from the activity table (in the app behind a setting)
 
-The app still picks from its own small activity library (`src/lib/activities.ts`) and calls
-`POST /api/suggest`. The backend can now also suggest from the team's activity table. The app isn't
-switched over yet.
+By default the app picks from its own small activity library (`src/lib/activities.ts`) and calls
+`POST /api/suggest` (above). With the setting `VITE_SUGGEST_SOURCE=table`, or *Suggestions from* in
+the demo controls, Today picks from the team's activity table through `POST /api/suggest/table`
+instead (below). What's left to test and host: [testing-and-hosting.md](testing-and-hosting.md).
 
 **The activity table.** `activity_tables/2024_compendium_exercise_recommendations.csv` lists the 2024
 Adult Compendium's activities, each marked with where it can be done, whether it needs equipment or a

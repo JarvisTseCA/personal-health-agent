@@ -45,6 +45,48 @@ def test_the_csv_in_the_repo_loads_whole():
     assert all(len(r["activity_code"]) == 5 and r["activity_code"].isdigit() for r in table())
 
 
+def repo_rows():
+    with open(activities.CSV_PATH, encoding="utf-8-sig", newline="") as f:
+        return {r["activity_code"]: r for r in csv.DictReader(f)}
+
+
+def test_the_csv_in_the_repo_has_a_family_and_type_for_every_row():
+    rows = repo_rows().values()
+    assert all(r["family"] and r["type"] for r in rows)
+    assert repo_rows()["01216"]["family"] == "cycling_indoor"
+    assert repo_rows()["12050"]["family"] == "running"
+    assert repo_rows()["12050"]["type"] == "cardio"
+
+
+def test_every_activity_that_can_be_suggested_has_a_place():
+    for r in repo_rows().values():
+        if r["exercise_rec"] == "1" and r["need_friends"] == "0" and float(r["met_value"]) >= 3:
+            places = r["loc_gym"], r["at_home"], r["loc_outside"]
+            assert "1" in places, f"{r['activity_code']} {r['activity_description']} has no place"
+
+
+def test_the_row_fixes_are_in_the_csv_in_the_repo():
+    rows = repo_rows()
+    assert rows["17140"]["exercise_rec"] == "0"  # using crutches
+    assert rows["18012"]["exercise_rec"] == "0"  # power boating, passenger
+    assert rows["22240"]["at_home"] == "1"       # active video game
+    assert rows["12050"]["at_home"] == "0"       # running, 6 mph
+    assert rows["12025"]["at_home"] == "1"       # jogging in place stays
+
+
+def test_updating_the_table_again_changes_nothing(tmp_path):
+    import importlib.util, shutil
+    script = activities.CSV_PATH.parent / "update_table.py"
+    spec = importlib.util.spec_from_file_location("update_table", script)
+    update_table = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(update_table)
+    copy = tmp_path / "table.csv"
+    shutil.copy(activities.CSV_PATH, copy)
+
+    assert update_table.update(copy) == 0
+    assert copy.read_bytes() == activities.CSV_PATH.read_bytes()
+
+
 def test_a_row_keeps_its_leading_zero_and_its_values(tmp_path):
     activities.load(write_csv(tmp_path, BIKE))
 

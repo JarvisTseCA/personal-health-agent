@@ -130,6 +130,12 @@ copies the CSV into the `activities` table in SQLite. So the CSV is the only pla
 restart the backend. A mistake in the CSV (a MET value that isn't a number, a code used twice) stops the
 backend from starting and names the line.
 
+Two more columns, `family` (the movement itself, e.g. `running`, `cycling_indoor`) and `type` (the kind
+of workout, e.g. `cardio`, `mind_body`), are for the similarity check between suggestions; the backend
+doesn't use them yet. `activity_tables/update_table.py` fills them in from rules on the description,
+and also holds the hand fixes to rows (by code, each with its reason). After editing the CSV, run
+`python activity_tables/update_table.py` so both columns stay in step.
+
 `activity_code`, the 5-digit Compendium code, is the id. The frontend library stores the same code for
 each of its activities (`code`), so both sides can point at the same activity.
 

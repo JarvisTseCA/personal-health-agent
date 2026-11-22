@@ -14,6 +14,10 @@
   --wash: #ECEAF5;          /* chips, quiet fills */
   --gap: #E6E3F0;           /* unfilled part of the goal strip */
   --good: #2F8F7A;
+  --like: #23705F;          /* liked category chip (white text, 5.9:1) */
+  --dislike: #B8475C;       /* disliked category chip border */
+  --dislike-bg: #FBECEF;
+  --dislike-ink: #8A2F42;   /* text on --dislike-bg (7.2:1) */
   --today-left: #D99A2B;    /* what's left of today's target */
   --caution-bg: #FFF4DE;
   --caution-ink: #7A4B00;
@@ -141,7 +145,9 @@ p { margin: 0; }
 .tabbar {
   flex: none;
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
+  /* One equal column per visible tab, however many there are. */
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
   border-top: 1px solid var(--line);
   background: var(--surface);
   padding: 6px 8px calc(14px + env(safe-area-inset-bottom));
@@ -815,3 +821,26 @@ input[type="range"] { width: 100%; accent-color: var(--ink); height: 32px; }
 .sum-notes li { display: flex; justify-content: space-between; gap: 8px; align-items: flex-start; padding: 10px 12px; border-radius: 12px; background: var(--wash); }
 .sum-notes p { font-size: var(--t-sm); margin-bottom: 2px; }
 .sum-applied { margin: 10px 0 0; padding-left: 20px; font-size: var(--t-sm); color: var(--good); font-weight: 700; display: flex; flex-direction: column; gap: 4px; }
+
+/* "Tell us what you love doing": 👍 / 👎 sit in a corner badge so a chip never changes size.
+   Liked chips are green, disliked ones rose. Both pass 4.5:1 for their text. */
+.cat-chips { padding-top: 8px; row-gap: 14px; column-gap: 14px; }
+.chip.cat-chip { position: relative; }
+.chip.chip-like { border-color: var(--like); background: var(--like); color: #fff; }
+.chip.chip-dislike { border-color: var(--dislike); background: var(--dislike-bg); color: var(--dislike-ink); }
+.pref-badge {
+  position: absolute; top: -10px; right: -8px; width: 24px; height: 24px; border-radius: 50%;
+  display: grid; place-items: center; font-size: 13px; line-height: 1;
+  background: var(--surface); border: 1.5px solid var(--line-strong);
+}
+.chip-like .pref-badge { border-color: var(--like); }
+.chip-dislike .pref-badge { border-color: var(--dislike); }
+.category-hints { list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 2px; font-size: var(--t-xs); color: var(--ink-2); }
+.settings-section + .settings-section { margin-top: 28px; padding-top: 20px; border-top: 1px solid var(--line); }
+.settings-section h2 { margin-bottom: 4px; }
+.settings-section .help { margin: 0 0 12px; }
+
+/* A text checkmark (✓, not the emoji) on the Today tab once today's target is reached. A corner badge,
+   so the tab bar doesn't shift. Green like "Done" on Today's progress bar. */
+.tab-icon { position: relative; display: inline-flex; }
+.tab-badge { position: absolute; top: -8px; right: -16px; font-size: 24px; font-weight: 800; line-height: 1; color: var(--good); font-variant-emoji: text; }

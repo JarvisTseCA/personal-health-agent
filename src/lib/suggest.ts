@@ -5,7 +5,8 @@
  * words, but the activity, minutes and MET-hours come from here, so they are
  * explainable ("Why this?") and the backend always has a safe fallback.
  */
-import { equipmentOf, getFamily, settingOf, type ActivityFamily, type ActivityKind, type ActivityVariant } from "./activities";
+import { equipmentOf, getFamily, PICKABLE, settingOf, type ActivityFamily, type ActivityKind, type ActivityVariant } from "./activities";
+import { categoryOf, type CategoryPrefs } from "./categories";
 import { equipmentName } from "./equipment";
 import { countsTowardGoal, creditFor, metHours, VIGOROUS_MET } from "./met";
 
@@ -39,7 +40,11 @@ export interface Constraint {
 }
 
 export interface SuggestInput {
-  /** Enjoyed family ids, favorite first */
+  /**
+   * Liked family ids, favorite first. Learned from feedback (accepted suggestions,
+   * "in the mood for") or set in Preferences. They rank higher; they don't limit
+   * what can be suggested.
+   */
   enjoyed: string[];
   access: Record<string, Access>;
   /** Health flag or clinician limit: nothing at or above 6 MET */
@@ -69,6 +74,11 @@ export interface SuggestInput {
   declines: Array<{ familyId: string; reason: DeclineReason; daysAgo: number }>;
   /** Families ruled out today (declined, or no access) */
   exclude: string[];
+  /**
+   * Categories of the activity table the user marked (👍 like / 👎 dislike) in onboarding or
+   * Settings. Disliked ones are never suggested; liked ones rank higher. Missing on older saves.
+   */
+  categoryPrefs?: CategoryPrefs;
   constraint?: Constraint;
 }
 
@@ -98,6 +108,7 @@ export function fitsPlace(f: ActivityFamily, v: ActivityVariant, place: Place, e
 
 function allowed(f: ActivityFamily, v: ActivityVariant, input: SuggestInput): boolean {
   if (input.noVigorous && v.met >= VIGOROUS_MET) return false;
+  if (input.categoryPrefs?.[categoryOf(v) ?? ""] === "dislike") return false;
   if (!fitsPlace(f, v, input.place, input.equipmentHere)) return false;
   const c = input.constraint;
   if (c?.indoorOnly && settingOf(f, v) === "outdoor") return false;
@@ -176,9 +187,16 @@ function scoreOne(f: ActivityFamily, v: ActivityVariant, d: number, input: Sugge
 
   const rank = input.enjoyed.indexOf(f.id);
   const n = Math.max(1, input.enjoyed.length);
-  score += 3 * (1 - rank / n);
+  if (rank >= 0) score += 3 * (1 - rank / n);
   if (rank === 0) reasons.push("Your favorite");
   else if (rank === 1) reasons.push("Your second favorite");
+
+  // A category the user said they like (👍): about as strong as being their favorite activity.
+  const category = categoryOf(v);
+  if (category && input.categoryPrefs?.[category] === "like") {
+    score += 2.5;
+    reasons.push(`You like ${category.toLowerCase()}`);
+  }
 
   if (input.mood === f.id) {
     score += 3;
@@ -254,17 +272,15 @@ function deskOptions(): SuggestResult {
 }
 
 /**
- * What passes the hard filters today: enjoyed, accessible, not ruled out,
+ * What passes the hard filters today: any activity that is accessible, not ruled out,
  * allowed by health limits and today's constraints, and the session lengths
  * that fit. The ranker scores these; the backend sends them to Jev as options.
  */
 export function candidates(input: SuggestInput): { options: Array<{ family: ActivityFamily; variant: ActivityVariant }>; durations: number[] } {
   const durations = durationChoices(input.minutes, input.maxSessionMin);
   if (input.minutes <= 0 || durations.length === 0) return { options: [], durations: [] };
-  const options = input.enjoyed
-    .filter((id) => !input.exclude.includes(id) && input.access[id] !== "no")
-    .map(getFamily)
-    .filter((f) => !f.fallbackOnly)
+  const options = PICKABLE
+    .filter((f) => !input.exclude.includes(f.id) && input.access[f.id] !== "no")
     .flatMap((family) => family.variants.filter((v) => allowed(family, v, input)).map((variant) => ({ family, variant })));
   return { options, durations };
 }

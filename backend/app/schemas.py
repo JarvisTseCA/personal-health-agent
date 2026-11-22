@@ -48,6 +48,8 @@ class Option(BaseModel):
     met: float
     description: str
     setting: str  # indoor | outdoor
+    # Its category in the activity table (major_heading, e.g. "Bicycling"); empty from older clients.
+    category: str = ""
 
 
 class Recent(BaseModel):
@@ -90,6 +92,9 @@ class SuggestBase(BaseModel):
     declines: List[Decline] = []
     limits: Limits = Limits()
     constraint_notes: List[str] = []  # e.g. "Indoors only (weather)"
+    # Table categories the user marked 👍 in onboarding or Settings. Disliked ones are filtered
+    # out by the app before the options are sent.
+    liked_categories: List[str] = []
 
 
 class SuggestRequest(SuggestBase):

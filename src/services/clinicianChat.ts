@@ -15,6 +15,7 @@ import { getFamily } from "../lib/activities";
 import { guidanceOf, isAddFeedbackRequest, isClinicianReport, quote, type ClinicianNote } from "../lib/clinicianNotes";
 import { fmtGoal } from "../lib/met";
 import type { AppState, ChatMessage } from "../state/types";
+import { isHidden } from "../state/screens";
 
 let seq = 0;
 const id = (p: string) => `${p}-${Date.now().toString(36)}-${(seq++).toString(36)}`;
@@ -67,7 +68,7 @@ export function savedReply(state: AppState, note: ClinicianNote): { text: string
     lines.push(`Your weekly goal is still ${fmtGoal(state.goal)} MET-hours (about ${min} minutes of brisk activity). If you and your clinician agreed on a different goal, you can change it on Progress.`);
   }
   if (lines.length === 1) lines.push("I'll keep it in mind when I suggest workouts and answer your questions.");
-  lines.push("You can see or remove saved notes on the Summary tab.");
+  lines.push(isHidden("summary") ? "You can see or remove saved notes in Preferences (the settings icon on Today)." : "You can see or remove saved notes on the Summary tab.");
   return { text: lines.join("\n\n"), suggestions, kind };
 }
 
@@ -82,7 +83,7 @@ export function applyClinicianTurn(state: AppState, text: string, now = new Date
     case "ask":
       return { ...state, chat: [...state.chat, user, reply(ASK_PROMPT, { kind: "ask-clinician" })] };
     case "cancel":
-      return { ...state, chat: [...state.chat, user, reply("No problem. You can add your clinician's feedback any time from here or the Summary tab.", { suggestions: ["What should I do today?"] })] };
+      return { ...state, chat: [...state.chat, user, reply(isHidden("summary") ? "No problem. You can add your clinician's feedback here any time." : "No problem. You can add your clinician's feedback any time from here or the Summary tab.", { suggestions: ["What should I do today?"] })] };
     case "add-strength": {
       const profile = { ...state.profile, enjoyed: [...state.profile.enjoyed, "strength"], access: { ...state.profile.access, strength: state.profile.access.strength ?? "have" } };
       const msg = `Done. I've added ${getFamily("strength").noun} to your activities, and I'll suggest it more often while your clinician's note is saved. You can reorder or remove it in Preferences.`;

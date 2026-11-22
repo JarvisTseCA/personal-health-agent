@@ -1,30 +1,30 @@
 /**
- * Onboarding, observe-first (workflow doc):
- *   Day 1: connect Fitbit, one health question.
- *   Days 1–7: observe a week; no suggestions yet, but the streak already counts.
- *   Day 8: confirm what the agent detected, then likes, equipment at home and
- *   at the gym (a photo or a typed list, one place at a time), and the first weekly plan.
- * "Don't want to wait?" skips the observing week and asks the day-8 questions now.
+ * Onboarding, short: connect Fitbit, one health question, "Tell us what you love
+ * doing", plan the first week.
+ *
+ * "Tell us what you love doing" shows the activity table's categories: one tap
+ * likes a category (👍), a second dislikes it (👎), a third clears it. It's
+ * optional; the same chips are on the Settings tab. There's no observing week
+ * and no equipment question: the coach also learns from feedback on suggestions
+ * (accepting one adds it to their likes; "Not in the mood" or "Can't access it"
+ * steer away from it).
+ *
  * Every page after the welcome has Back, which returns to the page the user came from.
- * Access and usual weekly time aren't asked: everything starts as available
- * ("Can't access it" on a pick fixes that later), and each day starts at 10 min.
+ * Each day starts at 10 min.
  */
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { BackIcon, WatchIcon } from "../components/Icons";
-import { GearPicker } from "../components/GearPicker";
-import { Flame } from "../components/Rewards";
 import { OtherInput } from "../components/OtherInput";
-import { matchActivity, parsePlanChanges, parseYesNo } from "../lib/freeText";
-import { PERSONAS } from "../data/mockFitbit";
-import { getFamily, getVariant, PICKABLE, searchFamilies } from "../lib/activities";
+import { parsePlanChanges } from "../lib/freeText";
 import { DAY_NAMES_LONG } from "../lib/met";
-import { SLOT_LABEL, SLOT_MINUTES, type WeekPlan } from "../lib/plan";
-import { TimeOptions } from "../components/TimeOptions";
-import type { Access } from "../lib/suggest";
+import { SLOT_LABEL, type WeekPlan } from "../lib/plan";
+import { PlanDays } from "../components/PlanDays";
+import { CATEGORY_HELP, CategoryChips } from "../components/CategoryChips";
+import { withPref, type CategoryPrefs } from "../lib/categories";
 import { DEFAULT_PROFILE, useStore } from "../state/store";
 
-type Step = "welcome" | "fitbit" | "health" | "path" | "observing" | "confirm" | "enjoy" | "home-gear" | "gym-gear" | "plan";
-const ORDER: Step[] = ["fitbit", "health", "path", "observing", "confirm", "enjoy", "home-gear", "gym-gear", "plan"];
+type Step = "welcome" | "fitbit" | "health" | "likes" | "plan";
+const ORDER: Step[] = ["fitbit", "health", "likes", "plan"];
 
 /** Every day starts at 10 min; the user changes the days that differ. */
 const START_PLAN: WeekPlan = ["10", "10", "10", "10", "10", "10", "10"];
@@ -32,35 +32,13 @@ const START_PLAN: WeekPlan = ["10", "10", "10", "10", "10", "10", "10"];
 export function Onboarding({ onDone }: { onDone: () => void }) {
   const { state, dispatch } = useStore();
   const [step, setStep] = useState<Step>("welcome");
-  const [observed, setObserved] = useState(false);
   const [health, setHealth] = useState<null | "none" | "skip">(null);
   /** The large "anything we should know?" box */
   const [about, setAbout] = useState("");
   const [connected, setConnected] = useState(false);
   const [connecting, setConnecting] = useState(false);
-  const [enjoyed, setEnjoyed] = useState<string[]>([]);
-  const [access, setAccess] = useState<Record<string, Access>>({});
   const [plan, setPlan] = useState<WeekPlan>(START_PLAN);
-  const [query, setQuery] = useState("");
-  const [bout, setBout] = useState(0);
-  const [fixing, setFixing] = useState(false);
-  const [homeGear, setHomeGear] = useState<string[]>([]);
-  /** null until answered; "no" means they don't use a gym */
-  const [goesToGym, setGoesToGym] = useState<null | "yes" | "no">(null);
-  const [gymGear, setGymGear] = useState<string[]>([]);
-
-  // The "observed" week: the persona's most recent week, or Alex's for new users.
-  const bouts = useMemo(() => {
-    const p = PERSONAS.find((x) => x.id === state.personaId);
-    const wk = (p?.history.length ? p : PERSONAS[0]).history.at(-1)!.sessions.filter((s) => !getVariant(s.variantId).family.fallbackOnly);
-    const seen = new Set<string>();
-    return wk.filter((s) => {
-      const f = getVariant(s.variantId).family.id;
-      if (seen.has(f)) return false;
-      seen.add(f);
-      return true;
-    }).slice(0, 3);
-  }, [state.personaId]);
+  const [prefs, setPrefs] = useState<CategoryPrefs>({});
 
   const [hint, setHint] = useState<string | null>(null);
   /** Pages visited, so Back returns to the one the user came from */
@@ -68,8 +46,6 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
   const go = (s: Step) => { setTrail((t) => [...t, step]); setStep(s); setHint(null); };
   const back = () => {
     setHint(null);
-    if (step === "confirm" && fixing) { setFixing(false); return; }
-    if (step === "confirm" && bout > 0) { setBout((b) => b - 1); return; }
     const prev = trail.at(-1);
     if (!prev) return;
     setTrail(trail.slice(0, -1));
@@ -77,28 +53,7 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
   };
   const note = (text: string, where: string) => dispatch({ type: "addNote", text, where: `Onboarding: ${where}` });
 
-  // ---- The "Other" box on each step: typed answers become the same choices the buttons make.
-  const typedBout = (text: string) => {
-    const yn = parseYesNo(text);
-    if (!fixing && yn === true) { confirmBout(getVariant(current.variantId).family.id); return; }
-    if (/\b(skip|not sure|don't know|dont know|no idea)\b/i.test(text)) { confirmBout(null); return; }
-    const fam = matchActivity(text);
-    if (fam) { confirmBout(fam); setHint(`Got it: ${getFamily(fam).noun}.`); return; }
-    if (!fixing && yn === false) { setFixing(true); return; }
-    note(`Did "${text}"`, "confirm workout");
-    confirmBout(null);
-    setHint(`"${text}" isn't in my activity list yet, so I've noted it for the team.`);
-  };
-  const typedEnjoy = (text: string) => {
-    const fam = matchActivity(text);
-    if (fam) {
-      if (!enjoyed.includes(fam)) toggle(fam);
-      setHint(`Added ${getFamily(fam).noun}.`);
-      return;
-    }
-    note(`Enjoys "${text}"`, "activities");
-    setHint(`I don't have "${text}" in my list yet, so I can't count it accurately. I've noted it for the team.`);
-  };
+  // The "Other" box on the plan page: typed changes become the same choices the buttons make.
   const typedPlan = (text: string) => {
     const changes = parsePlanChanges(text);
     const days = Object.keys(changes).map(Number);
@@ -106,22 +61,7 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
     setPlan((p) => p.map((x, i) => changes[i] ?? x));
     setHint(`Updated ${days.map((d) => `${DAY_NAMES_LONG[d]} to ${SLOT_LABEL[changes[d]]}`).join(", ")}.`);
   };
-  const idx = ORDER.indexOf(step as Step);
-
-  const confirmBout = (familyId: string | null) => {
-    if (familyId && !enjoyed.includes(familyId)) {
-      setEnjoyed((e) => [...e, familyId]);
-      setAccess((a) => ({ ...a, [familyId]: "have" }));
-    }
-    setFixing(false);
-    if (bout + 1 >= bouts.length) go("enjoy");
-    else setBout((b) => b + 1);
-  };
-
-  const toggle = (id: string) => {
-    setEnjoyed((e) => (e.includes(id) ? e.filter((x) => x !== id) : [...e, id]));
-    setAccess((a) => ({ ...a, [id]: a[id] ?? "have" }));
-  };
+  const idx = ORDER.indexOf(step);
 
   /**
    * The health page. The box takes anything the coach should know and is kept
@@ -131,23 +71,25 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
   const healthFlag = health === "skip" || (health !== "none" && about.trim() !== "");
   const continueHealth = () => {
     if (about.trim()) note(about.trim(), "anything we should know");
-    go("path");
+    go("likes");
   };
 
   const finish = () => {
     dispatch({
       type: "completeOnboarding",
       profile: {
-        ...DEFAULT_PROFILE, ...state.profile, enjoyed, access, hasHealthCondition: healthFlag, fitbitConnected: connected,
-        equipment: { home: homeGear, gym: goesToGym === "yes" ? gymGear : null },
+        ...DEFAULT_PROFILE, ...state.profile,
+        // Nothing liked or ruled out yet: feedback on suggestions fills these in.
+        enjoyed: [], access: {},
+        // No equipment asked: suggestions aren't limited by equipment until the user sets it in Preferences.
+        equipment: undefined,
+        hasHealthCondition: healthFlag, fitbitConnected: connected,
+        categoryPrefs: prefs,
       },
       plan,
     });
     onDone();
   };
-
-  const results = query ? searchFamilies(query) : PICKABLE;
-  const current = bouts[bout];
 
   return (
     <div className="onb">
@@ -172,9 +114,9 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
             </div>
             <h1 style={{ fontSize: 40, lineHeight: 1.05 }}>Raise your VO2 max. Skip the planning.</h1>
             <p className="lead" style={{ marginTop: 14 }}>
-              VO2 max is the best single measure of cardio fitness. Each day I'll hand you one workout that fits your time,
-              the equipment where you are and the things you enjoy, and count it toward the weekly guideline: the training
-              that builds VO2 max. You just tap.
+              VO2 max is the best single measure of cardio fitness. Each day I'll hand you one workout that fits your time
+              and where you are, and count it toward the weekly guideline: the training that builds VO2 max. You just tap,
+              and I learn what you like from what you pick.
             </p>
           </div>
           <div className="actions">
@@ -236,120 +178,15 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
         </>
       )}
 
-      {step === "path" && (
+      {step === "likes" && (
         <>
           <div className="grow">
-            <h1>First, I'll watch a week</h1>
-            <p className="lead">Wear your Fitbit as usual for 7 days. I won't suggest anything yet. On day 8 I'll show you what I noticed, and we'll build your list from what you already do.</p>
-            <p className="small muted">Your streak counts from today: every day you open the app.</p>
+            <h1>Tell us what you love doing</h1>
+            <p className="lead">I'll suggest more of what you like and skip what you don't. {CATEGORY_HELP} You can change these any time in Settings.</p>
+            <CategoryChips prefs={prefs} onChange={(c, p) => setPrefs((cur) => withPref(cur, c, p))} />
           </div>
           <div className="actions">
-            <button className="btn btn-primary btn-block" onClick={() => { setObserved(true); go("observing"); }}>Start my week</button>
-            <button className="btn btn-ghost" onClick={() => { setObserved(false); go("enjoy"); }}>Don't want to wait? Set up now</button>
-          </div>
-        </>
-      )}
-
-      {step === "observing" && (
-        <>
-          <div className="grow">
-            <h1>Watching your week</h1>
-            <p className="lead">Day 1 of 7. Just move the way you normally do.</p>
-            <ol className="observe-days">
-              {DAY_NAMES_LONG.map((d, i) => (
-                <li key={d} className={i === 0 ? "now" : ""}><Flame size={28} lit={i === 0} /><span>{d.slice(0, 3)}</span></li>
-              ))}
-            </ol>
-          </div>
-          <div className="actions">
-            <button className="btn btn-primary btn-block" onClick={() => go("confirm")}>Skip ahead to day 8 (demo)</button>
-          </div>
-        </>
-      )}
-
-      {step === "confirm" && current && (
-        <>
-          <div className="grow">
-            <h1>Here's what I noticed</h1>
-            <p className="lead">{bout + 1} of {bouts.length}. Confirming helps me count it right.</p>
-            <div className="msg agent" style={{ maxWidth: "100%" }}>
-              {DAY_NAMES_LONG[current.dayIndex]}, {current.durationMin} min at {current.startTime}. Looks like {getVariant(current.variantId).family.noun}. Right?
-            </div>
-            {!fixing ? (
-              <div className="bubbles" style={{ marginTop: 12 }}>
-                <button className="chip chip-strong" onClick={() => confirmBout(getVariant(current.variantId).family.id)}>Yes</button>
-                <button className="chip" onClick={() => setFixing(true)}>It was something else</button>
-                <button className="chip" onClick={() => confirmBout(null)}>Skip</button>
-              </div>
-            ) : (
-              <div className="chips" style={{ marginTop: 12 }}>
-                {PICKABLE.map((f) => (
-                  <button key={f.id} className="chip" onClick={() => confirmBout(f.id)}><span className="dot" style={{ background: f.color }} />{f.name}</button>
-                ))}
-              </div>
-            )}
-            <OtherInput key={`${bout}-${fixing}`} placeholder={fixing ? "Other: type what it was" : "Other: type your answer"} onSubmit={typedBout} hint={hint} />
-          </div>
-        </>
-      )}
-
-      {step === "enjoy" && (
-        <>
-          <div className="grow">
-            <h1>{observed ? "Anything else you enjoy?" : "What do you enjoy doing?"}</h1>
-            <p className="lead">I'll only suggest these. Tap in order of how much you like them; your first is your favorite.</p>
-            <label className="sr-only" htmlFor="q">Search activities</label>
-            <input id="q" className="search" placeholder="Search, e.g. salsa or hoops" value={query} onChange={(e) => setQuery(e.target.value)} />
-            <div className="chips">
-              {results.map((f) => {
-                const order = enjoyed.indexOf(f.id);
-                return (
-                  <button key={f.id} className="chip" aria-pressed={order >= 0} onClick={() => toggle(f.id)}>
-                    {order >= 0 ? <span className="order">{order + 1}</span> : <span className="dot" style={{ background: f.color }} />}
-                    {f.name}
-                  </button>
-                );
-              })}
-            </div>
-            <OtherInput placeholder="Other: an activity not listed here" onSubmit={typedEnjoy} hint={hint} />
-          </div>
-          <div className="actions">
-            <button className="btn btn-primary btn-block" onClick={() => go("home-gear")} disabled={enjoyed.length === 0}>{enjoyed.length ? "Continue" : "Pick at least one"}</button>
-          </div>
-        </>
-      )}
-
-      {step === "home-gear" && (
-        <>
-          <div className="grow">
-            <h1>What do you have at home?</h1>
-            <p className="lead">Upload a photo of where you'd work out and I'll find the equipment in it, or tell me in a few words. I'll only suggest workouts you can do with what's there.</p>
-            <GearPicker place="home" value={homeGear} onChange={setHomeGear} onNote={(t) => note(t, "equipment at home")} />
-          </div>
-          <div className="actions">
-            <button className="btn btn-primary btn-block" onClick={() => go("gym-gear")}>{homeGear.length ? "Continue" : "Nothing at home, continue"}</button>
-          </div>
-        </>
-      )}
-
-      {step === "gym-gear" && (
-        <>
-          <div className="grow">
-            <h1>Do you go to a gym?</h1>
-            <p className="lead">If you do, I'll ask about it separately: on gym days I'll plan around its machines and weights.</p>
-            <div className="choice">
-              <button aria-pressed={goesToGym === "yes"} onClick={() => setGoesToGym("yes")}><b>Yes</b><span>Tell me what's there</span></button>
-              <button aria-pressed={goesToGym === "no"} onClick={() => setGoesToGym("no")}><b>No</b><span>I'll leave the gym out of your options</span></button>
-            </div>
-            {goesToGym === "yes" && (
-              <div style={{ marginTop: 22 }}>
-                <h2 className="gear-q">What does your gym have?</h2>
-                <GearPicker place="gym" value={gymGear} onChange={setGymGear} onNote={(t) => note(t, "equipment at the gym")} />
-              </div>
-            )}
-          </div>
-          <div className="actions">
-            <button className="btn btn-primary btn-block" onClick={() => go("plan")} disabled={goesToGym === null}>Continue</button>
+            <button className="btn btn-primary btn-block" onClick={() => go("plan")}>{Object.keys(prefs).length ? "Continue" : "Skip for now"}</button>
           </div>
         </>
       )}
@@ -359,18 +196,7 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
           <div className="grow">
             <h1>Plan this week</h1>
             <p className="lead">Every day starts at 10 min. Change the days that are different, and mark days you can't exercise at all as Off. The weekly goal stays the same; days with more time get more of it.</p>
-            <ul className="plan-grid">
-              {plan.map((slot, i) => (
-                <li key={i}>
-                  <div className="plan-day">
-                    <b>{DAY_NAMES_LONG[i]}</b>
-                    {SLOT_MINUTES[slot] === 0 && <span className="xs muted">{slot === "off" ? "Day off" : "Desk moves only"}</span>}
-                  </div>
-                  <TimeOptions variant="slot" label={`${DAY_NAMES_LONG[i]} time`} value={slot}
-                    onPick={(s) => setPlan((p) => p.map((x, j) => (j === i ? s : x)))} />
-                </li>
-              ))}
-            </ul>
+            <PlanDays plan={plan} onPick={(i, s) => setPlan((p) => p.map((x, j) => (j === i ? s : x)))} />
             <OtherInput placeholder="Other: e.g. Thu off, Sat 45 min" onSubmit={typedPlan} hint={hint} />
           </div>
           <div className="actions">
@@ -381,4 +207,3 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
     </div>
   );
 }
-

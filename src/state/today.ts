@@ -17,7 +17,6 @@ import { WEEKLY_UPPER_LIMIT } from "../lib/goal";
 import { ALL_FROM_PLAN, SLOT_MINUTES, type DaySlot } from "../lib/plan";
 import { afterDecline, DECLINE_LABEL, suggest, type DeclineReason, type Energy, type Place, type Suggestion } from "../lib/suggest";
 import { matchActivity, parseEnergy, parseMinutes, parsePlace, parseReason, parseYesNo } from "../lib/freeText";
-import { answer, QUESTIONS, type QuestionId } from "../services/answers";
 import { SCRIPTED_REPLIES } from "../services/mockResponses";
 import type { BackendSuggestion } from "../services/backend";
 import { buildAgentContext, buildSuggestInput, equipmentAt } from "../services/context";
@@ -216,10 +215,17 @@ function describe(s: Suggestion): string {
 }
 
 export function accept(state: AppState, which: Suggestion, typed?: string): AppState {
-  const s = push(state, user(typed ?? (state.today.current?.lead === which ? "Let's start" : `I'll do ${describe(which)}`)));
+  const s = push(learnLike(state, which.familyId), user(typed ?? (state.today.current?.lead === which ? "Let's start" : `I'll do ${describe(which)}`)));
   return setToday(push(s, agent(`Nice. ${describe(which).replace(/^./, (c) => c.toUpperCase())}. I'll watch for it on your Fitbit and count it when it syncs.`)), {
     step: "accepted", accepted: which, reminder: undefined,
   });
+}
+
+/** Feedback, not a form: an accepted activity joins the user's likes (at the end, so earlier likes stay ahead). */
+function learnLike(state: AppState, familyId: string): AppState {
+  const p = state.profile;
+  if (getFamily(familyId).fallbackOnly || p.enjoyed.includes(familyId)) return state;
+  return { ...state, profile: { ...p, enjoyed: [...p.enjoyed, familyId], access: { ...p.access, [familyId]: p.access[familyId] ?? "have" } } };
 }
 
 /**
@@ -317,12 +323,6 @@ export function wantMore(state: AppState): AppState {
     boost: true, checkIn: { ...state.today.checkIn, minutes: Math.max(state.today.checkIn.minutes ?? 30, 45) },
   });
   return offer(s, "Love it. Here's a bigger option; I'll lower the rest of the week to match.");
-}
-
-export function ask(state: AppState, q: QuestionId): AppState {
-  const ctx = buildAgentContext(state);
-  const s = state.today.accepted ?? state.today.current?.lead;
-  return push(state, user(QUESTIONS[q]), agent(answer(q, ctx, s)));
 }
 
 /** After a session is counted: credit line, the trophy when the week's goal is reached, then "keep going" or wrap up. */

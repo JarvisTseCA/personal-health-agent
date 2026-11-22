@@ -14,7 +14,6 @@ import { equipmentName } from "../lib/equipment";
 import { movesFor } from "../lib/moves";
 import { countsTowardGoal, fmt, fmtGoal, intensityOf } from "../lib/met";
 import { DECLINE_LABEL, type DeclineReason, type Suggestion } from "../lib/suggest";
-import { QUESTIONS, type QuestionId } from "../services/answers";
 import { equipmentAt } from "../services/context";
 import { useStore } from "../state/store";
 import { CHANGE_TIME_LABEL, CONFIRM_CHOICES, ENERGY_OPTIONS, hasHowTo, keepTimeLabel, PLACE_OPTIONS, REMIND_OPTIONS } from "../state/today";
@@ -58,14 +57,17 @@ function Bubbles({ children, label }: { children: React.ReactNode; label: string
   return <div className="bubbles" role="group" aria-label={label}>{children}</div>;
 }
 
-function Questions({ ids, how }: { ids: QuestionId[]; how?: boolean }) {
+/**
+ * "Show me how", when the pick has a how-to video. The one-tap questions that used
+ * to sit beside it (What's a MET?, Why this activity?, …) are gone from Today;
+ * typed questions are still answered, and Chat has its own starters.
+ */
+function ShowHow() {
   const { state, dispatch } = useStore();
+  if (!hasHowTo(state)) return null;
   return (
-    <div className="ask-row" role="group" aria-label="Ask the agent">
-      {how && hasHowTo(state) && <button className="ask-chip ask-how" onClick={() => dispatch({ type: "showHow" })}>Show me how</button>}
-      {ids.map((q) => (
-        <button key={q} className="ask-chip" onClick={() => dispatch({ type: "ask", q })}>{QUESTIONS[q]}</button>
-      ))}
+    <div className="ask-row">
+      <button className="ask-chip ask-how" onClick={() => dispatch({ type: "showHow" })}>Show me how</button>
     </div>
   );
 }
@@ -249,7 +251,7 @@ export function TodayScreen({ go, openPrefs }: { go: (s: Screen) => void; openPr
         )}
         {t.step === "place" && (
           <Bubbles label="Where you'll exercise">
-            {PLACE_OPTIONS.filter(([, p]) => p !== "gym" || state.profile.equipment?.gym !== null).map(([label, p]) => <button key={p} className="chip" onClick={() => dispatch({ type: "place", label, place: p })}>{label}</button>)}
+            {PLACE_OPTIONS.map(([label, p]) => <button key={p} className="chip" onClick={() => dispatch({ type: "place", label, place: p })}>{label}</button>)}
           </Bubbles>
         )}
         {t.step === "energy" && (
@@ -266,7 +268,7 @@ export function TodayScreen({ go, openPrefs }: { go: (s: Screen) => void; openPr
               <button className="btn btn-quiet" onClick={() => dispatch({ type: "remindLater" })}>Remind me later</button>
               <button className="btn btn-quiet" onClick={() => dispatch({ type: "another" })}>Give me another option</button>
             </div>
-            <Questions how ids={["met", "why", "how"]} />
+            <ShowHow />
           </div>
         )}
 
@@ -304,7 +306,7 @@ export function TodayScreen({ go, openPrefs }: { go: (s: Screen) => void; openPr
               <button className="btn btn-primary" onClick={() => dispatch({ type: "sync" })}>Sync Fitbit (demo)</button>
               <button className="btn btn-quiet" onClick={() => dispatch({ type: "decline" })}>Change of plans</button>
             </div>
-            <Questions how ids={["how", "vo2", "goal"]} />
+            <ShowHow />
           </div>
         )}
 
@@ -340,7 +342,6 @@ export function TodayScreen({ go, openPrefs }: { go: (s: Screen) => void; openPr
               <button className="chip" onClick={() => go("progress")}>See my progress</button>
               <button className="chip" onClick={() => dispatch({ type: "sync" })}>Sync another workout (demo)</button>
             </Bubbles>
-            <Questions ids={["rewards", "vo2"]} />
           </div>
         )}
         {OTHER_PLACEHOLDER[t.step] && (t.step !== "confirm" || pending) && (

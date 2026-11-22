@@ -1,9 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { buildSuggestRequest, type BackendSuggestion } from "../services/backend";
-import { buildAgentContext } from "../services/context";
+import { buildAgentContext, equipmentAt, reachedToday, serializeContext, TYPICAL_GYM } from "../services/context";
 import { initialState, personaProfile } from "./store";
 import * as T from "./today";
 import { applyClinicianTurn } from "../services/clinicianChat";
+import { isHidden } from "./screens";
 import type { AppState } from "./types";
 
 function onboarded(persona = "alex"): AppState {
@@ -20,10 +21,66 @@ function checkIn(s: AppState, minutes = 30): AppState {
 }
 
 describe("today flow", () => {
-  it("check-in leads to one pick from the enjoyed list", () => {
+  it("check-in leads to one pick, with liked activities in the mix", () => {
     const s = checkIn(onboarded());
     expect(s.today.step).toBe("suggested");
-    expect(["cycling", "dancing", "walking"]).toContain(s.today.current!.lead.familyId);
+    const c = s.today.current!;
+    // Alex cycled yesterday and walked two days ago, so a new activity can lead; a liked one stays among the options.
+    expect([c.lead, ...c.backups].some((x) => s.profile.enjoyed.includes(x.familyId))).toBe(true);
+  });
+
+  it("a new user with no likes and no equipment still gets a real suggestion", () => {
+    let s = initialState("alex");
+    s = T.startDay({ ...s, onboarded: true, profile: { ...personaProfile(s), enjoyed: [], access: {}, equipment: undefined } });
+    s = checkIn(s);
+    expect(s.today.step).toBe("suggested");
+    expect(s.today.current!.desk).toBeFalsy();
+  });
+
+  it("today counts as complete only on a day with a target, once it's met", () => {
+    expect(reachedToday({ todayTarget: 1.2, todayDone: 1.2 })).toBe(true);
+    expect(reachedToday({ todayTarget: 1.2, todayDone: 1.19 })).toBe(false);
+    expect(reachedToday({ todayTarget: 0, todayDone: 0 })).toBe(false);
+    expect(reachedToday({ todayTarget: 0, todayDone: 2 })).toBe(false);
+  });
+
+  it("sends category likes to the backend and leaves disliked categories out", () => {
+    let s = onboarded();
+    s = { ...s, profile: { ...s.profile, categoryPrefs: { Walking: "like", Bicycling: "dislike" } } };
+    s = T.answerTime(s, "30 min", 30); s = T.answerPlace(s, "Home", "home"); s = T.answerEnergy(s, "Normal", "normal");
+    const body = buildSuggestRequest(s);
+    expect(body.liked_categories).toEqual(["Walking"]);
+    expect(body.options.every((o) => o.category !== "Bicycling")).toBe(true);
+    expect(body.options.some((o) => o.category === "Walking")).toBe(true);
+    const user = serializeContext(buildAgentContext(s)).user;
+    expect(user.categories_they_like).toEqual(["Walking"]);
+    expect(user.categories_they_dislike).toEqual(["Bicycling"]);
+  });
+
+  it("while Summary is hidden, Chat points to Preferences instead of the Summary tab", () => {
+    expect(isHidden("summary")).toBe(true);
+    const s = applyClinicianTurn(onboarded(), "My doctor said keep it moderate for now");
+    expect(s.chat.at(-1)!.text).not.toMatch(/Summary tab/);
+    expect(s.chat.at(-1)!.text).toMatch(/Preferences/);
+  });
+
+  it("a gym with nothing listed counts as a typical gym, even on saves that said no gym", () => {
+    let s = initialState("fresh");
+    s = { ...s, onboarded: true, profile: personaProfile(s) };
+    expect(s.profile.equipment?.gym).toBeNull();
+    expect(equipmentAt(s, "gym")).toEqual(TYPICAL_GYM);
+    expect(serializeContext(buildAgentContext(s)).user.equipment_at_gym).toContain("Treadmill");
+  });
+
+  it("accepting a suggestion adds it to the user's likes, once", () => {
+    let s = initialState("alex");
+    s = T.startDay({ ...s, onboarded: true, profile: { ...personaProfile(s), enjoyed: [], access: {} } });
+    s = checkIn(s);
+    const lead = s.today.current!.lead;
+    s = T.accept(s, lead);
+    expect(s.profile.enjoyed).toEqual([lead.familyId]);
+    expect(s.profile.access[lead.familyId]).toBe("have");
+    expect(T.accept(s, lead).profile.enjoyed).toEqual([lead.familyId]);
   });
 
   it("0 minutes skips straight to desk moves", () => {
@@ -224,7 +281,9 @@ describe("backend (Jev) suggestions", () => {
     const body = buildSuggestRequest(s);
     expect(body.check_in.minutes).toBe(30);
     expect(body.durations.every((d) => d <= 30)).toBe(true);
-    expect(body.options.every((o) => s.profile.enjoyed.includes(o.family_id))).toBe(true);
+    expect(body.options.every((o) => s.profile.access[o.family_id] !== "no")).toBe(true);
+    // Every activity is an option now, not only the liked ones.
+    expect(body.options.some((o) => !s.profile.enjoyed.includes(o.family_id))).toBe(true);
   });
 
   it("swaps in the backend's pick while the ranker's is still showing", () => {

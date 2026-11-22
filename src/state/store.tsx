@@ -6,13 +6,15 @@ import { fmt, withCredit, type Session } from "../lib/met";
 import { ALL_FROM_PLAN, applyCalendarEdit, migratePlan, migrateSources, shorterSlot, SLOT_MINUTES, type DaySlot, type WeekPlan } from "../lib/plan";
 import { migratePlace, type Access, type DeclineReason, type Energy, type Place, type Suggestion } from "../lib/suggest";
 import { buildAgentContext, type AgentContext } from "../services/context";
-import { backendHealth, fetchSuggestion, type BackendSuggestion } from "../services/backend";
+import { backendHealth, fetchSuggestion, fetchTableSuggestion, type BackendSuggestion } from "../services/backend";
+import { registerTable } from "../lib/tableActivities";
+import { suggestSourceOf, TABLE_WAIT_MS } from "./suggestSource";
 import { fetchFitbitData, FitbitDisconnected } from "../services/fitbit";
 import { repository } from "../services/store";
 import { applyClinicianTurn } from "../services/clinicianChat";
 import * as Today from "./today";
 import type { EquipmentProfile } from "../data/mockFitbit";
-import type { AppState, ChatMessage, ClinicianNotes, Overlay, UserProfile } from "./types";
+import type { AppState, ChatMessage, ClinicianNotes, Overlay, SuggestSource, UserProfile } from "./types";
 
 export { newId } from "./today";
 
@@ -75,7 +77,7 @@ export function initialState(personaId = "alex"): AppState {
 /** The profile a persona would have after onboarding (used by "Skip onboarding"). */
 export function personaProfile(state: AppState): UserProfile {
   const p = PERSONAS.find((x) => x.id === state.personaId) ?? PERSONAS[0];
-  return { ...state.profile, enjoyed: p.enjoyed, access: p.access, fitbitConnected: true, equipment: p.equipment };
+  return { ...state.profile, enjoyed: p.enjoyed, access: p.access, fitbitConnected: true, equipment: p.equipment, pickedCodes: undefined };
 }
 
 export type Action =
@@ -129,6 +131,8 @@ export type Action =
   | { type: "addMessage"; message: ChatMessage }
   | { type: "updateMessage"; id: string; text: string; suggestions?: string[] }
   | { type: "backendSuggestion"; replaces: Suggestion; result: BackendSuggestion }
+  | { type: "backendFailed"; replaces: Suggestion }
+  | { type: "setSuggestSource"; source: SuggestSource }
   | { type: "reset" };
 
 function reducer(state: AppState, action: Action): AppState {
@@ -140,6 +144,8 @@ function reducer(state: AppState, action: Action): AppState {
 function reduce(state: AppState, action: Action): AppState {
   switch (action.type) {
     case "hydrate":
+      // Activity-table rows saved with the state: known to getVariant again before anything renders.
+      registerTable(Object.values(action.state.tableActivities ?? {}));
       return action.state;
     case "completeOnboarding":
       return Today.startDay({ ...state, onboarded: true, profile: action.profile, plan: action.plan, planSource: ALL_FROM_PLAN });
@@ -254,8 +260,13 @@ function reduce(state: AppState, action: Action): AppState {
       };
     case "backendSuggestion":
       return Today.applyBackendSuggestion(state, action.replaces, action.result);
+    case "backendFailed":
+      return Today.backendFailed(state, action.replaces);
+    case "setSuggestSource":
+      return { ...state, suggestSource: action.source };
     case "reset":
-      return initialState();
+      // The demo's choice of suggestion source stays; everything else starts over.
+      return { ...initialState(), suggestSource: state.suggestSource };
   }
 }
 
@@ -314,9 +325,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     if (state.today.step !== "suggested" || !c || c.source !== "rules" || c.desk || asked.current.has(c.lead)) return;
     const replaces = c.lead;
     asked.current.add(replaces);
+    const table = suggestSourceOf(state) === "table";
     backendHealth().then((h) => {
-      if (!h) return;
-      fetchSuggestion(state).then((r) => r && dispatch({ type: "backendSuggestion", replaces, result: r }));
+      if (!h) {
+        if (table) dispatch({ type: "backendFailed", replaces });
+        return;
+      }
+      const ask = table ? fetchTableSuggestion(state, TABLE_WAIT_MS) : fetchSuggestion(state);
+      ask.then((r) => dispatch(r ? { type: "backendSuggestion", replaces, result: r } : { type: "backendFailed", replaces }));
     });
   }, [state]);
 

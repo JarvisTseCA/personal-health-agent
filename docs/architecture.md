@@ -176,8 +176,24 @@ description up to its effort level, e.g. "Bicycling, stationary, 60 watts", for 
 `met_value` and `duration_min`, so the app can show it without its own copy of the table. `GET /api/activities`
 returns the table itself.
 
-To switch the app over (Phase 2 of the plan): send `liked_categories`, `picked_codes` and the other
-fields above instead of `options`, call `/api/suggest/table`, and show the pick from those fields. MET-hours still come from the calculator in `src/lib`.
+**In the app** (Phase 2 of the plan), behind the setting `VITE_SUGGEST_SOURCE` (`library`, the
+default, or `table`), which the demo controls can also switch ("Suggestions from"):
+
+- `buildTableRequest` in `src/services/backend.ts` sends today's check-in, 👍 categories
+  (`liked_categories`), 👎 categories and a "Did this recently" category (`exclude_headings`),
+  activities ruled out today and "Can't access it" at this place (`exclude_codes`), `indoor_only`
+  after "Weather", `below_met` after "Too tired", and recent workouts and declines with their codes.
+- Each place learns from its own feedback: an accepted table row's code is saved under today's
+  place (`profile.pickedCodes`), and each decline is saved with its place. A request sends only that
+  place's picked codes and declines; likes, limits and today's exclusions apply everywhere.
+- While the backend decides, the card says "Finding one for you…". If the backend can't be reached,
+  errors, finds nothing that fits, or takes more than 10 seconds (`TABLE_WAIT_MS`), the in-app
+  ranker's pick is shown instead.
+- Each row the backend returns becomes a one-variant activity with the id `table-<code>`
+  (`src/lib/tableActivities.ts`), registered so `getFamily` / `getVariant` find it. The rows are
+  saved with the app state (`tableActivities`), so a reload keeps today's pick and past sessions.
+  MET-hours are always the row's MET × minutes ÷ 60, from the calculator. *Show me how* appears
+  only when the library has an activity with the same Compendium code. MET-hours still come from the calculator in `src/lib`.
 
 Not handled yet:
 

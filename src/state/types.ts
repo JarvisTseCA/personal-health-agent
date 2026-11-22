@@ -5,6 +5,10 @@ import type { Video } from "../lib/moves";
 import type { ClinicianNote } from "../lib/clinicianNotes";
 import type { DaySource, WeekPlan } from "../lib/plan";
 import type { Access, Constraint, DeclineReason, Energy, Place, Suggestion } from "../lib/suggest";
+import type { TableActivity } from "../lib/tableActivities";
+
+/** The app's built-in list of 15 activities, or the activity table through the backend. */
+export type SuggestSource = "library" | "table";
 
 export type UsualTime = "under1" | "1to2" | "2to3" | "3plus";
 
@@ -27,6 +31,12 @@ export interface UserProfile {
    * onboarding or on the Settings tab. A category not listed has no preference. Missing on older saves.
    */
   categoryPrefs?: CategoryPrefs;
+  /**
+   * Activity-table rows the user accepted, by check-in place, as Compendium codes, first accepted
+   * first. Sent as picked_codes when Today's suggestions come from the table, for that place only,
+   * so each place learns from its own feedback. Missing on older saves.
+   */
+  pickedCodes?: Partial<Record<Place, string[]>>;
 }
 
 /**
@@ -44,6 +54,8 @@ export interface DeclineRecord {
   reason: DeclineReason;
   day: number;
   note?: string;
+  /** Where the user was checking in from. Missing on declines saved before places were recorded. */
+  place?: Place;
 }
 
 /** Something the user typed that the app couldn't turn into a choice. The coach keeps it. */
@@ -126,6 +138,11 @@ export interface TodayState {
     showBackups: boolean;
     /** Who picked it: the in-app ranker, or Jev via the backend (live or mocked) */
     source?: "rules" | "jev" | "mock";
+    /**
+     * Waiting for the backend's pick from the activity table: the card says "Finding one for
+     * you…" until it arrives, or shows the ranker's pick if the backend fails or is too slow.
+     */
+    pending?: boolean;
     /** The prompt sent to Jev and its answers, for the demo panel */
     jev?: { model: string; logId: number; request: unknown; answers: unknown };
   };
@@ -168,6 +185,10 @@ export interface AppState {
   fitbitWeek?: string;
   /** Fitbit workouts the user said weren't exercise, so a later sync doesn't bring them back */
   removedFitbitIds?: string[];
+  /** Where Today's suggestions come from; missing means the build setting (VITE_SUGGEST_SOURCE) */
+  suggestSource?: SuggestSource;
+  /** Activity-table rows the backend has suggested, by code, so a reload still knows them */
+  tableActivities?: Record<string, TableActivity>;
   /** "Something hurts" reports, for the Summary tab's things to mention */
   painReports: number;
   overlay: Overlay;

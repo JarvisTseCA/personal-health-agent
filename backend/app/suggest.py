@@ -167,6 +167,7 @@ def assemble_table(
                 major_heading=row["major_heading"],
                 activity_description=row["activity_description"],
                 label=label_of(row["activity_description"]),
+                places=[name for name, column in (("gym", "loc_gym"), ("home", "at_home"), ("outside", "loc_outside")) if row[column]],
                 met_value=row["met_value"],
                 duration_min=int(max(duration, key=duration.get)),
                 heading_probability=heading_p,

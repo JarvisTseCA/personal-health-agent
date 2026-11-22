@@ -271,6 +271,27 @@ const variantById = new Map(
   ACTIVITIES.flatMap((f) => f.variants.map((v) => [v.id, { family: f, variant: v }] as const)),
 );
 
+/**
+ * Adds activities from outside the library (rows of the activity table the backend suggested;
+ * see tableActivities.ts) so getFamily and getVariant find them like any other. They are not
+ * PICKABLE: the in-app ranker never suggests them. Adding the same id again replaces it.
+ */
+export function registerActivities(families: ActivityFamily[]): void {
+  for (const f of families) {
+    familyById.set(f.id, f);
+    for (const v of f.variants) variantById.set(v.id, { family: f, variant: v });
+  }
+}
+
+/** The library variant with this Compendium code, if the library has one. */
+export function libraryVariantByCode(code: string): ActivityVariant | undefined {
+  for (const f of ACTIVITIES) {
+    const v = f.variants.find((x) => x.code === code);
+    if (v) return v;
+  }
+  return undefined;
+}
+
 /** Families a user can pick as "enjoyed" (excludes fallback-only ones). */
 export const PICKABLE = ACTIVITIES.filter((f) => !f.fallbackOnly);
 

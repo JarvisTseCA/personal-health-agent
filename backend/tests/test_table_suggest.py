@@ -222,6 +222,7 @@ def test_table_suggest_with_mock_end_to_end(client):
         "major_heading": "Bicycling",
         "activity_description": "Bicycling, stationary, 60 watts, light to moderate effort",
         "label": "Bicycling, stationary, 60 watts",
+        "places": ["gym"],
         "met_value": 5.0,
         "duration_min": 15,  # 1.4 MET-hours at 5 MET is about 17 minutes
         "heading_probability": data["jev_answers"]["heading"]["heading"]["probabilities"]["bicycling"],

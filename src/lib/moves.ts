@@ -12,6 +12,7 @@
  * and beginner-friendly. All allow embedding. The team's clinician should
  * review them before anything beyond the demo.
  */
+import { howToId } from "./tableActivities";
 
 export interface Video {
   /** YouTube video id */
@@ -75,7 +76,8 @@ function loadedCircuit(eq: string[]): Move[] {
  * The moves for a session, given the equipment where the user is today.
  * Empty when the activity doesn't need a list (a walk, a bike ride).
  */
-export function movesFor(variantId: string, equipmentHere: string[] = []): Move[] {
+export function movesFor(id: string, equipmentHere: string[] = []): Move[] {
+  const variantId = howToId(id);
   switch (variantId) {
     case "strength-bodyweight":
       return BODYWEIGHT;
@@ -111,7 +113,8 @@ const SINGLE: Record<string, { what: string; video: Video }> = {
 };
 
 /** Everything the coach can show a video for in this session, in order. */
-export function howTos(variantId: string, equipmentHere: string[] = []): Array<{ what: string; video: Video }> {
+export function howTos(id: string, equipmentHere: string[] = []): Array<{ what: string; video: Video }> {
+  const variantId = howToId(id);
   const one = SINGLE[variantId];
   if (one) return [one];
   const seen = new Set<string>();

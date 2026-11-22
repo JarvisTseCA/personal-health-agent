@@ -1,0 +1,40 @@
+# Render Blueprint for the backend (https://render.com/docs/blueprint-spec).
+# How to use it, step by step: docs/testing-and-hosting.md ("Host the backend").
+#
+# The whole repo is deployed because the backend reads activity_tables/ at startup.
+# Values marked `sync: false` are secrets: Render asks for them once, in its dashboard.
+# They never go in this file, in git, or in a GitHub variable.
+services:
+  - type: web
+    name: pha-backend
+    runtime: python
+    # Free: no cost, but it sleeps after 15 minutes without traffic (the first request then
+    # takes up to a minute) and its SQLite file is lost on every restart, redeploy or sleep.
+    # For saved progress that lasts, switch to a paid plan and uncomment `disk` below.
+    plan: free
+    buildCommand: pip install -r backend/requirements.txt
+    startCommand: cd backend && uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /api/health
+    autoDeploy: true # redeploys when main changes
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.12.7"
+      # The GitHub Pages demo may call the backend; localhost always may.
+      - key: ALLOWED_ORIGINS
+        value: https://jarvistseca.github.io
+      - key: PHA_DB_PATH
+        value: /tmp/pha.db # with the disk below: /var/data/pha.db
+      - key: TYPESAFE_API_KEY # Jev; without it the backend uses the mock
+        sync: false
+      - key: OPENAI_API_KEY # the model that writes Chat replies
+        sync: false
+      - key: GOOGLE_HEALTH_CLIENT_ID # real Fitbit; leave empty to keep it simulated
+        sync: false
+      - key: GOOGLE_HEALTH_CLIENT_SECRET
+        sync: false
+      - key: GOOGLE_HEALTH_REDIRECT_URI # https://<this service>.onrender.com/api/fitbit/callback
+        sync: false
+    # disk:
+    #   name: pha-data
+    #   mountPath: /var/data
+    #   sizeGB: 1

@@ -44,6 +44,10 @@ and the app's data is saved in SQLite. Without the backend, the app works exactl
 app then shows your own workouts and VO2 max from the Google Health API, which replaced the Fitbit Web API on
 Nov 2, 2026. Without the client, Fitbit stays simulated.
 
+**Suggestions from the activity table:** set *Suggestions from* in the demo controls, or run
+`VITE_SUGGEST_SOURCE=table npm run dev`. **Testing it and hosting the backend for the online demo:**
+[docs/testing-and-hosting.md](docs/testing-and-hosting.md).
+
 ## What's in the demo
 
 The app has five tabs: **Today · Progress · Chat · Summary · Showcase** (labelled *Settings*). Onboarding
@@ -888,6 +892,9 @@ src/
   components/     Flame, trophy and month calendar, VO2 max card, video card, AI notice, week bars,
                   time options, icons, sheet, demo panel
 docs/architecture.md   How to add the LLM and database
+docs/testing-and-hosting.md   How the team tests the app and hosts the backend
+scripts/phase3_walkthrough.py   Drives the app in a browser through every persona, place and decline
+render.yaml            Render setup for hosting the backend
 ```
 
 ## Next steps

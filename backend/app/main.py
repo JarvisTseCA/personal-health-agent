@@ -109,9 +109,24 @@ async def lifespan(_: FastAPI):
     yield
 
 
+def allowed_origins() -> List[str]:
+    """Sites besides localhost that may call the backend, from ALLOWED_ORIGINS (comma-separated),
+    e.g. "https://jarvistseca.github.io" for the GitHub Pages demo. Paths and trailing slashes are
+    not part of an origin, so they're dropped."""
+    raw = os.environ.get("ALLOWED_ORIGINS", "")
+    out = []
+    for item in raw.split(","):
+        item = item.strip().rstrip("/")
+        if item:
+            scheme, sep, rest = item.partition("://")
+            out.append(f"{scheme}{sep}{rest.split('/')[0]}" if sep else item)
+    return out
+
+
 app = FastAPI(title="Personal Health Agent backend", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
+    allow_origins=allowed_origins(),
     allow_origin_regex=r"http://(localhost|127\.0\.0\.1)(:\d+)?",
     allow_methods=["*"],
     allow_headers=["*"],

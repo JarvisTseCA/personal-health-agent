@@ -6,6 +6,8 @@ import * as T from "./today";
 import { applyClinicianTurn } from "../services/clinicianChat";
 import { isHidden } from "./screens";
 import type { AppState } from "./types";
+import { getVariant, settingOf } from "../lib/activities";
+import { migratePlace, type Place } from "../lib/suggest";
 
 function onboarded(persona = "alex"): AppState {
   let s = initialState(persona);
@@ -13,16 +15,58 @@ function onboarded(persona = "alex"): AppState {
   return T.startDay(s);
 }
 
-function checkIn(s: AppState, minutes = 30): AppState {
+function checkIn(s: AppState, minutes = 30, place: Place = "indoors_private"): AppState {
   s = T.answerTime(s, `${minutes} min`, minutes);
   if (minutes === 0) return s;
-  s = T.answerPlace(s, "Home", "home");
+  s = T.answerPlace(s, T.PLACE_OPTIONS.find(([, p]) => p === place)![0], place);
   return T.answerEnergy(s, "Normal", "normal");
 }
 
 describe("today flow", () => {
+  it("offers three places: indoors private, indoors with others (gym included), outside", () => {
+    expect(T.PLACE_OPTIONS.map(([label]) => label)).toEqual(["Indoors, private", "Indoors, with others", "Outside"]);
+    const s = T.answerTime(onboarded(), "30 min", 30);
+    expect(s.today.step).toBe("place");
+    expect(s.today.entries.at(-1)!.text).toBe("Where will you be exercising?");
+  });
+
+  it("asks again when a typed place is none of the three", () => {
+    let s = T.answerTime(onboarded(), "30 min", 30);
+    s = T.freeText(s, "at the airport");
+    expect(s.today.step).toBe("place");
+    expect(s.today.entries.at(-1)!.text).toBe(T.PLACE_AGAIN);
+    s = T.freeText(s, "my hotel room");
+    expect(s.today.checkIn.place).toBe("indoors_private");
+    expect(s.today.step).toBe("energy");
+  });
+
+  it("indoors, nothing outdoor is suggested", () => {
+    for (const place of ["indoors_private", "indoors_with_others"] as Place[]) {
+      const c = checkIn(onboarded(), 30, place).today.current!;
+      for (const x of [c.lead!, ...c.backups]) {
+        const { family, variant } = getVariant(x.variantId);
+        expect(settingOf(family, variant), x.variantId).not.toBe("outdoor");
+      }
+    }
+  });
+
+  it("indoors with others assumes a typical gym's equipment", () => {
+    const s = onboarded();
+    const withGear = { ...s, profile: { ...s.profile, equipment: { home: [], gym: null } } };
+    expect(equipmentAt(withGear, "indoors_with_others")).toEqual(TYPICAL_GYM);
+    expect(equipmentAt(withGear, "indoors_private")).toEqual([]);
+  });
+
+  it("reads places saved before the three places", () => {
+    expect(migratePlace("home")).toBe("indoors_private");
+    expect(migratePlace("gym")).toBe("indoors_with_others");
+    expect(migratePlace("office")).toBe("indoors_with_others");
+    expect(migratePlace("outside")).toBe("outside");
+    expect(migratePlace("other")).toBeUndefined();
+  });
+
   it("check-in leads to one pick, with liked activities in the mix", () => {
-    const s = checkIn(onboarded());
+    const s = checkIn(onboarded(), 30, "outside");
     expect(s.today.step).toBe("suggested");
     const c = s.today.current!;
     // Alex cycled yesterday and walked two days ago, so a new activity can lead; a liked one stays among the options.
@@ -47,7 +91,7 @@ describe("today flow", () => {
   it("sends category likes to the backend and leaves disliked categories out", () => {
     let s = onboarded();
     s = { ...s, profile: { ...s.profile, categoryPrefs: { Walking: "like", Bicycling: "dislike" } } };
-    s = T.answerTime(s, "30 min", 30); s = T.answerPlace(s, "Home", "home"); s = T.answerEnergy(s, "Normal", "normal");
+    s = T.answerTime(s, "30 min", 30); s = T.answerPlace(s, "Outside", "outside"); s = T.answerEnergy(s, "Normal", "normal");
     const body = buildSuggestRequest(s);
     expect(body.liked_categories).toEqual(["Walking"]);
     expect(body.options.every((o) => o.category !== "Bicycling")).toBe(true);
@@ -68,7 +112,7 @@ describe("today flow", () => {
     let s = initialState("fresh");
     s = { ...s, onboarded: true, profile: personaProfile(s) };
     expect(s.profile.equipment?.gym).toBeNull();
-    expect(equipmentAt(s, "gym")).toEqual(TYPICAL_GYM);
+    expect(equipmentAt(s, "indoors_with_others")).toEqual(TYPICAL_GYM);
     expect(serializeContext(buildAgentContext(s)).user.equipment_at_gym).toContain("Treadmill");
   });
 
@@ -118,7 +162,7 @@ describe("today flow", () => {
   it("at the gym, offers equipment there and a how-to video", () => {
     let s = onboarded("roll");
     s = T.answerTime(s, "30 min", 30);
-    s = T.answerPlace(s, "Gym", "gym");
+    s = T.answerPlace(s, "Indoors, with others", "indoors_with_others");
     s = T.answerEnergy(s, "Normal", "normal");
     expect(s.today.step).toBe("suggested");
     const v = T.videoExample(s);
@@ -193,7 +237,7 @@ describe("today flow", () => {
     s = T.freeText(s, "about 25 minutes");
     expect(s.today.checkIn.minutes).toBe(25);
     s = T.freeText(s, "at the gym");
-    expect(s.today.checkIn.place).toBe("gym");
+    expect(s.today.checkIn.place).toBe("indoors_with_others");
     s = T.freeText(s, "kind of tired");
     expect(s.today.checkIn.energy).toBe("low");
     expect(s.today.step).toBe("suggested");
@@ -201,7 +245,7 @@ describe("today flow", () => {
 
   it("asks how you feel with two buttons, then goes straight to one pick", () => {
     expect(T.ENERGY_OPTIONS.map(([, e]) => e)).toEqual(["challenge", "normal"]);
-    let s = T.answerPlace(T.answerTime(onboarded(), "30 min", 30), "Home", "home");
+    let s = T.answerPlace(T.answerTime(onboarded(), "30 min", 30), "Indoors, private", "indoors_private");
     expect(s.today.entries.at(-1)?.text).toBe("How do you feel?");
     s = T.answerEnergy(s, "Normal", "normal");
     expect(s.today.step).toBe("suggested");
@@ -309,9 +353,9 @@ describe("editing an earlier answer", () => {
   it("every answer gets a time and a way back to its question", () => {
     let s = onboarded();
     s = step(s, (x) => T.answerTime(x, "30 min", 30));
-    s = step(s, (x) => T.answerPlace(x, "Home", "home"));
+    s = step(s, (x) => T.answerPlace(x, "Indoors, private", "indoors_private"));
     const answers = s.today.entries.filter((e) => e.role === "user");
-    expect(answers.map((e) => e.text)).toEqual(["30 min", "Home"]);
+    expect(answers.map((e) => e.text)).toEqual(["30 min", "Indoors, private"]);
     for (const a of answers) {
       expect(a.at).toBeTypeOf("number");
       expect(a.rewind).toBeDefined();
@@ -321,7 +365,7 @@ describe("editing an earlier answer", () => {
   it("the pencil goes back to that question and drops what came after", () => {
     let s = onboarded();
     s = step(s, (x) => T.answerTime(x, "30 min", 30));
-    s = step(s, (x) => T.answerPlace(x, "Home", "home"));
+    s = step(s, (x) => T.answerPlace(x, "Indoors, private", "indoors_private"));
     s = step(s, (x) => T.answerEnergy(x, "Normal", "normal"));
     expect(s.today.step).toBe("suggested");
     const time = s.today.entries.find((e) => e.text === "30 min")!;
@@ -376,7 +420,7 @@ describe("Off at the time question", () => {
 
 it("a typed 'can't, my bike is broken' on a pick rules that activity out", () => {
   let s = T.answerTime(onboarded(), "30 min", 30);
-  s = T.answerEnergy(T.answerPlace(s, "Home", "home"), "Normal", "normal");
+  s = T.answerEnergy(T.answerPlace(s, "Indoors, private", "indoors_private"), "Normal", "normal");
   const fam = s.today.current!.lead.familyId;
   s = T.freeText(s, "can't, my bike is broken");
   expect(s.profile.access[fam]).toBe("no");

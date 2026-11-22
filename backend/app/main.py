@@ -421,7 +421,7 @@ def list_activities(
 
     Each activity has the same columns as the CSV; activity_code is its id.
     """
-    if place is not None and place not in activities.PLACE_COLUMN:
-        raise HTTPException(422, f"Unknown place '{place}'. The table has: {', '.join(activities.PLACE_COLUMN)}")
+    if place is not None and place not in activities.PLACE_WHERE:
+        raise HTTPException(422, f"Unknown place '{place}'. Places: {', '.join(activities.PLACE_WHERE)}")
     rows = activities.catalog(recommended=recommended, headings=heading, place=place)
     return {"count": len(rows), "activities": rows}

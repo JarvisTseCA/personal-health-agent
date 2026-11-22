@@ -163,9 +163,10 @@ export const TYPICAL_GYM = ["treadmill", "stationary-bike", "elliptical", "dumbb
 export function equipmentAt(state: AppState, place: Place): string[] | undefined {
   const eq = state.profile.equipment;
   if (!eq) return undefined;
-  if (place === "home") return eq.home;
-  // Gym equipment not listed: assume a typical gym rather than suggest nothing.
-  if (place === "gym") return eq.gym ?? TYPICAL_GYM;
+  if (place === "indoors_private") return eq.home;
+  // Indoors with others includes the gym. Gym equipment not listed: assume a typical gym
+  // rather than suggest nothing.
+  if (place === "indoors_with_others") return eq.gym ?? TYPICAL_GYM;
   return [];
 }
 
@@ -184,8 +185,8 @@ export function buildSuggestInput(state: AppState, ctx = buildAgentContext(state
     noVigorous: ctx.noVigorous,
     maxSessionMin: null,
     minutes: c.minutes ?? 30,
-    place: c.place ?? "home",
-    equipmentHere: equipmentAt(state, c.place ?? "home"),
+    place: c.place ?? "indoors_private",
+    equipmentHere: equipmentAt(state, c.place ?? "indoors_private"),
     favorKind: ctx.guidance.strength ? "strength" : undefined,
     energy: c.energy ?? "normal",
     mood: c.mood ?? "surprise",

@@ -113,8 +113,6 @@ export interface TodayState {
   howShown?: number;
   step: TodayStep;
   checkIn: Partial<CheckIn>;
-  /** What the user typed for place, when it wasn't one of the options */
-  placeLabel?: string;
   entries: TodayEntry[];
   exclude: string[];
   constraint?: Constraint;

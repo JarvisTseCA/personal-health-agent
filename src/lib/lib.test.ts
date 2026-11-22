@@ -219,20 +219,20 @@ describe("equipment", () => {
   it("only suggests equipment that's where the user is", () => {
     const input: SuggestInput = {
       enjoyed: ["strength", "rowing"], access: { strength: "have", rowing: "have" }, noVigorous: false, maxSessionMin: null,
-      minutes: 30, place: "home", energy: "normal", mood: "surprise", needed: 1.5, boost: false, recent: [], declines: [], exclude: [],
+      minutes: 30, place: "indoors_private", energy: "normal", mood: "surprise", needed: 1.5, boost: false, recent: [], declines: [], exclude: [],
       equipmentHere: ["yoga-mat"],
     };
     const r = suggest(input);
     expect(r.lead!.variantId).toMatch(/^strength-(bodyweight|hard)$/);
     expect([r.lead!, ...r.backups].some((x) => x.familyId === "rowing")).toBe(false);
-    const gym = suggest({ ...input, place: "gym", equipmentHere: ["rowing-machine", "dumbbells"] });
+    const gym = suggest({ ...input, place: "indoors_with_others", equipmentHere: ["rowing-machine", "dumbbells"] });
     expect([gym.lead!, ...gym.backups].map((x) => x.familyId)).toContain("rowing");
   });
 
   it("at the gym, suggests indoor activities only", () => {
     const r = suggest({
       enjoyed: ["cycling", "walking"], access: { cycling: "have", walking: "have" }, noVigorous: false, maxSessionMin: null,
-      minutes: 30, place: "gym", energy: "normal", mood: "surprise", needed: 1.5, boost: false, recent: [], declines: [], exclude: [],
+      minutes: 30, place: "indoors_with_others", energy: "normal", mood: "surprise", needed: 1.5, boost: false, recent: [], declines: [], exclude: [],
       equipmentHere: ["stationary-bike", "treadmill"],
     });
     for (const x of [r.lead!, ...r.backups]) {
@@ -280,7 +280,7 @@ describe("suggestions", () => {
   const base: SuggestInput = {
     enjoyed: ["cycling", "dancing", "walking"],
     access: { cycling: "have", dancing: "have", walking: "have" },
-    noVigorous: false, maxSessionMin: null, minutes: 30, place: "home", energy: "normal", mood: "surprise",
+    noVigorous: false, maxSessionMin: null, minutes: 30, place: "indoors_private", energy: "normal", mood: "surprise",
     needed: 1.9, boost: false, recent: [], declines: [], exclude: [],
   };
 
@@ -331,7 +331,7 @@ describe("suggestions", () => {
   });
 
   it("offers desk moves when there's no time", () => {
-    const r = suggest({ ...base, minutes: 0, place: "office" });
+    const r = suggest({ ...base, minutes: 0, place: "indoors_with_others" });
     expect(r.desk).toBe(true);
     expect(r.lead!.familyId).toBe("desk");
   });
@@ -354,7 +354,7 @@ describe("suggestions", () => {
 
   it("reaches a challenge with a harder pace, not a longer session", () => {
     for (const enjoyed of [["cycling"], ["dancing"], ["walking"], ["running"], ["strength"]]) {
-      const input = { ...base, enjoyed, access: { [enjoyed[0]]: "have" as const }, needed: 1.3, target: 1.3 };
+      const input = { ...base, place: "outside" as const, enjoyed, access: { [enjoyed[0]]: "have" as const }, needed: 1.3, target: 1.3 };
       const normal = suggest(input).lead!;
       const hard = suggest({ ...input, energy: "challenge" }).lead!;
       expect(hard.familyId).toBe(normal.familyId);

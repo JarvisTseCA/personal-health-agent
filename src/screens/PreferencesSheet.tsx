@@ -132,16 +132,16 @@ function Equipment() {
           <button key={id} className={`chip${isCustom(id) ? " chip-custom" : ""}`} aria-pressed={cur.includes(id)} onClick={() => toggle(place, id)}>{equipmentName(id)}</button>
         ))}
       </div>
-      <OtherInput placeholder="Add other equipment, e.g. foam roller" label={`Add equipment ${place === "home" ? "at home" : "at the gym"}`} onSubmit={(t) => typed(place, t)} />
+      <OtherInput placeholder="Add other equipment, e.g. foam roller" label={`Add equipment ${place === "home" ? "indoors, private" : "indoors, with others"}`} onSubmit={(t) => typed(place, t)} />
     </>
   );
   return (
     <div className="field">
       <label className="lbl">Equipment</label>
       <p className="xs muted" style={{ marginBottom: 8 }}>Workouts are built from what's where you exercise that day.</p>
-      <p className="small" style={{ fontWeight: 700, margin: "8px 0 6px" }}>At home</p>
+      <p className="small" style={{ fontWeight: 700, margin: "8px 0 6px" }}>Indoors, private <span className="muted" style={{ fontWeight: 400 }}>(home, hotel room)</span></p>
       {chips("home", eq.home)}
-      <p className="small" style={{ fontWeight: 700, margin: "14px 0 6px" }}>At the gym</p>
+      <p className="small" style={{ fontWeight: 700, margin: "14px 0 6px" }}>Indoors, with others <span className="muted" style={{ fontWeight: 400 }}>(gym, office)</span></p>
       {chips("gym", gym)}
     </div>
   );

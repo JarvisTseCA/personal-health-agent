@@ -11,7 +11,22 @@ import { equipmentName } from "./equipment";
 import { countsTowardGoal, creditFor, metHours, VIGOROUS_MET } from "./met";
 
 export type Access = "have" | "sometimes" | "no";
-export type Place = "home" | "gym" | "office" | "outside" | "traveling" | "other";
+/**
+ * Where the user will exercise today. "Indoors, private": home, a hotel room, a dorm room.
+ * "Indoors, with others": a gym, an office, a library. Both indoor places leave out outdoor activities.
+ */
+export type Place = "indoors_private" | "indoors_with_others" | "outside";
+export const PLACES: Place[] = ["indoors_private", "indoors_with_others", "outside"];
+
+/** Saved check-ins from before the three places: home → private, gym and office → with others. */
+export function migratePlace(place: string | undefined): Place | undefined {
+  if (place === undefined) return undefined;
+  if ((PLACES as string[]).includes(place)) return place as Place;
+  if (place === "home" || place === "traveling") return "indoors_private";
+  if (place === "gym" || place === "office") return "indoors_with_others";
+  if (place === "outside") return "outside";
+  return undefined;
+}
 export type Energy = "challenge" | "normal" | "low";
 
 export type DeclineReason = "no-time" | "tired" | "not-mood" | "recent" | "no-access" | "weather" | "hurts" | "other";
@@ -99,8 +114,8 @@ function durationChoices(minutes: number, cap: number | null): number[] {
 
 /** Can this be done where the user is today, with what's there? */
 export function fitsPlace(f: ActivityFamily, v: ActivityVariant, place: Place, equipmentHere?: string[]): boolean {
-  // At the gym, suggest what happens inside it.
-  if (place === "gym" && settingOf(f, v) === "outdoor") return false;
+  // Indoors, suggest what happens inside.
+  if (place !== "outside" && settingOf(f, v) === "outdoor") return false;
   if (!equipmentHere) return true;
   const needs = equipmentOf(f, v);
   return needs.length === 0 || needs.some((e) => equipmentHere.includes(e));
@@ -231,9 +246,8 @@ function scoreOne(f: ActivityFamily, v: ActivityVariant, d: number, input: Sugge
   const uses = equipmentOf(f, v).filter((e) => input.equipmentHere?.includes(e));
   if (uses.length) {
     score += 0.6;
-    reasons.splice(1, 0, `Uses the ${equipmentName(uses[0]).toLowerCase()}${input.place === "gym" ? " at your gym" : input.place === "home" ? " you have at home" : ""}`);
+    reasons.splice(1, 0, `Uses the ${equipmentName(uses[0]).toLowerCase()}${input.place === "indoors_private" ? " you have" : ""}`);
   }
-  if (input.place === "traveling" && f.needs) score -= 2;
 
   if (input.energy === "low") {
     if (v.met > 5) score -= (v.met - 5) * 0.8;

@@ -39,14 +39,18 @@ export function parseMinutes(text: string): number | null {
   return found ? Math.round(total) : null;
 }
 
+/**
+ * "at home", "hotel room" → indoors, private; "at the gym", "office" → indoors, with others;
+ * "park" → outside. Null when it names none of them, so the question is asked again.
+ */
 export function parsePlace(text: string): Place | null {
   const t = norm(text);
-  // Before "work": "at the gym after work" is the gym.
-  if (hasAny(t, ["gym", "fitness center", "fitness centre", "health club", "ymca", "y.m.c.a", "rec center", "studio"])) return "gym";
-  if (hasAny(t, ["office", "work", "desk", "meeting", "school", "campus"])) return "office";
-  if (hasAny(t, ["travel", "hotel", "airport", "trip", "road", "away"])) return "traveling";
-  if (hasAny(t, ["outside", "outdoor", "park", "trail", "street", "beach", "yard"])) return "outside";
-  if (hasAny(t, ["home", "house", "apartment", "flat", "living room"])) return "home";
+  if (hasAny(t, ["outside", "outdoor", "park", "trail", "street", "beach", "yard", "garden"])) return "outside";
+  if (hasAny(t, ["home office", "home gym", "garage gym"])) return "indoors_private";
+  // Before "home": "the gym in my apartment building" is shared.
+  if (hasAny(t, ["gym", "fitness center", "fitness centre", "health club", "ymca", "y.m.c.a", "rec center", "studio",
+    "office", "at work", "workplace", "desk", "meeting", "school", "campus", "library", "with others", "shared", "public", "coworking"])) return "indoors_with_others";
+  if (hasAny(t, ["home", "house", "apartment", "flat", "living room", "bedroom", "my room", "hotel", "dorm", "private", "alone", "by myself"])) return "indoors_private";
   return null;
 }
 

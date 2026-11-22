@@ -75,7 +75,7 @@ function ShowHow() {
 /** The circuit for a strength or interval pick, built from the equipment where the user is today. */
 function Circuit({ s }: { s: Suggestion }) {
   const { state } = useStore();
-  const here = equipmentAt(state, state.today.checkIn.place ?? "home") ?? [];
+  const here = equipmentAt(state, state.today.checkIn.place ?? "indoors_private") ?? [];
   const moves = movesFor(s.variantId, here);
   if (!moves.length) return null;
   const uses = [...new Set(moves.map((m) => m.uses).filter(Boolean) as string[])];
@@ -251,7 +251,12 @@ export function TodayScreen({ go, openPrefs }: { go: (s: Screen) => void; openPr
         )}
         {t.step === "place" && (
           <Bubbles label="Where you'll exercise">
-            {PLACE_OPTIONS.map(([label, p]) => <button key={p} className="chip" onClick={() => dispatch({ type: "place", label, place: p })}>{label}</button>)}
+            {PLACE_OPTIONS.map(([label, p, examples]) => (
+              <button key={p} className="chip place-chip" aria-label={`${label}: ${examples}`} onClick={() => dispatch({ type: "place", label, place: p })}>
+                {label}
+                <span aria-hidden className="place-examples">{examples}</span>
+              </button>
+            ))}
           </Bubbles>
         )}
         {t.step === "energy" && (

@@ -3,7 +3,7 @@ import { createContext, useContext, useEffect, useMemo, useReducer, useRef, type
 import { PERSONAS } from "../data/mockFitbit";
 import { fmt, withCredit, type Session } from "../lib/met";
 import { ALL_FROM_PLAN, applyCalendarEdit, migratePlan, migrateSources, shorterSlot, SLOT_MINUTES, type DaySlot, type WeekPlan } from "../lib/plan";
-import type { Access, DeclineReason, Energy, Place, Suggestion } from "../lib/suggest";
+import { migratePlace, type Access, type DeclineReason, type Energy, type Place, type Suggestion } from "../lib/suggest";
 import { buildAgentContext, type AgentContext } from "../services/context";
 import { backendHealth, fetchSuggestion, type BackendSuggestion } from "../services/backend";
 import { repository } from "../services/store";
@@ -283,7 +283,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           clinician: migrateClinician(s.clinician),
           chat: s.chat ?? [],
         };
-        const today = { ...s.today, entries: (s.today?.entries ?? []).filter((e) => (e.role as string) !== "medal") };
+        // Saves from before the three places: Home → Indoors, private; Gym and Office → Indoors, with others.
+        const checkIn = { ...s.today?.checkIn, place: migratePlace(s.today?.checkIn?.place) };
+        const today = { ...s.today, checkIn, entries: (s.today?.entries ?? []).filter((e) => (e.role as string) !== "medal") };
         let loaded: AppState = { ...initialState(), ...s, ...plans, ...extra, today, overlay: null, toast: null };
         // A save still sitting on the old opener ("How much time do you have today?") on a planned day:
         // restart the check-in so it confirms the planned time instead.

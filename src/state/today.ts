@@ -103,9 +103,14 @@ export function confirmTime(state: AppState, keep: boolean, typed?: string): App
   return setToday(push(state, user(typed ?? CHANGE_TIME_LABEL), agent("How much time do you have today?")), { step: "time" });
 }
 
-// Traveling isn't a button: Outside covers it. Typing "hotel" or "airport" in Other still works.
-// The screen hides Gym for someone who said they don't use one.
-export const PLACE_OPTIONS: Array<[string, Place]> = [["Home", "home"], ["Gym", "gym"], ["Office", "office"], ["Outside", "outside"]];
+/** The three places, each with the examples shown under its button. */
+export const PLACE_OPTIONS: Array<[string, Place, string]> = [
+  ["Indoors, private", "indoors_private", "Home, hotel room"],
+  ["Indoors, with others", "indoors_with_others", "Gym, office"],
+  ["Outside", "outside", "Park, trail, street"],
+];
+/** Asked again when a typed answer matches none of the three. */
+export const PLACE_AGAIN = "Where will you be: indoors and private, indoors with others, or outside?";
 // Two buttons only. Feeling tired can still be typed in Other (parsed as "low"); we don't offer it as a tap.
 export const ENERGY_OPTIONS: Array<[string, Energy]> = [["Up for a challenge", "challenge"], ["Normal", "normal"]];
 export const REMIND_OPTIONS = ["In 30 min", "In 1 hour", "This evening"];
@@ -133,7 +138,7 @@ export function answerTime(state: AppState, label: string, minutes: number, slot
   s = setToday(s, { checkIn: { ...s.today.checkIn, minutes } });
   if (minutes === 0) {
     // No time: skip the rest of the check-in and go straight to desk moves.
-    s = setToday(s, { checkIn: { ...s.today.checkIn, place: "office", energy: "normal", mood: "surprise" } });
+    s = setToday(s, { checkIn: { ...s.today.checkIn, place: "indoors_with_others", energy: "normal", mood: "surprise" } });
     return offer(push(s, agent("No free time today? Here's something you can do at your desk. Every bit of movement counts.")));
   }
   return setToday(push(s, agent("Where will you be exercising?")), { step: "place" });
@@ -432,7 +437,7 @@ export function keepGoing(state: AppState, yes: boolean, typed?: string): AppSta
 export function showHow(state: AppState, typed?: string): AppState {
   const pick = state.today.accepted ?? state.today.current?.lead;
   if (!pick) return state;
-  const here = equipmentAt(state, state.today.checkIn.place ?? "home") ?? [];
+  const here = equipmentAt(state, state.today.checkIn.place ?? "indoors_private") ?? [];
   const list = howTos(pick.variantId, here);
   const s = push(state, user(typed ?? "Show me how"));
   if (!list.length) {
@@ -448,13 +453,13 @@ export function showHow(state: AppState, typed?: string): AppState {
 
 /**
  * Demo control: the example conversation where the agent teaches a move with
- * a video. Replays today's check-in as "30 min, at the gym, normal", keeps
+ * a video. Replays today's check-in as "30 min, indoors with others, normal", keeps
  * the first pick that comes with a how-to video, and asks "Show me how".
  */
 export function videoExample(state: AppState): AppState {
   let s = startDay(state);
   s = answerTime(s, "30 min", 30);
-  s = answerPlace(s, "Gym", "gym");
+  s = answerPlace(s, "Indoors, with others", "indoors_with_others");
   s = answerEnergy(s, "Normal", "normal");
   for (let i = 0; i < 4 && !hasHowTo(s); i++) s = anotherOption(s);
   return hasHowTo(s) ? showHow(s) : s;
@@ -464,7 +469,7 @@ export function videoExample(state: AppState): AppState {
 export function hasHowTo(state: AppState): boolean {
   const pick = state.today.accepted ?? state.today.current?.lead;
   if (!pick) return false;
-  return howTos(pick.variantId, equipmentAt(state, state.today.checkIn.place ?? "home") ?? []).length > 0;
+  return howTos(pick.variantId, equipmentAt(state, state.today.checkIn.place ?? "indoors_private") ?? []).length > 0;
 }
 
 /** Families offered under "Other…" when confirming a detected bout. */
@@ -509,8 +514,8 @@ export function freeText(state: AppState, text: string): AppState {
     }
     case "place": {
       const p = parsePlace(text);
-      const s = answerPlace(state, text, p ?? "other");
-      return p ? s : setToday(s, { placeLabel: text });
+      // Each answer has to answer the question asked: a place that isn't one of the three is asked again.
+      return p ? answerPlace(state, text, p) : push(state, user(text), agent(PLACE_AGAIN));
     }
     case "energy":
       return answerEnergy(state, text, parseEnergy(text));

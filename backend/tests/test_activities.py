@@ -163,6 +163,13 @@ def test_candidates_are_recommended_fit_the_place_and_need_no_partner(small_tabl
     assert codes(activities.candidates("outside")) == ["01003", "12028", "17085"]
 
 
+def test_the_three_check_in_places(small_table):
+    # Indoors, private: what can be done at home. Indoors, with others: at the gym or at home.
+    assert codes(activities.candidates("indoors_private")) == ["12028", "17085"]
+    assert codes(activities.candidates("indoors_with_others")) == ["01216", "01220", "12028", "17085", "17358"]
+    assert codes(activities.candidates("outside")) == ["01003", "12028", "17085"]
+
+
 def test_a_place_the_table_has_no_column_for_has_no_candidates(small_table):
     assert activities.candidates("office") == []
     assert activities.candidates("traveling") == []

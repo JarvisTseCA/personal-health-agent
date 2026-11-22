@@ -60,12 +60,11 @@ ENERGY_TEXT = {
 }
 
 PLACE_TEXT = {
+    "indoors_private": "indoors, in a private space (e.g. home or a hotel room)",
+    "indoors_with_others": "indoors, around other people (e.g. a gym or an office)",
+    "outside": "outside",
     "home": "at home",
     "gym": "at the gym",
-    "office": "at the office",
-    "outside": "outside",
-    "traveling": "traveling",
-    "other": "somewhere else",
 }
 
 

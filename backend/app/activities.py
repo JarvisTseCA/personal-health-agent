@@ -118,9 +118,17 @@ def count(recommended: bool = False) -> int:
         return int(conn.execute(sql).fetchone()[0])
 
 
-# The table has one 0/1 column per place. A place without a column (office,
-# traveling) has no candidates yet.
-PLACE_COLUMN = {"gym": "loc_gym", "home": "at_home", "outside": "loc_outside"}
+# The table has one 0/1 column per place: loc_gym, at_home and loc_outside. The app's three check-in places, as conditions on those columns. "Indoors, private" (home,
+# a hotel room) is what can be done at home; "indoors, with others" (a gym, an office) is
+# what can be done at the gym or at home. Any other place has no candidates.
+PLACE_WHERE = {
+    "indoors_private": "at_home = 1",
+    "indoors_with_others": "(loc_gym = 1 OR at_home = 1)",
+    "outside": "loc_outside = 1",
+    # The table's own columns still work, for GET /api/activities and older callers.
+    "gym": "loc_gym = 1",
+    "home": "at_home = 1",
+}
 
 
 def _marks(values: List[Any]) -> str:
@@ -153,9 +161,9 @@ def catalog(
         where.append(f"major_heading IN ({_marks(keep)})")
         values += keep
     if place is not None:
-        if place not in PLACE_COLUMN:
+        if place not in PLACE_WHERE:
             return []
-        where.append(f"{PLACE_COLUMN[place]} = 1")
+        where.append(PLACE_WHERE[place])
     return _rows(where, values)
 
 
@@ -195,7 +203,8 @@ def candidates(
 
     Always:
     - marked as an exercise to recommend (exercise_rec = 1)
-    - can be done at `place`: "gym", "home" or "outside". Any other place → no candidates.
+    - can be done at `place`: "indoors_private", "indoors_with_others" or "outside" (or the
+      table's own "gym" and "home"). Any other place → no candidates.
     - needs no partner (need_friends = 0); the app doesn't ask whether one is around
 
     Only when given:
@@ -211,10 +220,10 @@ def candidates(
     Example: candidates("gym", headings=["Bicycling"], below_met=6) → the
     stationary-bike rows under 6 MET.
     """
-    column = PLACE_COLUMN.get(place)
-    if column is None:
+    fits = PLACE_WHERE.get(place)
+    if fits is None:
         return []
-    where = ["exercise_rec = 1", f"{column} = 1", "need_friends = 0"]
+    where = ["exercise_rec = 1", fits, "need_friends = 0"]
     values: List[Any] = []
 
     keep = list(headings)

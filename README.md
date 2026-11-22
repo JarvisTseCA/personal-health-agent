@@ -576,7 +576,7 @@ Code: `src/lib/plan.ts` (`DaySource`, `shorterSlot`, `applyCalendarEdit`), `src/
   less?" *Keep 30 min* keeps it. *Pick a different time* opens the time list (*Off*, or 0, 5, 10, 30 or 45+ min); a different pick
   replaces today's time and its calendar block, and the coach says the new target. Typed minutes ("25 min")
   count for today's suggestion only.
-- Then two quick questions, each answered with one tap: where they'll exercise (home, gym, office, outside),
+- Then two quick questions, each answered with one tap: where they'll exercise (indoors, private; indoors, with others, which includes the gym; or outside),
   and how they feel (*Up for a challenge* or *Normal*).
 - There's no "what are you in the mood for?" question: the coach picks, to avoid decision fatigue.
 - Feeling tired isn't a button, to nudge toward moving, but typing it works and the pick gets easier.

@@ -191,16 +191,17 @@ def suggest(req: SuggestRequest) -> SuggestResponse:
 def suggest_from_table(req: TableSuggestRequest) -> TableSuggestResponse:
     """The same job as /api/suggest, with the options taken from the activity table.
 
-    The app doesn't send options. It sends what the user picked before (picked_codes)
-    and the backend finds today's candidates in the table, then asks Jev three times.
+    The app doesn't send options. The backend finds today's candidates in the table, then asks
+    Jev three times. What the user likes (liked_categories, picked_codes) ranks higher in the
+    prompts and in the mock; it never limits the candidates, so new activities still come up.
     """
     c = req.check_in
-    # What the user likes = the headings of the activities they picked before. None picked: no preference.
+    # The headings of the activities picked before, favorites first. Named to Jev; not a filter.
     liked = activities.headings_of(req.picked_codes)
     ceilings = [m for m in (VIGOROUS_MET if req.limits.no_vigorous else None, req.below_met) if m is not None]
     rows = activities.candidates(
-        c.place, headings=liked, exclude_headings=req.exclude_headings,
-        min_met=req.min_met, below_met=min(ceilings) if ceilings else None,
+        c.place, exclude_headings=req.exclude_headings, exclude_codes=req.exclude_codes,
+        indoor_only=req.indoor_only, min_met=req.min_met, below_met=min(ceilings) if ceilings else None,
     )
     if not rows or not req.durations:
         raise HTTPException(422, "No activity in the table fits today; the app keeps its own pick in this case")
@@ -213,21 +214,26 @@ def suggest_from_table(req: TableSuggestRequest) -> TableSuggestResponse:
     jev_answers: Dict[str, Any] = {}
 
     by_heading = group_by_heading(rows)
-    state = build_table_state(req, liked)
+    named_codes = [x.code for x in [*req.recent, *req.declines] if x.code]
+    state = build_table_state(req, liked, activities.descriptions_of(named_codes))
     log.info("── POST /api/suggest/table  user=%s  (Jev: %s) ──", req.user_id, model)
     log.info("[1] Check-in: %d min · %s · energy=%s · mood=%s", c.minutes, c.place, c.energy, c.mood_name or c.mood)
-    log.info("    Need %.2f MET-h today · picked before: %s", req.needed_met_hours, ", ".join(liked) or "nothing yet")
+    log.info("    Need %.2f MET-h today · picked before: %s · 👍 %s", req.needed_met_hours,
+             ", ".join(liked) or "nothing yet", ", ".join(req.liked_categories) or "none")
+    if req.exclude_codes or req.indoor_only:
+        log.info("    Ruled out today: %s%s", ", ".join(req.exclude_codes) or "no activity",
+                 " · indoors only" if req.indoor_only else "")
     log.info("    %d candidates in the table: %s", len(rows), " · ".join(f"{h} {len(r)}" for h, r in by_heading.items()))
     try:
         # Call 1: which heading. With one heading there is nothing to choose, so Jev isn't asked.
         if len(by_heading) > 1:
-            jev_request["heading"] = build_heading_request(state, by_heading, liked, model)
+            jev_request["heading"] = build_heading_request(state, by_heading, liked, model, req.liked_categories)
             log.debug("    Prompt #1: %s", json.dumps(jev_request["heading"], ensure_ascii=False))
             t = time.perf_counter()
             if live:
                 jev_answers["heading"], model = call_jev(jev_request["heading"])
             else:
-                jev_answers["heading"] = mock_heading(by_heading, liked)
+                jev_answers["heading"] = mock_heading(by_heading, liked, req.liked_categories)
             log.info("[2] Ask Jev #1 (which heading)… %.1fs", time.perf_counter() - t)
             log.debug("    Answer #1: %s", json.dumps(jev_answers["heading"], ensure_ascii=False))
             ranked = rank_headings(jev_answers["heading"], list(by_heading))
@@ -238,7 +244,9 @@ def suggest_from_table(req: TableSuggestRequest) -> TableSuggestResponse:
         top = ranked[:HEADINGS_TO_ASK]
 
         # Call 2: which activity, in each of the top headings
-        jev_request["activity"] = build_table_activity_request(state, {h: by_heading[h] for h, _ in top}, model)
+        jev_request["activity"] = build_table_activity_request(
+            state, {h: by_heading[h] for h, _ in top}, model, req.picked_codes
+        )
         log.debug("    Prompt #2: %s", json.dumps(jev_request["activity"], ensure_ascii=False))
         t = time.perf_counter()
         if live:

@@ -56,6 +56,9 @@ class Recent(BaseModel):
     family_id: str
     name: str  # the name shown to people, e.g. "Desk moves"
     days_ago: int
+    # Its Compendium code, when the activity came from the activity table. The table route then
+    # names it by the table's description, e.g. "Bicycling, stationary, 50 watts, light effort".
+    code: Optional[str] = None
 
 
 class Decline(BaseModel):
@@ -64,6 +67,7 @@ class Decline(BaseModel):
     reason: str
     days_ago: int
     note: Optional[str] = None
+    code: Optional[str] = None  # as in Recent
 
 
 class Limits(BaseModel):
@@ -109,13 +113,17 @@ class TableSuggestRequest(SuggestBase):
     Instead it says what the backend needs to filter the table (activities.candidates).
     """
 
-    # Not needed here: what the user likes comes from picked_codes.
+    # Not needed here: what the user likes comes from liked_categories and picked_codes.
     enjoyed: List[Enjoyed] = []
-    # Compendium codes of the activities the user picked before: chosen in onboarding and
-    # suggestions they accepted, favorites first. Empty: no preference, nothing is filtered by it.
+    # Compendium codes of the activities the user accepted before, favorites first. They rank
+    # higher (named to Jev as "picked before"); they never limit what can be suggested.
     picked_codes: List[str] = []
-    # major_headings to leave out today, e.g. after "Did this recently" on a Bicycling pick.
+    # major_headings to leave out today: 👎 categories, or after "Did this recently" on a Bicycling pick.
     exclude_headings: List[str] = []
+    # Activities ruled out today ("Not in the mood", "Can't access it", "Other"): only that row goes.
+    exclude_codes: List[str] = []
+    # After "Weather": only what can be done at the gym or at home.
+    indoor_only: bool = False
     # Light activity (under 3 MET) doesn't count toward the goal, so it isn't offered.
     min_met: Optional[float] = 3.0
     # Only activities under this MET, e.g. after "Too tired". limits.no_vigorous already means under 6.
@@ -146,6 +154,7 @@ class TablePick(BaseModel):
     activity_code: str  # 5-digit Compendium code, the id both sides share
     major_heading: str
     activity_description: str
+    label: str  # the description up to its effort level, for the card: "Bicycling, stationary, 50 watts"
     met_value: float
     duration_min: int
     heading_probability: float  # Jev's probability for this heading (1.0 when there was only one)

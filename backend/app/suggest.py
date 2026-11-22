@@ -17,6 +17,7 @@ heading (`rank_headings`), which activity in each of the top headings
 """
 from typing import Dict, List, Tuple
 
+from .activities import label_of
 from .prompt import Row, duration_question, heading_key, table_activity_question, table_duration_question
 from .schemas import Option, Pick, SuggestRequest, TablePick, TableSuggestRequest
 
@@ -135,8 +136,12 @@ def pick_from_table(
 
 def table_reasons(row: Row, req: TableSuggestRequest, liked: List[str]) -> List[str]:
     out: List[str] = []
-    if row["major_heading"] in liked:
+    if row["activity_code"] in {str(c).strip().zfill(5) for c in req.picked_codes}:
+        out.append("You picked this before")
+    elif row["major_heading"] in liked:
         out.append("A kind of activity you picked before")
+    if row["major_heading"] in req.liked_categories:
+        out.append(f"You like {row['major_heading']}")
     if req.check_in.energy == "low" and row["met_value"] <= 5:
         out.append("Easy on a low-energy day")
     elif (req.check_in.energy == "challenge" or req.boost) and row["met_value"] >= 6:
@@ -161,6 +166,7 @@ def assemble_table(
                 activity_code=row["activity_code"],
                 major_heading=row["major_heading"],
                 activity_description=row["activity_description"],
+                label=label_of(row["activity_description"]),
                 met_value=row["met_value"],
                 duration_min=int(max(duration, key=duration.get)),
                 heading_probability=heading_p,

@@ -81,6 +81,25 @@ demo panel's **Backend** section says whether it's connected and whether Jev is 
 Without a key, a local mock returns answers in Jev's format, so the whole flow still runs. The Chat
 route has its own key, `OPENAI_API_KEY`; see the Chat section below.
 
+**Check that Jev is live.** Open http://localhost:8000/api/health in a browser while the backend
+runs:
+
+```json
+{"ok": true, "jev": "live", "model": "jev-latest", "chat_writer": "ChatGPT gpt-6-luna"}
+```
+
+- `"jev": "live"`: suggestions come from the real Jev. `"model"` is the Jev model the backend asks for (`JEV_MODEL`); it shows even when mocked.
+- `"jev": "mock"`: no `TYPESAFE_API_KEY` was found, so a local mock answers instead. Check the line
+  in `backend/.env`, then stop and restart the backend; it reads `.env` only when it starts.
+- `"chat_writer"`: the model that writes Chat replies, or `"placeholder"` without `OPENAI_API_KEY`.
+- No page at all: the backend isn't running, and the app uses its own ranker.
+
+In the app, the demo panel's **Backend** section says the same, and once a pick arrives, "Current
+pick from: Jev" (or "mock Jev", or "in-app ranker"). **Jev prompt** there shows what was sent to Jev
+and its answers. The backend's terminal also prints each Jev call and how long it took. On the
+hosted backend, use the same check at `https://<your service>/api/health`
+([testing-and-hosting.md](testing-and-hosting.md)).
+
 Tests: `.venv/bin/python -m pytest` (from `backend/`). They never call Jev or ChatGPT, with or without keys in `.env`.
 
 ### Files

@@ -147,19 +147,23 @@ and picked_codes        table          heading?          1 question per heading 
 (from the frontend)     (code)         1 question        (Jev's top three)            picked activity
 ```
 
-1. The frontend sends the check-in variables as before, but no options. It sends `picked_codes`
-   instead: the Compendium codes of the activities the user picked before (set in Preferences, or
-   suggestions they accepted), favorites first.
+1. The frontend sends the check-in variables as before, but no options. Instead it sends what the
+   user likes: `liked_categories` (the categories marked 👍) and `picked_codes` (the Compendium codes
+   of suggestions they accepted, favorites first). Recent and declined activities can carry their
+   `code`, so the prompts name them by the table's description.
 2. **Filter.** `candidates()` in `activities.py` keeps the rows marked `exercise_rec` that can be done
-   where the user is (gym, home or outside), need no partner and are 3 MET or more (light activity
-   doesn't count toward the goal). What the user likes is the `major_heading` of what they picked
-   before (Bicycling, Walking, …), and only those headings are kept. Nothing picked yet means no
-   preference, so every heading stays. `exclude_headings` drops a heading (after "Did this recently");
+   where the user is, need no partner and are 3 MET or more (light activity doesn't count toward the
+   goal). Places: *indoors, private* reads `at_home`; *indoors, with others* reads `loc_gym` or
+   `at_home`; *outside* reads `loc_outside`. Likes never filter. `exclude_headings` drops a heading
+   (a 👎 category, or after "Did this recently"); `exclude_codes` drops one activity (after "Not in
+   the mood", "Can't access it" or "Other"); `indoor_only` keeps gym and home rows (after "Weather");
    a health limit or `below_met` caps the MET value.
 3. **Call 1, which heading.** One Choice question whose options are the headings that have a
-   candidate today. Skipped when there is only one.
+   candidate today. A 👍 category says "A category they like." and a heading picked before says
+   "Picked before (#n).", so Jev ranks them higher. Skipped when there is only one heading.
 4. **Call 2, which activity.** One question for each of Jev's top three headings. The options are
-   that heading's candidates, named by their code. The best activity of the top heading is the pick
+   that heading's candidates, named by their code; one picked before says "Picked before.". The best
+   activity of the top heading is the pick
    and the best of the next two are the backups, so the three are different kinds of activity.
 5. **Call 3, how long.** As in `/api/suggest`: one question for each picked activity.
 
@@ -167,19 +171,18 @@ Why the heading comes first: one user can have hundreds of candidates, more than
 (255 options). And if every row were one option, a heading with many rows would outweigh a heading
 with few on numbers alone.
 
-Each pick comes back with `activity_code`, `major_heading`, `activity_description`, `met_value` and
-`duration_min`, so the app can show it without its own copy of the table. `GET /api/activities`
+Each pick comes back with `activity_code`, `major_heading`, `activity_description`, `label` (the
+description up to its effort level, e.g. "Bicycling, stationary, 60 watts", for the card),
+`met_value` and `duration_min`, so the app can show it without its own copy of the table. `GET /api/activities`
 returns the table itself.
 
-To switch the app over: send `picked_codes` instead of `options`, call `/api/suggest/table`, and show
-the pick from those fields. MET-hours still come from the calculator in `src/lib`.
+To switch the app over (Phase 2 of the plan): send `liked_categories`, `picked_codes` and the other
+fields above instead of `options`, call `/api/suggest/table`, and show the pick from those fields. MET-hours still come from the calculator in `src/lib`.
 
 Not handled yet:
 
 - Equipment isn't filtered. The table says whether an activity needs equipment, not which. Jev sees
   the user's equipment list in `state`.
-- The table has columns for the gym, home and outside. Anywhere else (the office) has no candidates,
-  and the app keeps its own pick.
 - "Up for a challenge" gives Jev the 1.5× aim but not the user's usual session length, because the
   table doesn't say which rows are paces of the same activity.
 

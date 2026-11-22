@@ -9,7 +9,7 @@ Each Choice answer looks like:
 """
 import math
 import os
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, Iterable, List, Tuple
 
 import httpx
 
@@ -108,21 +108,29 @@ def mock_durations(req: SuggestRequest, picked: List[Option]) -> Dict[str, dict]
 # The same kind of stand-in for the three table calls.
 
 
-def mock_heading(by_heading: Dict[str, List[Row]], liked: List[str]) -> Dict[str, dict]:
-    """Mock of call 1: a heading the user picked before beats one they didn't; earlier in `liked` beats later."""
+def mock_heading(
+    by_heading: Dict[str, List[Row]], liked: List[str], liked_categories: Iterable[str] = ()
+) -> Dict[str, dict]:
+    """Mock of call 1: a 👍 category and a heading picked before each rank higher (earlier in
+    `liked` more so). Every heading keeps a chance: likes rank, they don't filter."""
     n = max(1, len(liked))
+    thumbs = set(liked_categories)
     scores = {
-        heading_key(h): (2.0 * (1 - liked.index(h) / n) + 1.0 if h in liked else 0.0)
+        heading_key(h): (2.0 * (1 - liked.index(h) / n) + 1.0 if h in liked else 0.0) + (1.5 if h in thumbs else 0.0)
         for h in by_heading
     }
     return {"heading": _choice(scores)}
 
 
 def mock_table_activities(req: TableSuggestRequest, by_heading: Dict[str, List[Row]]) -> Dict[str, dict]:
-    """Mock of call 2: in each heading, the activity whose MET is closest to a pace that suits today's energy."""
+    """Mock of call 2: in each heading, the activity whose MET is closest to a pace that suits today's
+    energy, with a bonus for one the user picked before."""
     pace = 7.0 if req.boost or req.check_in.energy == "challenge" else 3.5 if req.check_in.energy == "low" else 4.5
+    picked = {str(c).strip().zfill(5) for c in req.picked_codes}  # picked before: a small bonus
     return {
-        table_activity_question(heading): _choice({r["activity_code"]: -abs(r["met_value"] - pace) for r in rows})
+        table_activity_question(heading): _choice({
+            r["activity_code"]: -abs(r["met_value"] - pace) + (1.0 if r["activity_code"] in picked else 0.0) for r in rows
+        })
         for heading, rows in by_heading.items()
     }
 

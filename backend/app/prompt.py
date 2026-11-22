@@ -15,7 +15,7 @@ probability for every option.
 Jev API reference: https://docs.typesafe.ai/api/system-one.md
 """
 import re
-from typing import Any, Dict, List
+from typing import Any, Dict, Iterable, List, Optional
 
 from . import challenge
 from .schemas import Option, SuggestBase, SuggestRequest, TableSuggestRequest
@@ -185,9 +185,10 @@ def build_duration_request(req: SuggestRequest, picked: List[Option], model: str
 
 HEADING_INSTRUCTIONS = (
     "Pick the kind of activity this person is most likely to enjoy and actually do today. "
-    "Weigh, in order: what they are in the mood for, their energy today, the kinds they picked "
-    "before (earlier in that list means liked more), and variety (avoid what they did yesterday "
-    "or declined recently). On a low-energy day prefer a kind with lighter options."
+    "Weigh, in order: what they are in the mood for, their energy today, the categories they like "
+    "and the kinds they picked before (earlier in that list means liked more), and variety (avoid "
+    "what they did yesterday or declined recently). On a low-energy day prefer a kind with lighter "
+    "options. A kind they haven't tried is fine: likes rank higher, they don't rule anything out."
 )
 
 TABLE_ACTIVITY_INSTRUCTIONS = (
@@ -239,20 +240,35 @@ def group_by_heading(rows: List[Row]) -> Dict[str, List[Row]]:
     return groups
 
 
-def build_table_state(req: TableSuggestRequest, liked: List[str]) -> Dict[str, Any]:
-    """The same state as build_state, plus the kinds of activity the user picked before.
+def build_table_state(
+    req: TableSuggestRequest, picked_headings: List[str], descriptions: Optional[Dict[str, str]] = None
+) -> Dict[str, Any]:
+    """The same state as build_state, plus what the user likes, in the table's own words.
 
-    `liked` is the major_heading of each picked activity, favorites first
-    (activities.headings_of). An empty list means nothing was picked yet.
+    `picked_headings` is the major_heading of each activity picked before, favorites first
+    (activities.headings_of). `descriptions` maps Compendium codes to the table's description
+    (activities.descriptions_of): recent and declined activities sent with a code are named by
+    it, so Jev sees "Bicycling, stationary, 50 watts, light effort, yesterday".
     """
+    descriptions = descriptions or {}
+    named = lambda code, name: descriptions.get((code or "").zfill(5), name) if code else name  # noqa: E731
     state: Dict[str, Any] = {}
     for key, value in build_state(req).items():
+        if key == "recently_done":
+            value = [f"{named(r.code, r.name)}, {_days_ago_text(r.days_ago)}" for r in sorted(req.recent, key=lambda r: r.days_ago)]
+        elif key == "recently_declined":
+            value = [
+                f"{named(d.code, d.name)}, {_days_ago_text(d.days_ago)}, reason: {d.reason}" + (f" ({d.note})" if d.note else "")
+                for d in sorted(req.declines, key=lambda d: d.days_ago)
+            ]
         if key != "favorites_in_order":
             state[key] = value
             continue
         if req.enjoyed:
             state[key] = value
-        state["kinds_of_activity_picked_before"] = liked
+        if req.liked_categories:
+            state["categories_they_like"] = req.liked_categories
+        state["kinds_of_activity_picked_before"] = picked_headings
     return state
 
 
@@ -264,9 +280,15 @@ def _examples(rows: List[Row]) -> List[str]:
 
 
 def build_heading_request(
-    state: Dict[str, Any], by_heading: Dict[str, List[Row]], liked: List[str], model: str
+    state: Dict[str, Any], by_heading: Dict[str, List[Row]], liked: List[str], model: str,
+    liked_categories: Iterable[str] = (),
 ) -> Dict[str, Any]:
-    """Call 1: which kind of activity? One option per heading that has a candidate today."""
+    """Call 1: which kind of activity? One option per heading that has a candidate today.
+
+    `liked` is the headings picked before, favorites first; `liked_categories` the ones marked 👍.
+    Both are named in the option, so Jev can rank them higher. Neither limits the options.
+    """
+    thumbs = set(liked_categories)
     options = {}
     for heading, rows in by_heading.items():
         mets = [r["met_value"] for r in rows]
@@ -274,6 +296,8 @@ def build_heading_request(
             f"{heading}. {len(rows)} activities fit today, {min(mets):g} to {max(mets):g} MET. "
             f"For example: {'; '.join(_examples(rows))}."
         )
+        if heading in thumbs:
+            text += " A category they like."
         if heading in liked:
             text += f" Picked before (#{liked.index(heading) + 1})."
         options[heading_key(heading)] = text
@@ -284,13 +308,23 @@ def build_heading_request(
     }
 
 
-def build_table_activity_request(state: Dict[str, Any], by_heading: Dict[str, List[Row]], model: str) -> Dict[str, Any]:
-    """Call 2: which activity, asked once for each heading given. The option names are activity codes."""
+def build_table_activity_request(
+    state: Dict[str, Any], by_heading: Dict[str, List[Row]], model: str, picked_codes: Iterable[str] = ()
+) -> Dict[str, Any]:
+    """Call 2: which activity, asked once for each heading given. The option names are activity codes.
+
+    An activity the user picked before says so ("Picked before."), so Jev can rank it higher.
+    """
+    picked = {str(c).strip().zfill(5) for c in picked_codes}
     questions = {
         table_activity_question(heading): {
             "type": "choice",
             "instructions": TABLE_ACTIVITY_INSTRUCTIONS.format(heading=heading),
-            "criteria": {r["activity_code"]: f"{r['activity_description']} ({r['met_value']:g} MET)" for r in rows},
+            "criteria": {
+                r["activity_code"]: f"{r['activity_description']} ({r['met_value']:g} MET)"
+                + (" Picked before." if r["activity_code"] in picked else "")
+                for r in rows
+            },
         }
         for heading, rows in by_heading.items()
     }

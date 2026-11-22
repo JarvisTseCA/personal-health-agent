@@ -195,8 +195,9 @@ def test_an_activity_answer_for_codes_we_did_not_send_is_rejected(client):
 def test_mock_jev_prefers_what_was_picked_before_and_a_pace_that_suits_the_energy(client):
     by_heading = gym_candidates()
     heading = mock_heading(by_heading, ["Walking", "Bicycling"])["heading"]
-    low = mock_table_activities(TableSuggestRequest(**{**REQ, "check_in": {**REQ["check_in"], "energy": "low"}}), by_heading)
-    hard = mock_table_activities(TableSuggestRequest(**{**REQ, "check_in": {**REQ["check_in"], "energy": "challenge"}}), by_heading)
+    fresh = {**REQ, "picked_codes": []}  # nothing picked before, so only the pace counts
+    low = mock_table_activities(TableSuggestRequest(**{**fresh, "check_in": {**REQ["check_in"], "energy": "low"}}), by_heading)
+    hard = mock_table_activities(TableSuggestRequest(**{**fresh, "check_in": {**REQ["check_in"], "energy": "challenge"}}), by_heading)
 
     assert heading["choice"] == "walking"
     assert heading["probabilities"]["bicycling"] > heading["probabilities"]["dancing"]
@@ -213,18 +214,19 @@ def test_table_suggest_with_mock_end_to_end(client):
     assert res.status_code == 200
     data = res.json()
     assert data["source"] == "mock"
-    # Picked before: Bicycling and Walking, so only those two headings are candidates (2 + 2).
-    assert data["candidate_count"] == 4
-    assert picks(data) == [("01216", "Bicycling"), ("17358", "Walking"), ("01220", "Bicycling")]
+    # Picked before: Bicycling and Walking. They rank first, but every heading stays a candidate.
+    assert data["candidate_count"] == 6
+    assert picks(data) == [("01216", "Bicycling"), ("17358", "Walking"), ("03031", "Dancing")]
     assert data["lead"] == {
         "activity_code": "01216",
         "major_heading": "Bicycling",
         "activity_description": "Bicycling, stationary, 60 watts, light to moderate effort",
+        "label": "Bicycling, stationary, 60 watts",
         "met_value": 5.0,
         "duration_min": 15,  # 1.4 MET-hours at 5 MET is about 17 minutes
         "heading_probability": data["jev_answers"]["heading"]["heading"]["probabilities"]["bicycling"],
         "probability": data["jev_answers"]["activity"]["activity_in_bicycling"]["probabilities"]["01216"],
-        "reasons": ["A kind of activity you picked before", "Fits in 45 min"],
+        "reasons": ["You picked this before", "Fits in 45 min"],
     }
     assert list(data["jev_request"]) == ["heading", "activity", "duration"]
     log = client.get("/api/suggestions/log").json()["items"]
@@ -242,7 +244,7 @@ def test_nothing_picked_before_means_every_heading_is_a_candidate(client):
 
 def test_one_heading_skips_the_heading_question(client, caplog):
     with caplog.at_level("INFO", logger="pha"):
-        data = post(client, picked_codes=["01216"]).json()
+        data = post(client, exclude_headings=["Dancing", "Running", "Walking"]).json()
 
     assert list(data["jev_request"]) == ["activity", "duration"]
     assert picks(data) == [("01216", "Bicycling"), ("01220", "Bicycling")]  # only two candidates, so one backup
@@ -254,16 +256,18 @@ def test_excluded_headings_are_left_out(client):
     """After "Did this recently" on a bike pick."""
     data = post(client, exclude_headings=["Bicycling"]).json()
 
-    assert picks(data) == [("17358", "Walking"), ("17352", "Walking")]
+    assert all(heading != "Bicycling" for _, heading in picks(data))
+    assert picks(data)[0] == ("17358", "Walking")
 
 
 def test_met_limits_reach_the_filter(client):
-    assert post(client, limits={"no_vigorous": True}).json()["candidate_count"] == 3  # 01220 (6 MET) is out
+    # Under 6 MET only 01216, 17352 and 17358 are left.
+    assert post(client, limits={"no_vigorous": True}).json()["candidate_count"] == 3
     assert picks(post(client, below_met=4).json()) == [("17352", "Walking")]  # only the 3.5 MET walk is left
     assert post(client, limits={"no_vigorous": True}, below_met=8).json()["candidate_count"] == 3  # the lower limit wins
     # Light activity is left out unless the app says it counts: the 2.5 MET row shows up with min_met off.
-    assert post(client, picked_codes=["17358"]).json()["candidate_count"] == 2
-    assert post(client, picked_codes=["17358"], min_met=None).json()["candidate_count"] == 3
+    assert post(client).json()["candidate_count"] == 6
+    assert post(client, min_met=None).json()["candidate_count"] == 7
 
 
 def test_indoors_with_others_includes_the_gym(client):
@@ -289,7 +293,7 @@ def test_table_suggest_prints_each_step_in_the_terminal(client, caplog):
         "POST /api/suggest/table",
         "[1] Check-in: 45 min · gym",
         "picked before: Bicycling, Walking",
-        "4 candidates in the table: Bicycling 2 · Walking 2",
+        "6 candidates in the table: Bicycling 2 · Dancing 1 · Running 1 · Walking 2",
         "[2] Ask Jev #1 (which heading)",
         "[3] Ask Jev #2 (which activity in each heading)",
         "[4] Ask Jev #3 (how long)",
@@ -380,3 +384,131 @@ def test_the_gym_example_on_the_csv_in_the_repo(real_table):
     assert list(data["jev_request"]["activity"]["questions"]) == [
         "activity_in_bicycling", "activity_in_dancing", "activity_in_walking",
     ]
+
+
+# ---- Phase 1: likes rank, one activity out, table names, indoors only, labels ----
+
+
+def test_a_liked_category_never_picked_still_comes_up_and_ranks_higher(client):
+    data = post(client, picked_codes=[], liked_categories=["Running"]).json()
+
+    assert data["lead"]["major_heading"] == "Running"
+    assert "You like Running" in data["lead"]["reasons"]
+    heading = data["jev_request"]["heading"]["questions"]["heading"]["criteria"]
+    assert heading["running"].endswith("A category they like.")
+    assert "A category they like" not in heading["walking"]
+    assert data["jev_request"]["heading"]["state"]["categories_they_like"] == ["Running"]
+
+
+def test_likes_never_limit_the_candidates(client):
+    assert post(client, picked_codes=["01216"]).json()["candidate_count"] == 6
+    assert post(client, picked_codes=[], liked_categories=["Bicycling"]).json()["candidate_count"] == 6
+
+
+def test_an_activity_picked_before_is_named_in_the_activity_question(client):
+    data = post(client).json()
+    bikes = data["jev_request"]["activity"]["questions"]["activity_in_bicycling"]["criteria"]
+    assert bikes["01216"].endswith("Picked before.")
+    assert not bikes["01220"].endswith("Picked before.")
+
+
+def test_an_excluded_activity_never_comes_back_but_its_category_does(client):
+    """After "Not in the mood" on the 60-watt bike: only that row goes."""
+    data = post(client, exclude_codes=["01216"]).json()
+
+    assert data["candidate_count"] == 5
+    assert "01216" not in [code for code, _ in picks(data)]
+    assert ("01220", "Bicycling") in picks(data)
+    assert activities.candidates("gym", exclude_codes=["1216"]) == activities.candidates("gym", exclude_codes=["01216"])
+
+
+def test_recent_and_declined_activities_with_a_code_are_named_by_the_table(client):
+    data = post(
+        client,
+        recent=[{"family_id": "cycling", "name": "Cycling", "days_ago": 1, "code": "01216"}],
+        declines=[{"family_id": "walking", "name": "Walking", "reason": "not-mood", "days_ago": 2, "code": "17358"}],
+    ).json()
+    state = data["jev_request"]["heading"]["state"]
+
+    assert state["recently_done"] == ["Bicycling, stationary, 60 watts, light to moderate effort, yesterday"]
+    assert state["recently_declined"] == [
+        "Walking, treadmill, 3.5 to 3.9 mph (5.6 to 6.3 km/h), 0% grade, 2 days ago, reason: not-mood"
+    ]
+
+
+def test_without_a_code_the_name_from_the_app_is_kept(client):
+    state = post(client).json()["jev_request"]["heading"]["state"]
+    assert state["recently_done"] == ["Cycling, yesterday"]
+
+
+def test_indoors_only_drops_what_can_only_be_done_outside(client):
+    outside = {**REQ["check_in"], "place": "outside"}
+    everything = post(client, check_in=outside).json()
+    indoors = post(client, check_in=outside, indoor_only=True).json()
+
+    # Outside: the mountain bike (outside only) and running (also at the gym and at home).
+    assert everything["candidate_count"] == 2
+    assert indoors["candidate_count"] == 1
+    assert picks(indoors) == [("12028", "Running")]
+    assert [r["activity_code"] for r in activities.candidates("outside", min_met=3, indoor_only=True)] == ["12028"]
+
+
+@pytest.mark.parametrize("description, label", [
+    ("Bicycling, stationary, 60 watts, light to moderate effort", "Bicycling, stationary, 60 watts"),
+    ("Bicycling, stationary, general", "Bicycling, stationary"),
+    ("Running (Taylor Code 200)", "Running"),
+    ("Running, 6-6.3 mph (10 min/mile)", "Running, 6-6.3 mph"),
+    ("Walking, 3.5 mph, level, brisk, firm surface, walking for exercise", "Walking, 3.5 mph, level"),
+    ("Calisthenics (e.g., push ups, sit ups), vigorous effort", "Calisthenics (e.g., push ups, sit ups)"),
+    ("Bicycling, high intensity interval training", "Bicycling, high intensity interval training"),
+    ("Golf, general", "Golf"),
+    ("Tap", "Tap"),
+])
+def test_label_is_the_description_up_to_the_effort_level(description, label):
+    assert activities.label_of(description) == label
+
+
+# The five personas in personas/5_personas.txt, as check-ins. Phase 1's "done when": with the mock,
+# each gets a pick and two backups at each of the app's three places, from the CSV in the repo.
+PERSONAS = {
+    "Maya, getting started: 10 minutes, low energy": dict(
+        check_in={"minutes": 10, "energy": "low", "mood": "surprise"}, durations=[10], needed_met_hours=0.5,
+    ),
+    "Alex, short windows: 20 minutes, likes walking": dict(
+        check_in={"minutes": 20, "energy": "normal", "mood": "surprise"}, durations=[10, 15, 20],
+        liked_categories=["Walking"],
+    ),
+    "Jordan, two long days: 60 minutes, up for a challenge": dict(
+        check_in={"minutes": 60, "energy": "challenge", "mood": "surprise"}, durations=[20, 30, 40, 45, 60],
+        boost=True, needed_met_hours=3.0, target_met_hours=3.0,
+    ),
+    "Sam, active at work: health limit, dislikes running": dict(
+        check_in={"minutes": 30, "energy": "normal", "mood": "surprise"}, durations=[10, 15, 20, 25, 30],
+        limits={"no_vigorous": True}, exclude_headings=["Running"],
+    ),
+    "Priya, trains regularly: likes bicycling and running, a code ruled out": dict(
+        check_in={"minutes": 45, "energy": "normal", "mood": "surprise"}, durations=[15, 20, 25, 30, 40, 45],
+        liked_categories=["Bicycling", "Running"], picked_codes=["01216", "12050"], exclude_codes=["01216"],
+    ),
+}
+
+
+@pytest.mark.parametrize("place", ["indoors_private", "indoors_with_others", "outside"])
+@pytest.mark.parametrize("persona", list(PERSONAS))
+def test_each_persona_gets_a_pick_and_two_backups_at_each_place(real_table, persona, place):
+    body = {**REQ, "picked_codes": [], **PERSONAS[persona]}
+    body["check_in"] = {**body["check_in"], "place": place}
+
+    res = real_table.post("/api/suggest/table", json=body)
+
+    assert res.status_code == 200, res.text
+    data = res.json()
+    chosen = [data["lead"], *data["backups"]]
+    assert len(chosen) == 3
+    assert len({p["major_heading"] for p in chosen}) == 3  # three different kinds of activity
+    for p in chosen:
+        assert p["duration_min"] in body["durations"] and p["label"]
+        assert p["activity_code"] not in body.get("exclude_codes", [])
+        assert p["major_heading"] not in body.get("exclude_headings", [])
+        if body.get("limits", {}).get("no_vigorous"):
+            assert p["met_value"] < 6

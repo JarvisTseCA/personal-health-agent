@@ -20,6 +20,7 @@ user today. Jev can't be handed every row (a question takes 255 options at
 most), so this runs first. It is not connected to /api/suggest yet.
 """
 import csv
+import re
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
@@ -167,6 +168,44 @@ def catalog(
     return _rows(where, values)
 
 
+def descriptions_of(codes: Iterable[str]) -> Dict[str, str]:
+    """The activity_description of each code that is in the table: {"01216": "Bicycling, stationary, ..."}."""
+    wanted = sorted({str(c).strip().zfill(5) for c in codes if str(c).strip()})
+    if not wanted:
+        return {}
+    with db.session() as conn:
+        return {
+            r["activity_code"]: r["activity_description"]
+            for r in conn.execute(
+                f"SELECT activity_code, activity_description FROM activities WHERE activity_code IN ({_marks(wanted)})", wanted
+            )
+        }
+
+
+# Words that start the effort part of a description: "light effort", "moderate", "vigorous", "general".
+_EFFORT = re.compile(
+    r"^(very |)(light|moderate|vigorous|general|leisurely|leisure|slow|fast|brisk|easy|competitive|"
+    r"recreational|casual|racing|self-selected|elite)\b|\beffort\b|\bpace\b",
+    re.IGNORECASE,
+)
+
+
+def label_of(description: str) -> str:
+    """A short name for the app: the description up to its effort level.
+
+    "Bicycling, stationary, 51-89 watts, light to moderate effort" → "Bicycling, stationary, 51-89 watts".
+    "(Taylor Code 200)" and similar notes go too. The first part always stays.
+    """
+    text = re.sub(r"\s*\((Taylor Code[^)]*|[^)]*min/mile)\)", "", description).strip()
+    parts = [p.strip() for p in re.split(r",(?![^()]*\))", text)]  # commas outside parentheses
+    kept = [parts[0]]
+    for part in parts[1:]:
+        if not part or _EFFORT.search(part):
+            break
+        kept.append(part)
+    return ", ".join(kept)
+
+
 def headings_of(codes: Iterable[str]) -> List[str]:
     """The major_heading of each activity code, each heading once, in the order given.
 
@@ -198,6 +237,8 @@ def candidates(
     exclude_headings: Iterable[str] = (),
     min_met: Optional[float] = None,
     below_met: Optional[float] = None,
+    exclude_codes: Iterable[str] = (),
+    indoor_only: bool = False,
 ) -> List[Dict[str, Any]]:
     """The activities in the table that fit this user today, in code order.
 
@@ -210,7 +251,9 @@ def candidates(
     Only when given:
     - headings: keep these major_headings only, e.g. what the user picked before
       (see headings_of). Empty means no preference, so nothing is filtered by it.
-    - exclude_headings: drop these major_headings, e.g. after "Did this recently"
+    - exclude_headings: drop these major_headings, e.g. after "Did this recently" or a 👎 category
+    - exclude_codes: drop these activities, e.g. one the user said "Not in the mood" to today
+    - indoor_only: keep only what can be done at the gym or at home, e.g. after "Weather"
     - min_met: keep met_value at or above this, e.g. 3 while light activity doesn't count toward the goal
     - below_met: keep met_value under this, e.g. 6 for someone who shouldn't do vigorous activity
 
@@ -234,6 +277,12 @@ def candidates(
     if drop:
         where.append(f"major_heading NOT IN ({_marks(drop)})")
         values += drop
+    skip = [str(c).strip().zfill(5) for c in exclude_codes]
+    if skip:
+        where.append(f"activity_code NOT IN ({_marks(skip)})")
+        values += skip
+    if indoor_only:
+        where.append("(loc_gym = 1 OR at_home = 1)")
     if min_met is not None:
         where.append("met_value >= ?")
         values.append(min_met)

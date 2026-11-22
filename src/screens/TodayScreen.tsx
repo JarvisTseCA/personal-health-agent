@@ -3,7 +3,7 @@
  * Past turns read as a conversation; the live question or card sits at the
  * bottom, so there's always exactly one decision in front of the user.
  */
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { WeekBars, WeekLegend } from "../components/WeekBar";
 import { SettingsIcon } from "../components/Icons";
 import { AiNotice } from "../components/AiNotice";
@@ -148,8 +148,23 @@ export function TodayScreen({ go, openPrefs }: { go: (s: Screen) => void; openPr
   /** While editing an earlier answer: how to undo, and the old answer to start from */
   const [editing, setEditing] = useState<{ backup: AppState; count: number; text: string } | null>(null);
 
-  useEffect(() => {
-    end.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+  // Keep the latest message in view. A new message scrolls there smoothly. When the feed gets
+  // shorter (editing an earlier answer drops what came after it), jump there at once, before the
+  // browser paints: a smooth scroll in a container whose content just shrank can leave the page
+  // drawn at the old position while clicks land at the new one, so every button seems dead.
+  const shown = useRef(t.entries.length);
+  useLayoutEffect(() => {
+    const shrank = t.entries.length < shown.current;
+    shown.current = t.entries.length;
+    const el = end.current;
+    if (!el) return;
+    if (!shrank) {
+      el.scrollIntoView({ behavior: "smooth", block: "end" });
+      return;
+    }
+    const screen = el.closest(".screen");
+    if (screen) screen.scrollTop = Math.max(0, screen.scrollHeight - screen.clientHeight);
+    else el.scrollIntoView({ block: "end" });
   }, [t.entries.length, t.step, t.current?.showBackups]);
 
   // A new answer ends the edit: the conversation carries on from there.

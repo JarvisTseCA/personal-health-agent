@@ -5,8 +5,9 @@
  * call here fails quietly and the app keeps using the in-app ranker and
  * localStorage, exactly like the demo build.
  */
-import { categoryOf, likedCategories } from "../lib/categories";
+import { categoryOf, dislikedCategories, likedCategories } from "../lib/categories";
 import { getFamily, getVariant } from "../lib/activities";
+import { codeOfTableId, isTableId, tableHeading, tableId, type TableActivity, type TablePlace } from "../lib/tableActivities";
 import { equipmentName } from "../lib/equipment";
 import { creditFor, DAY_NAMES_LONG, metHours } from "../lib/met";
 import { candidates, type Suggestion } from "../lib/suggest";
@@ -39,6 +40,8 @@ export interface BackendSuggestion {
   backups: Suggestion[];
   jevRequest: unknown;
   jevAnswers: unknown;
+  /** From the activity table only: the rows behind the lead and backups, to register and save */
+  rows?: TableActivity[];
 }
 
 /** The variables from today's check-in and the options that passed the hard filters. */
@@ -124,6 +127,108 @@ export async function fetchSuggestion(state: AppState): Promise<BackendSuggestio
   } catch (e) {
     console.warn("Backend unreachable; keeping the in-app pick.", e);
     return null;
+  }
+}
+
+// --- From the activity table (POST /api/suggest/table) ---------------------------------------
+
+/** A library or table activity id as the table route names it: its Compendium code, for table rows. */
+const codeOf = (familyId: string) => (isTableId(familyId) ? codeOfTableId(familyId) : undefined);
+
+/**
+ * The request for POST /api/suggest/table. No options: the backend finds the candidates in the
+ * table. What applies everywhere: 👍 / 👎 categories, health limits, today's time and energy,
+ * recent workouts and what was ruled out today. What is learned by place: the codes accepted
+ * there (picked_codes), the declines made there, and "Can't access it" there. Before any
+ * feedback at two places, their requests are the same.
+ */
+export function buildTableRequest(state: AppState) {
+  const base = buildSuggestRequest(state);
+  const input = buildSuggestInput(state);
+  const place = input.place;
+  const c = input.constraint;
+  const here = state.declines.filter((d) => !d.place || d.place === place);
+  const today = state.declines.filter((d) => d.day === state.todayIndex);
+  const codes = (ids: string[]) => [...new Set(ids.map(codeOf).filter((x): x is string => !!x))];
+  const { options: _options, enjoyed: _enjoyed, ...shared } = base;
+  return {
+    ...shared,
+    recent: input.recent.map((r) => ({
+      family_id: r.familyId, name: getFamily(r.familyId).name, days_ago: r.daysAgo, code: codeOf(r.familyId) ?? null,
+    })),
+    declines: here.map((d) => ({
+      family_id: d.familyId, name: getFamily(d.familyId).name, reason: d.reason,
+      days_ago: state.todayIndex - d.day, note: d.note ?? null, code: codeOf(d.familyId) ?? null,
+    })),
+    picked_codes: state.profile.pickedCodes?.[place] ?? [],
+    // 👎 categories, and the category of a table pick turned down today as "Did this recently".
+    exclude_headings: [...new Set([
+      ...dislikedCategories(input.categoryPrefs),
+      ...today.filter((d) => d.reason === "recent").map((d) => tableHeading(d.familyId)).filter((h): h is string => !!h),
+    ])],
+    // Ruled out today, and "Can't access it" at this place.
+    exclude_codes: codes([...input.exclude, ...here.filter((d) => d.reason === "no-access").map((d) => d.familyId)]),
+    indoor_only: !!c?.indoorOnly,
+    below_met: c?.maxMet ?? null,
+  };
+}
+
+interface TablePickReply {
+  activity_code: string;
+  major_heading: string;
+  activity_description: string;
+  label: string;
+  places: TablePlace[];
+  met_value: number;
+  duration_min: number;
+  probability: number;
+  reasons: string[];
+}
+
+function tableRow(p: TablePickReply): TableActivity {
+  return { code: p.activity_code, heading: p.major_heading, description: p.activity_description, label: p.label, met: p.met_value, places: p.places };
+}
+
+/** MET-hours come from the calculator here, with the table's MET value. */
+function tableSuggestion(p: TablePickReply): Suggestion {
+  const id = tableId(p.activity_code);
+  return {
+    familyId: id, variantId: id, durationMin: p.duration_min, met: p.met_value,
+    credit: creditFor(p.met_value, p.duration_min), rawMetHours: metHours(p.met_value, p.duration_min),
+    reasons: p.reasons, score: p.probability,
+  };
+}
+
+/**
+ * Today's pick from the activity table, or null when the backend can't be reached, finds
+ * nothing that fits (422), errors, or takes longer than `waitMs`: Today then shows the in-app
+ * ranker's pick.
+ */
+export async function fetchTableSuggestion(state: AppState, waitMs: number): Promise<BackendSuggestion | null> {
+  const body = buildTableRequest(state);
+  if (body.durations.length === 0) return null;
+  const abort = new AbortController();
+  const timer = setTimeout(() => abort.abort(), waitMs);
+  try {
+    const res = await fetch(`${BASE}/suggest/table`, {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body), signal: abort.signal,
+    });
+    if (!res.ok) {
+      console.warn("Table suggestion failed; showing the in-app pick.", res.status, await res.text());
+      return null;
+    }
+    const d = await res.json();
+    const picks: TablePickReply[] = [d.lead, ...d.backups];
+    return {
+      source: d.source, model: d.model, logId: d.log_id,
+      lead: tableSuggestion(d.lead), backups: d.backups.map(tableSuggestion),
+      jevRequest: d.jev_request, jevAnswers: d.jev_answers, rows: picks.map(tableRow),
+    };
+  } catch (e) {
+    console.warn(abort.signal.aborted ? `No table suggestion within ${waitMs / 1000} s; showing the in-app pick.` : "Backend unreachable; showing the in-app pick.", e);
+    return null;
+  } finally {
+    clearTimeout(timer);
   }
 }
 

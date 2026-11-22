@@ -23,6 +23,7 @@ import type { Screen, TodayStep } from "../state/types";
 import { OtherInput } from "../components/OtherInput";
 import { UserMessage } from "../components/UserMessage";
 import type { AppState } from "../state/types";
+import { tableHeading } from "../lib/tableActivities";
 
 /** What the Other box says at each step. Every step that asks something gets one. */
 const OTHER_PLACEHOLDER: Partial<Record<TodayStep, string>> = {
@@ -91,9 +92,22 @@ function Circuit({ s }: { s: Suggestion }) {
   );
 }
 
+/** While the activity table's pick is on its way. */
+function FindingCard() {
+  return (
+    <div className="pick lead finding" role="status">
+      <p className="pick-kicker">From the activity table</p>
+      <h2>Finding one for you…</h2>
+      <p className="small muted">Picking from hundreds of activities that fit your time and where you are.</p>
+    </div>
+  );
+}
+
 function SuggestionCard({ s, lead }: { s: Suggestion; lead: boolean }) {
   const { ctx, dispatch } = useStore();
   const { family, variant } = getVariant(s.variantId);
+  // A row of the activity table: its category above, its name (the description up to the effort level) as the title.
+  const heading = tableHeading(s.variantId);
   const counts = countsTowardGoal(variant.met);
   const raw = ctx.todayTarget > 0 ? s.credit / ctx.todayTarget : 0;
   const share = Math.min(1, raw);
@@ -104,7 +118,7 @@ function SuggestionCard({ s, lead }: { s: Suggestion; lead: boolean }) {
         <span className="dot" style={{ background: family.color }} />
         <div className="pick-what">
           <b>{s.pattern ? variant.label : `${s.durationMin} min ${family.noun}`}</b>
-          <span className="xs muted">{s.pattern ?? variant.label}{counts ? `, ${fmt(s.credit)} MET-hours` : ", light activity"}</span>
+          <span className="xs muted">{s.pattern ?? heading ?? variant.label}{counts ? `, ${fmt(s.credit)} MET-hours` : ", light activity"}</span>
         </div>
         <button className="btn btn-quiet small-btn" onClick={() => dispatch({ type: "accept", suggestion: s })}>Do this instead</button>
       </div>
@@ -115,8 +129,8 @@ function SuggestionCard({ s, lead }: { s: Suggestion; lead: boolean }) {
     <div className="pick lead" style={{ ["--accent" as string]: family.color }}>
       <div className="pick-head">
         <div>
-          <p className="pick-kicker">{family.name}</p>
-          <h2>{s.pattern ? variant.label : `${s.durationMin} min, ${variant.label.toLowerCase()}`}</h2>
+          <p className="pick-kicker">{heading ?? family.name}</p>
+          <h2>{s.pattern ? variant.label : heading ? `${s.durationMin} min, ${family.noun}` : `${s.durationMin} min, ${variant.label.toLowerCase()}`}</h2>
           {s.pattern && <p className="small muted">{s.pattern}</p>}
         </div>
         <div className="pick-credit">
@@ -277,7 +291,10 @@ export function TodayScreen({ go, openPrefs }: { go: (s: Screen) => void; openPr
           </Bubbles>
         )}
 
-        {t.step === "suggested" && t.current && (
+        {t.step === "suggested" && t.current?.pending && (
+          <div className="live"><FindingCard /></div>
+        )}
+        {t.step === "suggested" && t.current && !t.current.pending && (
           <div className="live">
             <SuggestionCard s={t.current.lead} lead />
             <div className="btn-stack">

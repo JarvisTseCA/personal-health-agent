@@ -7,7 +7,9 @@ import { buildSuggestInput } from "../services/context";
 import { buildSystemPrompt } from "../services/prompts";
 import { personaProfile, useStore } from "../state/store";
 import { DAY_NAMES_LONG } from "../lib/met";
-import type { Screen } from "../state/types";
+import type { Screen, SuggestSource } from "../state/types";
+import { suggestSourceOf } from "../state/suggestSource";
+import { isTableId } from "../lib/tableActivities";
 import { isHidden } from "../state/screens";
 
 /**
@@ -68,12 +70,29 @@ export function DemoPanel({ go }: { go: (s: Screen) => void }) {
       </div>
 
       <div className="group">
+        <label htmlFor="source">Suggestions from</label>
+        <select id="source" value={suggestSourceOf(state)} onChange={(e) => {
+          dispatch({ type: "setSuggestSource", source: e.target.value as SuggestSource });
+          if (state.onboarded) { dispatch({ type: "restartDay" }); go("today"); }
+        }}>
+          <option value="library">The app's 15 activities</option>
+          <option value="table">The activity table (backend)</option>
+        </select>
+        <p className="hint">
+          {suggestSourceOf(state) === "table"
+            ? "Today asks the backend to pick from the activity table and falls back to the in-app pick if it can't."
+            : "Today picks from the app's own list, and Jev re-ranks it when the backend is running."}
+          {" "}Changing this starts today's check-in over.
+        </p>
+      </div>
+
+      <div className="group">
         <label>Backend</label>
         <p className="hint">
           {backend === undefined ? "Checking for the Python backend…"
             : backend === null ? "Python backend not running: suggestions come from the in-app ranker, data stays in this browser."
             : `Python backend connected (SQLite). Jev: ${backend.jev === "live" ? `live, ${backend.model}` : "mock (no API key set)"}.`}
-          {picked && ` Current pick from: ${picked.source === "jev" ? "Jev" : picked.source === "mock" ? "mock Jev" : "in-app ranker"}.`}
+          {picked && ` Current pick from: ${picked.pending ? "waiting for the activity table" : picked.source === "jev" ? "Jev" : picked.source === "mock" ? "mock Jev" : "in-app ranker"}${!picked.pending && picked.source !== "rules" && isTableId(picked.lead.variantId) ? ", activity table" : ""}.`}
           {backend && ` Fitbit: ${!fitbit?.configured ? "simulated (no Google client id in backend/.env)" : fitbit.connected ? "real, connected through the Google Health API" : "real Fitbit set up, not connected yet"}.`}
         </p>
         <div className="seg-toggle">

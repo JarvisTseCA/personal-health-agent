@@ -155,6 +155,8 @@ class TablePick(BaseModel):
     major_heading: str
     activity_description: str
     label: str  # the description up to its effort level, for the card: "Bicycling, stationary, 50 watts"
+    # Where it can be done, from the table's place columns: any of "gym", "home", "outside".
+    places: List[str] = []
     met_value: float
     duration_min: int
     heading_probability: float  # Jev's probability for this heading (1.0 when there was only one)

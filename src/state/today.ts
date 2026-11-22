@@ -22,6 +22,8 @@ import { SCRIPTED_REPLIES } from "../services/mockResponses";
 import type { BackendSuggestion } from "../services/backend";
 import { buildAgentContext, buildSuggestInput, equipmentAt } from "../services/context";
 import type { AppState, TodayEntry, TodayRewind, TodayState } from "./types";
+import { codeOfTableId, isTableId, registerTable } from "../lib/tableActivities";
+import { suggestSourceOf } from "./suggestSource";
 
 let seq = 0;
 export const newId = (prefix: string) => `${prefix}-${Date.now().toString(36)}-${(seq++).toString(36)}`;
@@ -195,7 +197,10 @@ function offer(state: AppState, intro?: string): AppState {
   } else if (intro) {
     s = push(s, agent(intro));
   }
-  return setToday(s, { step: "suggested", reminder: undefined, howShown: 0, current: { lead: r.lead!, backups: r.backups, desk: r.desk, showBackups: false, source: "rules" } });
+  // From the activity table: the card waits for the backend's pick ("Finding one for you…");
+  // the ranker's pick is the fallback if the backend fails or is too slow.
+  const pending = suggestSourceOf(s) === "table" && !r.desk;
+  return setToday(s, { step: "suggested", reminder: undefined, howShown: 0, current: { lead: r.lead!, backups: r.backups, desk: r.desk, showBackups: false, source: "rules", pending } });
 }
 
 /**
@@ -205,12 +210,25 @@ function offer(state: AppState, intro?: string): AppState {
 export function applyBackendSuggestion(state: AppState, replaces: Suggestion, r: BackendSuggestion): AppState {
   const c = state.today.current;
   if (state.today.step !== "suggested" || !c || c.source !== "rules" || c.lead !== replaces) return state;
-  return setToday(state, {
+  let s = state;
+  if (r.rows?.length) {
+    // Rows from the activity table: known to getVariant from now on, and saved for a reload.
+    registerTable(r.rows);
+    s = { ...s, tableActivities: { ...s.tableActivities, ...Object.fromEntries(r.rows.map((row) => [row.code, row])) } };
+  }
+  return setToday(s, {
     current: {
-      ...c, lead: r.lead, backups: r.backups, source: r.source,
+      ...c, lead: r.lead, backups: r.backups, source: r.source, pending: false,
       jev: { model: r.model, logId: r.logId, request: r.jevRequest, answers: r.jevAnswers },
     },
   });
+}
+
+/** The backend didn't answer in time, or couldn't: stop waiting and show the ranker's pick. */
+export function backendFailed(state: AppState, replaces: Suggestion): AppState {
+  const c = state.today.current;
+  if (!c?.pending || c.lead !== replaces) return state;
+  return setToday(state, { current: { ...c, pending: false } });
 }
 
 export function showBackups(state: AppState): AppState {
@@ -220,14 +238,30 @@ export function showBackups(state: AppState): AppState {
 
 function describe(s: Suggestion): string {
   const { family, variant } = getVariant(s.variantId);
+  if (isTableId(s.variantId)) return `${s.durationMin} min of ${family.noun}`;
   return s.pattern ? `${variant.label}, ${s.pattern.toLowerCase()}` : `${s.durationMin} min of ${family.noun} (${variant.label.toLowerCase()})`;
 }
 
 export function accept(state: AppState, which: Suggestion, typed?: string): AppState {
-  const s = push(learnLike(state, which.familyId), user(typed ?? (state.today.current?.lead === which ? "Let's start" : `I'll do ${describe(which)}`)));
+  const learned = isTableId(which.familyId) ? learnPicked(state, which.familyId) : learnLike(state, which.familyId);
+  const s = push(learned, user(typed ?? (state.today.current?.lead === which ? "Let's start" : `I'll do ${describe(which)}`)));
   return setToday(push(s, agent(`Nice. ${describe(which).replace(/^./, (c) => c.toUpperCase())}. I'll watch for it on your Fitbit and count it when it syncs.`)), {
     step: "accepted", accepted: which, reminder: undefined,
   });
+}
+
+/**
+ * An accepted activity-table row joins the codes picked before at today's place only, so each
+ * place's suggestions learn from what was accepted there (picked_codes in the table request).
+ */
+function learnPicked(state: AppState, familyId: string): AppState {
+  const place = state.today.checkIn.place;
+  if (!place) return state;
+  const code = codeOfTableId(familyId);
+  const picked = state.profile.pickedCodes ?? {};
+  const here = picked[place] ?? [];
+  if (here.includes(code)) return state;
+  return { ...state, profile: { ...state.profile, pickedCodes: { ...picked, [place]: [...here, code] } } };
 }
 
 /** Feedback, not a form: an accepted activity joins the user's likes (at the end, so earlier likes stay ahead). */
@@ -303,7 +337,7 @@ export function chooseReason(state: AppState, reason: DeclineReason, typed?: str
   if (!cur) return state;
   const noun = getFamily(cur.familyId).noun;
   let s = push(state, user(typed ?? DECLINE_LABEL[reason]), agent(REASON_REPLY[reason](noun)));
-  s = { ...s, declines: [...s.declines, { id: newId("d"), familyId: cur.familyId, reason, day: s.todayIndex, note: typed }] };
+  s = { ...s, declines: [...s.declines, { id: newId("d"), familyId: cur.familyId, reason, day: s.todayIndex, note: typed, place: s.today.checkIn.place }] };
   if (reason === "other") {
     s = setToday(s, { exclude: [...s.today.exclude, cur.familyId] });
     return offer(s, "Here's another idea.");

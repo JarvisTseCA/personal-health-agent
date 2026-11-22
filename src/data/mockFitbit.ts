@@ -22,7 +22,10 @@ export interface WeekRecord {
 
 export interface EquipmentProfile {
   home: string[];
-  /** null: doesn't use a gym */
+  /**
+   * Equipment at the user's gym. null: not listed, so a typical gym is assumed. There's no
+   * "doesn't use a gym" setting any more; older saves with null are read this way too.
+   */
   gym: string[] | null;
 }
 

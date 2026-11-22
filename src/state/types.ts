@@ -1,3 +1,4 @@
+import type { CategoryPrefs } from "../lib/categories";
 import type { EquipmentProfile, WeekRecord } from "../data/mockFitbit";
 import type { Session } from "../lib/met";
 import type { Video } from "../lib/moves";
@@ -21,6 +22,11 @@ export interface UserProfile {
   fitbitLive?: boolean;
   /** Equipment at home and at the gym. Missing on older saves: then nothing is filtered by equipment. */
   equipment?: EquipmentProfile;
+  /**
+   * The user's 👍 / 👎 on the activity table's categories ("Bicycling", "Dancing", …), set in
+   * onboarding or on the Settings tab. A category not listed has no preference. Missing on older saves.
+   */
+  categoryPrefs?: CategoryPrefs;
 }
 
 /**
@@ -109,8 +115,6 @@ export interface TodayState {
   howShown?: number;
   step: TodayStep;
   checkIn: Partial<CheckIn>;
-  /** What the user typed for place, when it wasn't one of the options */
-  placeLabel?: string;
   entries: TodayEntry[];
   exclude: string[];
   constraint?: Constraint;
@@ -132,7 +136,7 @@ export interface TodayState {
   nudged: boolean;
 }
 
-export type Screen = "onboarding" | "today" | "progress" | "chat" | "summary" | "showcase";
+export type Screen = "onboarding" | "today" | "progress" | "chat" | "summary" | "showcase" | "settings";
 export type Overlay = null | "prefs";
 
 export interface AppState {

@@ -11,6 +11,7 @@ import { creditFor, fmt, fmtGoal, intensityOf } from "../lib/met";
 import { answer } from "./answers";
 import { quote } from "../lib/clinicianNotes";
 import type { AgentContext } from "./context";
+import { isHidden } from "../state/screens";
 
 export interface ScriptedReply {
   id: string;
@@ -48,7 +49,7 @@ export const SCRIPTED_REPLIES: ScriptedReply[] = [
     reply: (_t, ctx) => {
       const notes = ctx.state.clinician.entries;
       if (!notes.length) {
-        return "I don't have any feedback from your clinician yet. At your next visit, show them your Summary tab. Afterwards, tell me what they said, for example \"My doctor said to keep it moderate for now\", and I'll use it when I suggest workouts.";
+        return "I don't have any feedback from your clinician yet. " + (isHidden("summary") ? "" : "At your next visit, show them your Summary tab. ") + "After your visit, tell me what they said, for example \"My doctor said to keep it moderate for now\", and I'll use it when I suggest workouts.";
       }
       const list = notes.map((n) => `"${quote(n.text, 140)}"`).join(" and ");
       return `You've told me your clinician said ${list}. I use this when I suggest workouts. Your goal is yours to set; if you two agreed on a change, update it on the Progress tab.`;

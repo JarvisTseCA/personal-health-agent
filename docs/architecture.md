@@ -130,6 +130,12 @@ copies the CSV into the `activities` table in SQLite. So the CSV is the only pla
 restart the backend. A mistake in the CSV (a MET value that isn't a number, a code used twice) stops the
 backend from starting and names the line.
 
+Two more columns, `family` (the movement itself, e.g. `running`, `cycling_indoor`) and `type` (the kind
+of workout, e.g. `cardio`, `mind_body`), are for the similarity check between suggestions; the backend
+doesn't use them yet. `activity_tables/update_table.py` fills them in from rules on the description,
+and also holds the hand fixes to rows (by code, each with its reason). After editing the CSV, run
+`python activity_tables/update_table.py` so both columns stay in step.
+
 `activity_code`, the 5-digit Compendium code, is the id. The frontend library stores the same code for
 each of its activities (`code`), so both sides can point at the same activity.
 
@@ -142,7 +148,7 @@ and picked_codes        table          heading?          1 question per heading 
 ```
 
 1. The frontend sends the check-in variables as before, but no options. It sends `picked_codes`
-   instead: the Compendium codes of the activities the user picked before (chosen in onboarding, or
+   instead: the Compendium codes of the activities the user picked before (set in Preferences, or
    suggestions they accepted), favorites first.
 2. **Filter.** `candidates()` in `activities.py` keeps the rows marked `exercise_rec` that can be done
    where the user is (gym, home or outside), need no partner and are 3 MET or more (light activity
@@ -380,7 +386,8 @@ other's Fitbit.
 
 ## Guardrails to keep
 
-- Only suggest activities from the user's enjoyed list and marked accessible (the code filters options before Jev sees them; the verifier re-checks; desk moves are the one exception).
+- Only suggest activities that aren't marked inaccessible or ruled out today (the code filters options before Jev sees them; the verifier re-checks). Liked activities, learned from accepted suggestions, rank higher but don't limit the options.
+- Never suggest an activity in a category the user disliked (👎 in onboarding or Settings); the app filters these out before Jev sees the options, and the verifier re-checks. Liked categories (👍) are sent as `liked_categories` and rank higher.
 - With a health flag: nothing at 6 MET or more, and suggest checking with a clinician first.
 - Use `clinician_notes` (the user's paraphrase of their clinician's feedback) as context when relevant; never treat them as a goal.
 - Remind the user it's a machine learning model and can make mistakes (the app shows this at the top of every conversation).

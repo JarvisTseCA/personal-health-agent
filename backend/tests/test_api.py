@@ -63,6 +63,28 @@ def test_activity_prompt_carries_the_check_in_variables():
     assert set(body["questions"]["activity"]["criteria"]) == {o["variant_id"] for o in REQ["options"]}
 
 
+def test_options_not_liked_yet_are_marked_not_picked_before():
+    # Likes are learned from feedback, so options can include activities the user hasn't liked yet.
+    req = SuggestRequest(**{**REQ, "enjoyed": [e for e in REQ["enjoyed"] if e["family_id"] != "yoga"]})
+    criteria = build_activity_request(req, "jev-latest")["questions"]["activity"]["criteria"]
+    yoga = [text for vid, text in criteria.items() if vid.startswith("yoga")]
+    assert yoga and all(t.endswith("Not picked before.") for t in yoga)
+    assert all("Favorite #?" not in t for t in criteria.values())
+
+
+def test_options_in_a_liked_category_say_so():
+    opts = [{**o, "category": "Bicycling" if o["family_id"] == "cycling" else "Conditioning Exercise"} for o in REQ["options"]]
+    req = SuggestRequest(**{**REQ, "options": opts, "liked_categories": ["Bicycling"]})
+    criteria = build_activity_request(req, "jev-latest")["questions"]["activity"]["criteria"]
+    for vid, text in criteria.items():
+        assert text.endswith("In a category they like.") == vid.startswith("cycling")
+
+
+def test_older_clients_without_categories_still_work():
+    req = SuggestRequest(**REQ)
+    assert req.liked_categories == [] and all(o.category == "" for o in req.options)
+
+
 def test_recent_lists_use_names_newest_first():
     # The frontend sends this week, then last week, so the days come out of order.
     recent = [

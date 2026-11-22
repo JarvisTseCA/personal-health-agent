@@ -1,8 +1,8 @@
 # VO2 Max Pal: Personal Health Agent (demo)
 
 A mobile-style web app that helps busy adults **raise their VO2 max** without having to plan. Each day it
-hands the user one workout that fits their time, the equipment where they are and the activities they
-enjoy, counts it in MET-hours toward the weekly physical activity guideline (the training that builds VO2
+hands the user one workout that fits their time and where they are, learns which activities they like
+from their feedback, counts it in MET-hours toward the weekly physical activity guideline (the training that builds VO2
 max), and rewards them with a streak for showing up and a trophy for every week they reach their goal.
 
 **Live demo:** https://jarvistseca.github.io/personal-health-agent/ (redeploys on every push to `main`)
@@ -46,8 +46,25 @@ Nov 2, 2026. Without the client, Fitbit stays simulated.
 
 ## What's in the demo
 
-The app has five tabs: **Today · Progress · Chat · Summary · Showcase**. Onboarding runs once before
-them, and Preferences opens as a sheet from Today.
+The app has five tabs: **Today · Progress · Chat · Summary · Showcase** (labelled *Settings*). Onboarding
+runs once before them, and Preferences opens as a sheet from Today.
+
+**Tabs as of Nov 21, 2026:** **Today · Progress · Chat · Settings**. *Settings* is now its own screen with two
+sections: *Tell us what you love doing* (the same like/dislike chips as onboarding) and the *Weekly plan*.
+Summary and the old Settings screen (Showcase) are hidden until they're polished: their links (`#summary`,
+`#showcase`) open Today, the *Open Summary* buttons in Preferences and the demo panel are hidden, and Chat points
+to Preferences for saved clinician notes. The code stays; remove a screen from `HIDDEN_SCREENS` in
+`src/state/screens.ts` to bring it back.
+
+**Tell us what you love doing** (onboarding and Settings, `src/components/CategoryChips.tsx`). One chip per
+category of the activity table: Bicycling, Conditioning Exercise, Dancing, Running, Sports, Walking, Water
+Activities, Winter Activities and Video Games (the table's major headings that hold recommended exercise).
+Tap once for 👍 like (the chip turns green), twice for 👎 dislike (rose), a third time to clear. The 👍 / 👎 sits in a badge on the chip's corner, so chips never change size or move.
+A disliked category is never suggested
+(the ranker filters it, the verifier checks it, the coach is told); a liked one ranks higher and the card says
+"You like walking". An activity's category comes from its Compendium code (`src/lib/categories.ts`), so
+Zumba counts as Conditioning Exercise, as in the Compendium. Winter Activities and Video Games have no
+activities in the app's built-in list yet; they'll matter once suggestions come from the full table.
 
 ### The mission: VO2 max
 
@@ -70,13 +87,18 @@ Code: `src/components/Vo2Card.tsx`, `src/services/context.ts` (`vo2Of`), `src/se
 
 ### Onboarding (runs once)
 
-**Observe first**: connect Fitbit, tell the agent anything it should know about your health, watch a week,
-then confirm what was detected, add liked activities (ranked), tell the agent your **equipment**, and plan
-the first week (every day starts at 10 min). *Set up now* skips the week. Every page has *Back*.
+**Four pages**: connect Fitbit, tell the agent anything it should know about your health, *Tell us what you
+love doing* (optional: 👍 / 👎 on the activity table's categories, see above), and plan the first week (every
+day starts at 10 min). Every page has *Back*.
 
-**Equipment, one place at a time.** First *What do you have at home?*, then *Do you go to a gym?* and, if
-yes, *What does your gym have?* On each page the user can **upload a photo**, **type a list** ("two dumbbells
-and a mat") or tap chips.
+Nothing else is asked up front: no observing week, no equipment. Every activity not in a disliked category
+starts as available and isn't limited by equipment, and the agent also **learns from feedback**: accepting a
+suggestion adds that activity to the user's likes (it ranks higher), and *Not in the mood* or *Can't access it*
+steer away from it. Category likes and the weekly plan can be changed on the Settings tab; equipment in
+Preferences.
+
+**Equipment photos (no longer in onboarding).** The photo analysis below was built for the equipment pages
+onboarding used to have. The component is kept for reuse; Preferences sets equipment with chips and a text box.
 
 **Photo analysis (demo).** *Upload a photo* loads a built-in sample photo for that place (a living-room
 corner, or a small gym) instead of opening the camera. The agent then analyzes it: the photo dims while a
@@ -119,7 +141,7 @@ The daily loop, and the screen the app opens on.
 - **Show me how:** a chip under the pick (and typing "how do I…") makes the agent share a **short how-to
   video**, one move at a time: setting up a spin bike, the salsa basic step, rowing technique, goblet squats
   and so on. The video plays in the conversation (YouTube's privacy-enhanced player, loaded on tap).
-- **Questions:** chips such as *What's a MET?*, *Why this?*, *How did you calculate this?* and *What's VO2 max?*
+- **Questions:** typed in the box under the pick ("what's a MET?") or asked in Chat. Today has no question chips (removed Nov 21, 2026).
 - **Workout:** *Sync Fitbit* logs it, asks to confirm if unsure, and nudges *keep going*. Reaching the
   weekly goal brings the **trophy moment**.
 - **Clinician feedback shows up in the pick:** when the user has told Chat their clinician advised
@@ -294,7 +316,7 @@ keeps the page fast and doesn't contact YouTube until the user asks.
 ### 4. Gym as a place
 
 **What changed:** Check-in's place question offers Home, **Gym**, Office and Outside. Typing "at the gym"
-(or "YMCA", "fitness center") works too. Gym is hidden for users who said they don't use one. At the gym
+(or "YMCA", "fitness center") works too. Gym is always offered (since Nov 21, 2026 there's no "no gym" setting). At the gym
 the agent suggests indoor activities only.
 
 **Why:** A gym day has different options than a home day, and the user needs to be able to say so in one tap.
@@ -469,7 +491,7 @@ The app runs on three loops: onboarding once, planning every week, and a check-i
 
 ```mermaid
 flowchart TD
-    A["Onboarding (once)<br/>Fitbit, health question,<br/>observe a week, confirm, likes"] --> B["Weekly planning (Sunday)<br/>mark off days, split the goal"]
+    A["Onboarding (once)<br/>Fitbit, health question,<br/>first week's plan"] --> B["Weekly planning (Sunday)<br/>mark off days, split the goal"]
     B --> C["1. Check in<br/>time, place, energy"]
     C --> D["2. Suggest<br/>1 pick"]
     D --> E{Let's start?}
@@ -484,9 +506,8 @@ flowchart TD
     R --> B
 ```
 
-1. **Onboarding (once).** The user connects Fitbit and answers one health question. The app then watches a
-   week of Fitbit data. On day 8 the user confirms the workouts the app detected, adds activities they
-   enjoy and plans the first week.
+1. **Onboarding (once).** The user connects Fitbit, answers one health question and plans the first week.
+   What they like is learned afterwards, from their feedback on suggestions.
 2. **Weekly planning (every Sunday).** The user enters how much free time they have on each day (or marks it
    off), and the app takes those numbers as true. The weekly goal is split over the days by how much time
    each one has. Each day's time goes on the user's own calendar as an exercise block, next to their other
@@ -509,21 +530,22 @@ Chat what their clinician said, and the agent uses it as context from then on. G
 
 ### Onboarding
 
-**Instruction:** Learn what the user already does from a week of Fitbit data, then confirm it with them and
-ask for anything else they enjoy and can do.
+**Instruction:** Get the user to their first suggestion quickly. Ask only what can't be learned later:
+Fitbit, anything the coach should know about their health, and the first week's plan.
 
-- Observe first is the default: connect Fitbit, tell the coach anything it should know, then wear the Fitbit
-  for a week while the coach makes no suggestions. The streak still counts during that week.
-- Every page after the welcome has *Back* at the top, which returns to the page the user came from.
-- On day 8 the coach shows each workout it detected ("Tuesday, 30 min, looks like cycling. Right?") and the
-  user confirms, corrects or skips it.
-- Then the user adds activities they enjoy (in order of preference), their equipment at home and at the gym
-  (a photo, a typed list or chips; asked one place at a time), and plans the first week. Every day
-  starts at 10 min; the user changes the days that differ (*Off*, 0, 5, 10, 30 or 45+ min).
+- Four pages after the welcome: *Connect your Fitbit*, *Anything we should know?*, *Tell us what you love
+  doing* and *Plan this week*. Every page has *Back* at the top, which returns to the page the user came from.
+- *Tell us what you love doing* (added back Nov 21, 2026) shows the activity table's categories: tap once to
+  like (👍), twice to dislike (👎), a third time to clear. It can be skipped, and changed later on Settings.
+- No observing week, no liked-activities page and no equipment pages (changed Nov 19, 2026). Preferences are
+  learned from feedback: an accepted suggestion joins the user's likes and ranks higher afterwards, while
+  *Not in the mood* and *Can't access it* steer away from an activity. Every activity can be suggested from
+  day one, and suggestions aren't limited by equipment until the user sets it in Preferences.
+- The plan page starts every day at 10 min; the user changes the days that differ (*Off*, 0, 5, 10, 30 or
+  45+ min).
 - There's no access page and no "how much time most weeks" page. Everything starts as available; if the user
   can't do something, typing so when turning a pick down ("can't, my bike is broken") or setting it in Preferences
   rules it out from then on.
-- *Don't want to wait? Set up now* skips the observation week.
 - The health page starts with a large text box for anything the coach should know (a condition, an
   injury, medication, something to avoid), with *No health conditions* and *Prefer not to say* below it.
   What's typed is kept as a note the coach remembers. Typing something without picking *No health
@@ -579,9 +601,11 @@ can do at their desk.
   another option*, which cycles through them.
 - *Remind me later* asks when (in 30 min, in 1 hour, this evening, or a typed time) and brings the same pick
   back then.
-- The ranker filters to activities the user enjoys, can access and has time for, that their health
-  settings allow, and whose equipment is where they'll exercise today (at the gym, indoor activities only). It then scores them on preference, fit to today's target, how recently each was done, past
-  declines and today's energy.
+- The ranker considers every activity the user can access and has time for, that their health settings
+  allow, and whose equipment is where they'll exercise today when the user has said (at the gym, indoor
+  activities only). It then scores them on what they've liked before (learned from accepted suggestions),
+  fit to today's target, how recently each was done, past declines and today's energy. Liked activities
+  rank higher but don't limit the options, so new ones get tried.
 - Each card says why it was picked ("Your favorite", "Not done in the last few days").
 - Strength and interval picks come with a circuit built from the equipment on hand, and *Show me how*
   shares a short how-to video for each move (`src/lib/moves.ts`).
@@ -608,9 +632,10 @@ Code: `src/state/today.ts`, `src/screens/PreferencesSheet.tsx`
 
 **Instruction:** The user can ask questions (for example, "What is MET?") at any point.
 
-- One-tap question chips sit under every suggestion: *What's a MET?*, *Why this activity?*, *How did you
-  calculate this?*, *Does walking count?*, *Why is my goal 7.5?*, *What's VO2 max?*, *How do streaks and
-  trophies work?*
+- On Today, questions are typed in the box under the pick, after *Let's start* or at the end of the day;
+  the coach answers anything it doesn't read as an answer to the current step. Today has no one-tap question
+  chips (removed Nov 21, 2026): only *Show me how* remains under the pick, when there's a how-to video.
+- Chat's starter chips (*What's VO2 max?*, *What's a MET?*, …) stay.
 - Answers come from a fixed glossary, the ranker's real reasons and the calculator's real numbers, never
   numbers the coach makes up.
 - The Chat tab takes questions in the user's own words.
@@ -754,7 +779,7 @@ later decision changes an earlier one, the earlier row says so instead of being 
 | Oct 28, 2026 | Today, Progress, Showcase | **Rewards simplified:** a sign-in streak (flame) and a trophy for each week that reaches its goal. Bronze, silver and gold daily medals are gone. A missed day quietly resets the streak; no message mentions it. *Month by month* shows flame bands for past streaks and a trophy per goal week. | Fewer reward types are easier to read. Rewards should only add up; pointing out a miss feels like a penalty. |
 | Oct 28, 2026 | Clinician | *(Replaced Nov 2, below.)* The clinician reviews a **summary** and leaves **optional notes for the agent**; the goal template is gone. The user decides on goals after talking with the clinician. | The user owns their goals. The clinician's input still shapes what the agent says, as context. |
 | Oct 28, 2026 | Chat | The Coach tab is renamed **Chat**. The top of every conversation (Chat and Today) says the agent is a machine learning model and may make mistakes. | Clearer name; users should know they're talking to a model that can be wrong. |
-| Oct 28, 2026 | Today, onboarding | **Gym** is a place option. Onboarding asks for equipment at home, then at the gym, by photo, typed list or chips. Suggestions only use equipment where the user is, and strength or interval picks list a circuit built from it. | Equipment-aware plans, like Volt Athletics: a pick the user can't do with what's there is a wasted decision. |
+| Oct 28, 2026 | Today, onboarding | **Gym** is a place option. Onboarding asks for equipment at home, then at the gym (onboarding part changed Nov 19, 2026: equipment is no longer asked), by photo, typed list or chips. Suggestions only use equipment where the user is, and strength or interval picks list a circuit built from it. | Equipment-aware plans, like Volt Athletics: a pick the user can't do with what's there is a wasted decision. |
 | Oct 28, 2026 | Today | *Show me how* shares a short how-to video in the conversation, one move at a time. | Some picks (a spin bike, a goblet squat, the salsa basic step) are easier to start once you've seen them done. |
 | Oct 28, 2026 | Onboarding | In the demo, *Upload a photo* loads a built-in sample photo for that place. The agent analyzes it (scan, then labeled boxes), reports what it found and what it left out, and asks if it got it right. The user replies in a text box ("no kettlebell, but I have a jump rope"); the agent updates the list and says what changed. | Works the same in every demo, with no camera or upload. The boxes and the report show what the analysis would do; a typed reply lets people correct it the way they'd say it. |
 | Oct 28, 2026 | Onboarding, Preferences | Equipment the user types that isn't in the app's list is added as their own tag (shown with a #), not saved as a note. Misspellings like "dumbell" match, amounts like "5kg" are ignored, and a generic word with a modifier ("battle rope", "foam mat") becomes a tag rather than matching a listed item. | The user's answer shouldn't hit a dead end. A tag keeps what they said, visibly, and they can tap it off. |
@@ -782,13 +807,17 @@ later decision changes an earlier one, the earlier row says so instead of being 
 | Nov 2, 2026 | Chat, Today | Saved feedback is agent context. Only **cautious** effects are automatic: "moderate" / blood pressure / heart keeps picks under 6 MET, strength advice favors strength picks (with an offer to add strength to the list). The agent repeats what it saved and says what it will do; it never changes the goal. | The note is the user's paraphrase of medical advice. Making picks gentler is safe even if it's misread; changing the goal isn't, so that stays with the user. |
 | Nov 2, 2026 | Summary, Preferences | Saved feedback is a **list of notes**, shown with dates on Summary and in Preferences, each removable; removing one undoes its effect. Older saves keep their single note as the first entry. | The user should always see, and be able to undo, what the agent is acting on. |
 | Nov 8, 2026 | Today, Progress | The check-in confirms today's time instead of asking for it, names where it came from (the weekly plan, or the user's edit to that day's calendar block) and asks "Keep it, or do you want to exercise more or less?". *Keep 30 min* keeps it; *Pick a different time* opens the time list, and a new pick replaces the day's time and its calendar block. The buttons name the planned time rather than saying Yes/No, which read as ambiguous. Each day's time is an exercise block on the user's own calendar; empty calendar space never counts as free time. | Proposal feedback: the user already gave their time in the weekly session, so asking again is redundant. Naming the source builds trust, and the question nudges toward more exercise. One calendar lets users see exercise next to everything else. |
+| Nov 19, 2026 | Onboarding, Today | Onboarding is three pages: Fitbit, the health question and the first week's plan. The observing week, the confirm page, the liked-activities page and the equipment pages are gone. Every activity can be suggested; liked ones rank higher, and an accepted suggestion becomes a like. Equipment doesn't limit suggestions until it's set in Preferences. | Requested: get to the first suggestion fast, and learn preferences from what users do with suggestions rather than asking up front. A week of waiting and a ranked list are a lot to ask before the app has helped. |
+| Nov 21, 2026 | Today, Preferences | **Gym is always a check-in option.** The *I use a gym* switch is gone from Preferences, and a gym with no equipment listed is treated as a typical one (treadmill, stationary bike, elliptical, dumbbells, weight machines). Older saves and personas that said "no gym" are read the same way. | Requested. People use hotel, work or friends' gyms, so "no gym" shouldn't remove the option. |
+| Nov 21, 2026 | All | **Summary and Settings are hidden** (Settings came back the same day as its own screen, see the next row) from the tab bar until they're polished. Old links open Today; nothing else in the app points to them; Chat says saved clinician notes are in Preferences. One list, `HIDDEN_SCREENS`, brings them back. | Requested: they aren't ready for testers, and a half-finished tab distracts from Today. |
+| Nov 21, 2026 | Onboarding, Settings, Today | *Tell us what you love doing* is back, in onboarding (before the plan) and on a new **Settings** tab that holds only that and the **Weekly plan**. The choices are the activity table's nine exercise categories, each tapped through 👍 like, 👎 dislike and no preference. Disliked categories are never suggested; liked ones rank higher. Preferences loses its ranked activity list and links to Settings. | Requested. Users can say up front what they like and don't, in the table's own terms, and change it in one place. One list of likes avoids two places that could disagree. |
 
 Still open:
 
 - With *Not today* gone, a reason for turning a pick down has to be typed. That includes "something hurts",
   which takes the safety path. Should *Something hurts* come back as a small one-tap option?
-- Should the question chips (*What's a MET?*, *Why this activity?*) stay under the pick, or would the card
-  read better with only the three buttons?
+- ~~Should the question chips (*What's a MET?*, *Why this activity?*) stay under the pick?~~ Decided Nov 21,
+  2026: removed from Today. Only *Show me how* stays.
 - Changing a day's plan re-splits every day's target, including past days. Should past days keep the target
   they had?
 - The how-to videos, simulated photo recognition and Fitbit's VO2 max for non-runners: see *Things to know*

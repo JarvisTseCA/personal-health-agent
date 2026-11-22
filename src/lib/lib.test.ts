@@ -11,6 +11,8 @@ import { ALL_FROM_PLAN, applyCalendarEdit, dailyTargets, migratePlan, migrateSou
 import { slotForMinutes } from "./freeText";
 import { afterDecline, challengePlan, suggest, type SuggestInput } from "./suggest";
 import { verifySuggestion } from "./verify";
+import { CATEGORIES, categoryOf, nextPref, withPref } from "./categories";
+import { PICKABLE } from "./activities";
 import { buildAgentContext } from "../services/context";
 import { initialState, personaProfile } from "../state/store";
 import { isAddFeedbackRequest, isClinicianReport } from "./clinicianNotes";
@@ -217,20 +219,20 @@ describe("equipment", () => {
   it("only suggests equipment that's where the user is", () => {
     const input: SuggestInput = {
       enjoyed: ["strength", "rowing"], access: { strength: "have", rowing: "have" }, noVigorous: false, maxSessionMin: null,
-      minutes: 30, place: "home", energy: "normal", mood: "surprise", needed: 1.5, boost: false, recent: [], declines: [], exclude: [],
+      minutes: 30, place: "indoors_private", energy: "normal", mood: "surprise", needed: 1.5, boost: false, recent: [], declines: [], exclude: [],
       equipmentHere: ["yoga-mat"],
     };
     const r = suggest(input);
     expect(r.lead!.variantId).toMatch(/^strength-(bodyweight|hard)$/);
     expect([r.lead!, ...r.backups].some((x) => x.familyId === "rowing")).toBe(false);
-    const gym = suggest({ ...input, place: "gym", equipmentHere: ["rowing-machine", "dumbbells"] });
+    const gym = suggest({ ...input, place: "indoors_with_others", equipmentHere: ["rowing-machine", "dumbbells"] });
     expect([gym.lead!, ...gym.backups].map((x) => x.familyId)).toContain("rowing");
   });
 
   it("at the gym, suggests indoor activities only", () => {
     const r = suggest({
       enjoyed: ["cycling", "walking"], access: { cycling: "have", walking: "have" }, noVigorous: false, maxSessionMin: null,
-      minutes: 30, place: "gym", energy: "normal", mood: "surprise", needed: 1.5, boost: false, recent: [], declines: [], exclude: [],
+      minutes: 30, place: "indoors_with_others", energy: "normal", mood: "surprise", needed: 1.5, boost: false, recent: [], declines: [], exclude: [],
       equipmentHere: ["stationary-bike", "treadmill"],
     });
     for (const x of [r.lead!, ...r.backups]) {
@@ -278,16 +280,43 @@ describe("suggestions", () => {
   const base: SuggestInput = {
     enjoyed: ["cycling", "dancing", "walking"],
     access: { cycling: "have", dancing: "have", walking: "have" },
-    noVigorous: false, maxSessionMin: null, minutes: 30, place: "home", energy: "normal", mood: "surprise",
+    noVigorous: false, maxSessionMin: null, minutes: 30, place: "indoors_private", energy: "normal", mood: "surprise",
     needed: 1.9, boost: false, recent: [], declines: [], exclude: [],
   };
 
-  it("only suggests enjoyed, accessible activities that fit the time", () => {
+  it("suggests accessible activities that fit the time, liked ones first", () => {
     const r = suggest({ ...base, access: { ...base.access, cycling: "no" } });
+    expect(["dancing", "walking"]).toContain(r.lead!.familyId);
     for (const s of [r.lead!, ...r.backups]) {
-      expect(["dancing", "walking"]).toContain(s.familyId);
+      expect(s.familyId).not.toBe("cycling");
       expect(s.durationMin).toBeLessThanOrEqual(30);
     }
+  });
+
+  it("suggests from every activity when nothing is liked yet", () => {
+    const r = suggest({ ...base, enjoyed: [], access: {} });
+    expect(r.desk).toBeFalsy();
+    expect(r.lead).toBeTruthy();
+    expect(r.backups.length).toBe(2);
+    // No liked list, so no "favorite" reason can be claimed.
+    expect(r.lead!.reasons.join(" ")).not.toMatch(/favorite/i);
+  });
+
+  it("never suggests a disliked category, and the verifier agrees", () => {
+    const input: SuggestInput = { ...base, enjoyed: [], access: {}, categoryPrefs: { Bicycling: "dislike", "Conditioning Exercise": "dislike" } };
+    const r = suggest(input);
+    for (const s of [r.lead!, ...r.backups]) {
+      expect(["Bicycling", "Conditioning Exercise"]).not.toContain(categoryOf(getVariant(s.variantId).variant));
+      expect(verifySuggestion(s, input).find((c) => c.name === "Category")!.ok).toBe(true);
+    }
+    const cycling = suggest({ ...base, mood: "cycling" }).lead!;
+    expect(verifySuggestion(cycling, input).find((c) => c.name === "Category")!.ok).toBe(false);
+  });
+
+  it("ranks a liked category higher and says so", () => {
+    const r = suggest({ ...base, enjoyed: [], access: {}, categoryPrefs: { Dancing: "like" } });
+    expect(categoryOf(getVariant(r.lead!.variantId).variant)).toBe("Dancing");
+    expect(r.lead!.reasons).toContain("You like dancing");
   });
 
   it("gives backups of a different type when it can", () => {
@@ -302,7 +331,7 @@ describe("suggestions", () => {
   });
 
   it("offers desk moves when there's no time", () => {
-    const r = suggest({ ...base, minutes: 0, place: "office" });
+    const r = suggest({ ...base, minutes: 0, place: "indoors_with_others" });
     expect(r.desk).toBe(true);
     expect(r.lead!.familyId).toBe("desk");
   });
@@ -325,7 +354,7 @@ describe("suggestions", () => {
 
   it("reaches a challenge with a harder pace, not a longer session", () => {
     for (const enjoyed of [["cycling"], ["dancing"], ["walking"], ["running"], ["strength"]]) {
-      const input = { ...base, enjoyed, access: { [enjoyed[0]]: "have" as const }, needed: 1.3, target: 1.3 };
+      const input = { ...base, place: "outside" as const, enjoyed, access: { [enjoyed[0]]: "have" as const }, needed: 1.3, target: 1.3 };
       const normal = suggest(input).lead!;
       const hard = suggest({ ...input, energy: "challenge" }).lead!;
       expect(hard.familyId).toBe(normal.familyId);
@@ -423,5 +452,29 @@ describe("calendar exercise blocks", () => {
   it("old saves without sources read as all from the plan", () => {
     expect(migrateSources(undefined)).toEqual(ALL_FROM_PLAN);
     expect(migrateSources(["plan", "calendar"])[1]).toBe("calendar");
+  });
+});
+
+describe("activity categories", () => {
+  it("are the table's nine exercise categories, and every activity belongs to one", () => {
+    expect(CATEGORIES.map((c) => c.id)).toEqual([
+      "Bicycling", "Conditioning Exercise", "Dancing", "Running", "Sports", "Walking", "Water Activities", "Winter Activities", "Video Games",
+    ]);
+    for (const f of PICKABLE) for (const v of f.variants) {
+      if (v.code !== "none") expect(CATEGORIES.map((c) => c.id)).toContain(categoryOf(v));
+    }
+    expect(categoryOf(getVariant("zumba-class").variant)).toBe("Conditioning Exercise");
+  });
+
+  it("cycle like, dislike, no preference with each tap", () => {
+    expect(nextPref(undefined)).toBe("like");
+    expect(nextPref("like")).toBe("dislike");
+    expect(nextPref("dislike")).toBeUndefined();
+    let prefs = withPref({}, "Running", nextPref(undefined));
+    expect(prefs).toEqual({ Running: "like" });
+    prefs = withPref(prefs, "Running", nextPref(prefs.Running));
+    expect(prefs).toEqual({ Running: "dislike" });
+    prefs = withPref(prefs, "Running", nextPref(prefs.Running));
+    expect(prefs).toEqual({});
   });
 });

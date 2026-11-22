@@ -115,7 +115,7 @@ describe("Fitbit sync in the Today flow", () => {
   function accepted(): AppState {
     let s = onboarded();
     s = T.answerTime(s, "30 min", 30);
-    s = T.answerPlace(s, "Home", "home");
+    s = T.answerPlace(s, "Outside", "outside");
     s = T.answerEnergy(s, "Normal", "normal");
     return T.accept(s, s.today.current!.lead);
   }

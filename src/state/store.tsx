@@ -1,10 +1,10 @@
+import { withPref, type CategoryPref } from "../lib/categories";
 import { createContext, useCallback, useContext, useEffect, useMemo, useReducer, useRef, type ReactNode } from "react";
 import { PERSONAS } from "../data/mockFitbit";
 import { importFitbit, syncSince, type FitbitImport } from "../lib/fitbit";
 import { fmt, withCredit, type Session } from "../lib/met";
 import { ALL_FROM_PLAN, applyCalendarEdit, migratePlan, migrateSources, shorterSlot, SLOT_MINUTES, type DaySlot, type WeekPlan } from "../lib/plan";
-import type { Access, DeclineReason, Energy, Place, Suggestion } from "../lib/suggest";
-import type { QuestionId } from "../services/answers";
+import { migratePlace, type Access, type DeclineReason, type Energy, type Place, type Suggestion } from "../lib/suggest";
 import { buildAgentContext, type AgentContext } from "../services/context";
 import { backendHealth, fetchSuggestion, type BackendSuggestion } from "../services/backend";
 import { fetchFitbitData, FitbitDisconnected } from "../services/fitbit";
@@ -82,6 +82,7 @@ export type Action =
   | { type: "hydrate"; state: AppState }
   | { type: "completeOnboarding"; profile: UserProfile; plan: WeekPlan }
   | { type: "updateProfile"; patch: Partial<UserProfile> }
+  | { type: "setCategoryPref"; category: string; pref: CategoryPref | undefined }
   | { type: "setAccess"; familyId: string; access: Access }
   | { type: "toggleEnjoyed"; familyId: string }
   | { type: "moveEnjoyed"; familyId: string; dir: -1 | 1 }
@@ -111,7 +112,6 @@ export type Action =
   | { type: "addNote"; text: string; where: string }
   | { type: "forgetNote"; id: string }
   | { type: "wantMore" }
-  | { type: "ask"; q: QuestionId }
   | { type: "sync" }
   | { type: "fitbitSync"; data: FitbitImport }
   | { type: "confirm"; answer: Today.ConfirmAnswer }
@@ -145,6 +145,8 @@ function reduce(state: AppState, action: Action): AppState {
       return Today.startDay({ ...state, onboarded: true, profile: action.profile, plan: action.plan, planSource: ALL_FROM_PLAN });
     case "updateProfile":
       return { ...state, profile: { ...state.profile, ...action.patch } };
+    case "setCategoryPref":
+      return { ...state, profile: { ...state.profile, categoryPrefs: withPref(state.profile.categoryPrefs, action.category, action.pref) } };
     case "setAccess":
       return { ...state, profile: { ...state.profile, access: { ...state.profile.access, [action.familyId]: action.access } } };
     case "toggleEnjoyed": {
@@ -218,7 +220,6 @@ function reduce(state: AppState, action: Action): AppState {
     case "addNote": return { ...state, notes: [...state.notes, { id: Today.newId("n"), text: action.text, where: action.where, day: state.todayIndex }] };
     case "forgetNote": return { ...state, notes: state.notes.filter((n) => n.id !== action.id) };
     case "wantMore": return Today.wantMore(state);
-    case "ask": return Today.ask(state, action.q);
     case "sync": return Today.sync(state);
     case "fitbitSync": return Today.syncFitbit(state, action.data);
     case "confirm": return Today.confirm(state, action.answer);
@@ -286,7 +287,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           clinician: migrateClinician(s.clinician),
           chat: s.chat ?? [],
         };
-        const today = { ...s.today, entries: (s.today?.entries ?? []).filter((e) => (e.role as string) !== "medal") };
+        // Saves from before the three places: Home → Indoors, private; Gym and Office → Indoors, with others.
+        const checkIn = { ...s.today?.checkIn, place: migratePlace(s.today?.checkIn?.place) };
+        const today = { ...s.today, checkIn, entries: (s.today?.entries ?? []).filter((e) => (e.role as string) !== "medal") };
         let loaded: AppState = { ...initialState(), ...s, ...plans, ...extra, today, overlay: null, toast: null };
         // A save still sitting on the old opener ("How much time do you have today?") on a planned day:
         // restart the check-in so it confirms the planned time instead.

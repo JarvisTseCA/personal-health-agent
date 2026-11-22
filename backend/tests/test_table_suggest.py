@@ -266,6 +266,12 @@ def test_met_limits_reach_the_filter(client):
     assert post(client, picked_codes=["17358"], min_met=None).json()["candidate_count"] == 3
 
 
+def test_indoors_with_others_includes_the_gym(client):
+    gym = post(client).json()
+    shared = post(client, check_in={**REQ["check_in"], "place": "indoors_with_others"}).json()
+    assert shared["candidate_count"] >= gym["candidate_count"] > 0
+
+
 def test_nothing_in_the_table_fits(client):
     office = post(client, check_in={**REQ["check_in"], "place": "office"})
     no_time = post(client, durations=[])
@@ -357,7 +363,7 @@ def real_table(tmp_path, monkeypatch):
 
 def test_no_heading_is_too_big_for_one_jev_question(real_table):
     """Call 2 puts a whole heading into one question, and a question takes 255 options at most."""
-    for place in activities.PLACE_COLUMN:
+    for place in activities.PLACE_WHERE:
         sizes = {h: len(rows) for h, rows in group_by_heading(activities.candidates(place)).items()}
         assert sizes and max(sizes.values()) <= 255, (place, sizes)
 

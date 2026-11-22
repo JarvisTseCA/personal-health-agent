@@ -5,6 +5,7 @@
  * call here fails quietly and the app keeps using the in-app ranker and
  * localStorage, exactly like the demo build.
  */
+import { categoryOf, likedCategories } from "../lib/categories";
 import { getFamily, getVariant } from "../lib/activities";
 import { equipmentName } from "../lib/equipment";
 import { creditFor, DAY_NAMES_LONG, metHours } from "../lib/met";
@@ -67,7 +68,10 @@ export function buildSuggestRequest(state: AppState) {
     options: options.map(({ family, variant }) => ({
       variant_id: variant.id, family_id: family.id, family_name: family.name, kind: family.kind,
       label: variant.label, met: variant.met, description: variant.description, setting: variant.setting ?? family.setting,
+      category: categoryOf(variant) ?? "",
     })),
+    // Categories the user marked 👍; disliked ones are already filtered out of the options.
+    liked_categories: likedCategories(input.categoryPrefs),
     durations,
     // Names come from the activity library here; the backend has no copy of it.
     recent: input.recent.map((r) => ({ family_id: r.familyId, name: getFamily(r.familyId).name, days_ago: r.daysAgo })),

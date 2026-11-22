@@ -73,7 +73,9 @@ def mock_activity(req: SuggestRequest) -> Dict[str, dict]:
 
     activity: Dict[str, float] = {}
     for o in req.options:
-        s = 2.0 * (1 - (rank.get(o.family_id, n) - 1) / n)
+        s = 2.0 * (1 - (rank[o.family_id] - 1) / n) if o.family_id in rank else 0.0
+        if o.category and o.category in req.liked_categories:
+            s += 1.5
         if req.check_in.mood == o.family_id:
             s += 2.0
         if recent.get(o.family_id) in (0, 1):

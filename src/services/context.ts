@@ -4,6 +4,7 @@
  * All numbers come from src/lib (calculator), never from the agent. A real
  * LLM gets this serialized into its system prompt (see prompts.ts).
  */
+import { dislikedCategories, likedCategories } from "../lib/categories";
 import { getFamily } from "../lib/activities";
 import { goalOffer, type GoalOffer } from "../lib/goal";
 import { equipmentName } from "../lib/equipment";
@@ -94,6 +95,11 @@ export function vo2Of(values: number[]): Vo2 | null {
   return { series: values.map((value, i) => ({ label: labels[i], value })), latest, change: latest - values[0], peakMets: latest / 3.5 };
 }
 
+/** Today's target is reached: a day with a target (not off, not 0 min) whose MET-hours meet it. */
+export function reachedToday(ctx: Pick<AgentContext, "todayTarget" | "todayDone">): boolean {
+  return ctx.todayTarget > 0 && ctx.todayDone + 1e-9 >= ctx.todayTarget;
+}
+
 export function buildAgentContext(state: AppState): AgentContext {
   const goal = state.goal;
   const t = state.todayIndex;
@@ -150,13 +156,17 @@ export function buildAgentContext(state: AppState): AgentContext {
   };
 }
 
-/** Equipment where the user is today; undefined when the profile has no equipment yet (older saves). */
+/** What a typical gym has, assumed when the user hasn't listed their gym's equipment. */
+export const TYPICAL_GYM = ["treadmill", "stationary-bike", "elliptical", "dumbbells", "weight-machines"];
+
+/** Equipment where the user is today; undefined when the profile has no equipment yet (not asked, or older saves). */
 export function equipmentAt(state: AppState, place: Place): string[] | undefined {
   const eq = state.profile.equipment;
   if (!eq) return undefined;
-  if (place === "home") return eq.home;
-  // No gym on file but they said "gym": assume a typical one rather than suggest nothing.
-  if (place === "gym") return eq.gym ?? ["treadmill", "stationary-bike", "elliptical", "dumbbells", "weight-machines"];
+  if (place === "indoors_private") return eq.home;
+  // Indoors with others includes the gym. Gym equipment not listed: assume a typical gym
+  // rather than suggest nothing.
+  if (place === "indoors_with_others") return eq.gym ?? TYPICAL_GYM;
   return [];
 }
 
@@ -175,8 +185,8 @@ export function buildSuggestInput(state: AppState, ctx = buildAgentContext(state
     noVigorous: ctx.noVigorous,
     maxSessionMin: null,
     minutes: c.minutes ?? 30,
-    place: c.place ?? "home",
-    equipmentHere: equipmentAt(state, c.place ?? "home"),
+    place: c.place ?? "indoors_private",
+    equipmentHere: equipmentAt(state, c.place ?? "indoors_private"),
     favorKind: ctx.guidance.strength ? "strength" : undefined,
     energy: c.energy ?? "normal",
     mood: c.mood ?? "surprise",
@@ -186,6 +196,7 @@ export function buildSuggestInput(state: AppState, ctx = buildAgentContext(state
     recent,
     declines: state.declines.map((d) => ({ familyId: d.familyId, reason: d.reason, daysAgo: t - d.day })),
     exclude: state.today.exclude,
+    categoryPrefs: state.profile.categoryPrefs,
     constraint: state.today.constraint,
   };
 }
@@ -200,8 +211,11 @@ export function serializeContext(ctx: AgentContext) {
       enjoys_in_order: ctx.enjoyedNames,
       access: Object.fromEntries(Object.entries(s.profile.access).map(([k, v]) => [getFamily(k).noun, v])),
       health_flag: s.profile.hasHealthCondition,
-      equipment_at_home: (s.profile.equipment?.home ?? []).map(equipmentName),
-      equipment_at_gym: s.profile.equipment?.gym === null ? "doesn't use a gym" : (s.profile.equipment?.gym ?? []).map(equipmentName),
+      equipment_at_home: s.profile.equipment ? s.profile.equipment.home.map(equipmentName) : "not listed",
+      equipment_at_gym: s.profile.equipment ? (s.profile.equipment.gym ?? TYPICAL_GYM).map(equipmentName) : "not listed",
+      // Categories of the activity table the user marked 👍 / 👎 in onboarding or Settings.
+      categories_they_like: likedCategories(s.profile.categoryPrefs),
+      categories_they_dislike: dislikedCategories(s.profile.categoryPrefs),
     },
     // Feedback from the user's clinician, as the user typed it in Chat. Context, not a goal or a rule.
     clinician_notes: s.clinician.entries.length

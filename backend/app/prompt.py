@@ -26,7 +26,9 @@ from .schemas import Option, SuggestBase, SuggestRequest, TableSuggestRequest
 ACTIVITY_INSTRUCTIONS = (
     "Pick the one activity this person is most likely to enjoy and actually do today. "
     "Weigh, in order: what they are in the mood for, their energy today, how high it is "
-    "on their list of favorites, and variety (avoid what they did yesterday or declined "
+    "on their list of favorites (learned from what they accepted; an option not on it is fine, and "
+    "trying one now and then helps learn more), whether it's in a category they said they like, "
+    "and variety (avoid what they did yesterday or declined "
     "recently). On a low-energy day prefer lighter options. When they want a challenge, "
     "prefer a harder pace that earns 1.5x today's target in their usual session length "
     "over an easier pace done for longer. Options they can only 'sometimes' access are less "
@@ -58,12 +60,11 @@ ENERGY_TEXT = {
 }
 
 PLACE_TEXT = {
+    "indoors_private": "indoors, in a private space (e.g. home or a hotel room)",
+    "indoors_with_others": "indoors, around other people (e.g. a gym or an office)",
+    "outside": "outside",
     "home": "at home",
     "gym": "at the gym",
-    "office": "at the office",
-    "outside": "outside",
-    "traveling": "traveling",
-    "other": "somewhere else",
 }
 
 
@@ -129,7 +130,8 @@ def build_activity_request(req: SuggestRequest, model: str) -> Dict[str, Any]:
     options = {
         o.variant_id: (
             f"{o.family_name}, {o.label.lower()} ({o.met} MET, {o.setting}). {o.description}. "
-            f"Favorite #{rank.get(o.family_id, '?')}."
+            + (f"Favorite #{rank[o.family_id]}." if o.family_id in rank else "Not picked before.")
+            + (" In a category they like." if o.category and o.category in req.liked_categories else "")
         )
         for o in req.options
     }

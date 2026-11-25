@@ -338,7 +338,8 @@ def suggest_from_memory(req: MemorySuggestRequest) -> MemorySuggestResponse:
     The check-in is stored in Memory. The goal, plan and workouts there give today's numbers
     (calculator.py); the likes, picks and declines there fill in the rest (memory_suggest.py).
     Then it is /api/suggest/table. The numbers come back with the suggestion, so an app that
-    uses this route shows them and doesn't work out its own. Not called by the app yet.
+    uses this route shows them and doesn't work out its own. This is the route the app uses
+    for Today's pick whenever it runs with the backend.
     """
     today = _day(req.date)
     c = req.check_in
@@ -479,7 +480,10 @@ def delete_state(user_id: str = "demo") -> Dict[str, bool]:
 
 
 # --- Memory: what the backend remembers about a user, in six groups (memory.py) ----------------
-# Not called by the app yet; it still uses /api/state above.
+# When the app finds the backend running, these are what it uses: it reads Memory when it opens,
+# tells it what changed after every step, and shows the numbers that come back. It no longer
+# saves its state in one piece through /api/state above; that is only read once, to bring an
+# earlier save over into Memory.
 #
 # `date` on these routes is the user's today, "2026-11-25". A request that has it gets the
 # numbers for that day in its reply as well (see _numbers below), worked out after the change.

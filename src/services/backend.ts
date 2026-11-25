@@ -4,6 +4,12 @@
  * The backend is optional: if it isn't running (or on GitHub Pages), every
  * call here fails quietly and the app keeps using the in-app ranker and
  * localStorage, exactly like the demo build.
+ *
+ * Whether it is running is checked once, when the app opens (backendHealth),
+ * and that one answer decides how the app runs:
+ *  - no backend: the app remembers, works the numbers out and suggests itself;
+ *  - backend: Memory remembers, the backend works the numbers out and suggests,
+ *    and Today sends only the check-in (fetchMemorySuggestion below).
  */
 import { categoryOf, dislikedCategories, likedCategories } from "../lib/categories";
 import { getFamily, getVariant } from "../lib/activities";

@@ -6,12 +6,14 @@ import { fmt, type Session } from "../lib/met";
 import { ALL_FROM_PLAN, applyCalendarEdit, migratePlan, migrateSources, shorterSlot, SLOT_MINUTES, type DaySlot, type WeekPlan } from "../lib/plan";
 import { migratePlace, type Access, type DeclineReason, type Energy, type Place, type Suggestion } from "../lib/suggest";
 import { buildAgentContext, creditOf, type AgentContext } from "../services/context";
-import { backendHealth, fetchSuggestion, fetchTableSuggestion, type BackendSuggestion } from "../services/backend";
+import { backendHealth, fetchMemorySuggestion, fetchSuggestion, fetchTableSuggestion, type BackendSuggestion } from "../services/backend";
 import { registerTable } from "../lib/tableActivities";
 import { suggestSourceOf, TABLE_WAIT_MS } from "./suggestSource";
 import { fetchFitbitData, FitbitDisconnected } from "../services/fitbit";
 import { repository } from "../services/store";
 import { applyClinicianTurn } from "../services/clinicianChat";
+import { showNumbers } from "../services/numbers";
+import { openMemorySession, type MemorySession } from "./memorySession";
 import * as Today from "./today";
 import type { EquipmentProfile } from "../data/mockFitbit";
 import type { AppState, ChatMessage, ClinicianNotes, Overlay, SuggestSource, UserProfile } from "./types";
@@ -134,13 +136,15 @@ export type Action =
   | { type: "backendFailed"; replaces: Suggestion }
   | { type: "suggestionFailed"; replaces: Suggestion }
   | { type: "retrySuggestion" }
+  | { type: "commit"; state: AppState }
   | { type: "setSuggestSource"; source: SuggestSource }
   | { type: "reset" };
 
 function reducer(state: AppState, action: Action): AppState {
   const next = reduce(state, action);
   // Loading a save (or undoing an edit) restores answers as they were; only new answers get a rewind point.
-  return next === state || action.type === "hydrate" ? next : Today.withRewind(state, next);
+  // "commit" shows a state a step has already produced (memorySession.ts), rewind points and all.
+  return next === state || action.type === "hydrate" || action.type === "commit" ? next : Today.withRewind(state, next);
 }
 
 function reduce(state: AppState, action: Action): AppState {
@@ -148,6 +152,8 @@ function reduce(state: AppState, action: Action): AppState {
     case "hydrate":
       // Activity-table rows saved with the state: known to getVariant again before anything renders.
       registerTable(Object.values(action.state.tableActivities ?? {}));
+      return action.state;
+    case "commit":
       return action.state;
     case "completeOnboarding":
       return Today.startDay({ ...state, onboarded: true, profile: action.profile, plan: action.plan, planSource: ALL_FROM_PLAN });
@@ -285,43 +291,76 @@ interface Store {
 
 const StoreContext = createContext<Store | null>(null);
 
+/** A save from before Memory was in use, brought up to today's shape. null: there is none, or it is too old to use. */
+function migrateSaved(saved: unknown): AppState | null {
+  // Older saves (version 1, guideline minutes) don't fit the new model; start fresh.
+  if (!saved || (saved as AppState).version !== 2) return null;
+  const s = saved as AppState;
+  // Plans saved as Short/Medium/Long become 10/30/45 min.
+  const plans = { plan: migratePlan(s.plan), history: (s.history ?? []).map((w) => ({ ...w, plan: migratePlan(w.plan) })) };
+  // Saves from before streaks, VO2 max and clinician notes: fill those in from the persona.
+  const persona = personaState(s.personaId ?? "alex");
+  const extra = {
+    planSource: migrateSources(s.planSource),
+    signIns: s.signIns ?? persona.signIns,
+    vo2: s.vo2 ?? persona.vo2,
+    clinician: migrateClinician(s.clinician),
+    chat: s.chat ?? [],
+  };
+  // Saves from before the three places: Home → Indoors, private; Gym and Office → Indoors, with others.
+  const checkIn = { ...s.today?.checkIn, place: migratePlace(s.today?.checkIn?.place) };
+  const today = { ...s.today, checkIn, entries: (s.today?.entries ?? []).filter((e) => (e.role as string) !== "medal") };
+  let loaded: AppState = { ...initialState(), ...s, ...plans, ...extra, today, overlay: null, toast: null };
+  // A save still sitting on the old opener ("How much time do you have today?") on a planned day:
+  // restart the check-in so it confirms the planned time instead.
+  if (loaded.onboarded && today.step === "time" && today.entries.length === 1 && loaded.plan[loaded.todayIndex] !== "off") {
+    loaded = Today.startDay(loaded);
+  }
+  return loaded;
+}
+
+/** Opening from Memory happens once per page load, also when React runs the effect below twice in development. */
+let opening: ReturnType<typeof openMemorySession> | null = null;
+
 export function StoreProvider({ children }: { children: ReactNode }) {
-  const [state, dispatch] = useReducer(reducer, undefined, () => initialState());
+  const [state, apply] = useReducer(reducer, undefined, () => initialState());
   const hydrated = useRef(false);
+  /** Set when the app runs with the backend: Memory remembers the user and the backend works out the numbers. */
+  const memory = useRef<MemorySession | null>(null);
+  /** With the backend a step is told to the backend first (memorySession.ts); without it, it goes straight to the reducer. */
+  const dispatch = useCallback((action: Action) => (memory.current ? memory.current.dispatch(action) : apply(action)), []);
 
   useEffect(() => {
-    repository.load().then((saved) => {
-      // Older saves (version 1, guideline minutes) don't fit the new model; start fresh.
-      if (saved && (saved as AppState).version === 2) {
-        const s = saved as AppState;
-        // Plans saved as Short/Medium/Long become 10/30/45 min.
-        const plans = { plan: migratePlan(s.plan), history: (s.history ?? []).map((w) => ({ ...w, plan: migratePlan(w.plan) })) };
-        // Saves from before streaks, VO2 max and clinician notes: fill those in from the persona.
-        const persona = personaState(s.personaId ?? "alex");
-        const extra = {
-          planSource: migrateSources(s.planSource),
-          signIns: s.signIns ?? persona.signIns,
-          vo2: s.vo2 ?? persona.vo2,
-          clinician: migrateClinician(s.clinician),
-          chat: s.chat ?? [],
-        };
-        // Saves from before the three places: Home → Indoors, private; Gym and Office → Indoors, with others.
-        const checkIn = { ...s.today?.checkIn, place: migratePlace(s.today?.checkIn?.place) };
-        const today = { ...s.today, checkIn, entries: (s.today?.entries ?? []).filter((e) => (e.role as string) !== "medal") };
-        let loaded: AppState = { ...initialState(), ...s, ...plans, ...extra, today, overlay: null, toast: null };
-        // A save still sitting on the old opener ("How much time do you have today?") on a planned day:
-        // restart the check-in so it confirms the planned time instead.
-        if (loaded.onboarded && today.step === "time" && today.entries.length === 1 && loaded.plan[loaded.todayIndex] !== "off") {
-          loaded = Today.startDay(loaded);
+    (async () => {
+      // The one switch, decided when the app opens: does the backend answer?
+      if (await backendHealth()) {
+        try {
+          opening ??= openMemorySession({
+            reduce: reducer,
+            show: (s) => apply({ type: "commit", state: s }),
+            initial: () => initialState(),
+            saved: async () => migrateSaved(await repository.load()),
+          });
+          const opened = await opening;
+          memory.current = opened.session;
+          apply({ type: "hydrate", state: opened.state });
+          hydrated.current = true;
+          return;
+        } catch (e) {
+          console.warn("The backend answers, but Memory couldn't be opened. Running without it.", e);
+          showNumbers(null, null);
         }
-        dispatch({ type: "hydrate", state: loaded });
       }
+      // Without the backend: the app remembers, works the numbers out and suggests, as it always has.
+      const saved = migrateSaved(await repository.load());
+      if (saved) apply({ type: "hydrate", state: saved });
       hydrated.current = true;
-    });
+    })();
   }, []);
 
   useEffect(() => {
-    if (hydrated.current) repository.save(state);
+    // With the backend, Memory is the only record: nothing is saved in one piece any more.
+    if (hydrated.current && !memory.current) repository.save(state);
   }, [state]);
 
   // When the ranker has just shown a suggestion, ask the backend (Jev) for its
@@ -329,9 +368,18 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const asked = useRef(new WeakSet<object>());
   useEffect(() => {
     const c = state.today.current;
-    if (state.today.step !== "suggested" || !c || c.source !== "rules" || c.desk || asked.current.has(c.lead)) return;
+    if (state.today.step !== "suggested" || !c || c.source !== "rules" || c.desk || c.failed || asked.current.has(c.lead)) return;
     const replaces = c.lead;
     asked.current.add(replaces);
+    const session = memory.current;
+    if (session) {
+      // With the backend: only the check-in is sent, once every step before it has been saved,
+      // so the backend suggests from what Memory holds right now.
+      session.settled()
+        .then(() => fetchMemorySuggestion(state, session.today(state), TABLE_WAIT_MS))
+        .then((r) => dispatch(r ? { type: "backendSuggestion", replaces, result: r } : { type: "suggestionFailed", replaces }));
+      return;
+    }
     const table = suggestSourceOf(state) === "table";
     backendHealth().then((h) => {
       if (!h) {
@@ -341,7 +389,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       const ask = table ? fetchTableSuggestion(state, TABLE_WAIT_MS) : fetchSuggestion(state);
       ask.then((r) => dispatch(r ? { type: "backendSuggestion", replaces, result: r } : { type: "backendFailed", replaces }));
     });
-  }, [state]);
+  }, [state, dispatch]);
 
   const ctx = useMemo(() => buildAgentContext(state), [state]);
   const value = useMemo(() => ({ state, dispatch, ctx }), [state, ctx]);

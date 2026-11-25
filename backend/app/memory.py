@@ -70,10 +70,12 @@ What a save changes:
 `delete()` takes one entry out of "daily" again: a check-in by its date, a
 suggestion or a workout by its id. `clear()` forgets a user altogether.
 
-The /api/memory routes in main.py are the way in from outside. The app doesn't
-call them yet: it still saves its whole state through /api/state (the
-`app_state` table in db.py), and the suggest routes still get the user's
-preferences from the app with each request.
+The /api/memory routes in main.py are the way in from outside. When the app
+finds the backend running it uses them for everything it remembers: it reads
+Memory when it opens and tells it what changed after every step
+(src/services/fromMemory.ts and toMemory.ts in the app). Its earlier way,
+the whole state in one piece through /api/state (the `app_state` table in
+db.py), is only read once, to bring an earlier save over.
 """
 import json
 import sqlite3

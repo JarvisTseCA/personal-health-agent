@@ -1,9 +1,13 @@
 /**
- * Persistence layer.
+ * Persistence layer, for the app running without the backend.
  *
- * Today: the whole app state is saved as one JSON document, in SQLite when
- * the Python backend is running and in the browser's localStorage when it
- * isn't (e.g. GitHub Pages).
+ * The whole app state is saved as one JSON document in the browser's
+ * localStorage (e.g. on GitHub Pages).
+ *
+ * When the backend is running, the app doesn't save here at all: Memory
+ * remembers the user (src/state/memorySession.ts). The one-piece save the
+ * backend used to keep (/api/state) is only read, once, to bring an earlier
+ * save over into Memory.
  *
  * The rest of the app only talks to the `UserRepository` interface, so no
  * screen code needs to change when the storage does. See

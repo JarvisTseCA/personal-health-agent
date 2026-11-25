@@ -6,6 +6,7 @@ import { verifySuggestion } from "../lib/verify";
 import { buildSuggestInput } from "../services/context";
 import { buildSystemPrompt } from "../services/prompts";
 import { personaProfile, useStore } from "../state/store";
+import { numbersFor } from "../services/numbers";
 import { DAY_NAMES_LONG } from "../lib/met";
 import type { Screen, SuggestSource } from "../state/types";
 import { suggestSourceOf } from "../state/suggestSource";
@@ -25,6 +26,8 @@ export function DemoPanel({ go }: { go: (s: Screen) => void }) {
   useEffect(() => { backendHealth().then(setBackend); }, []);
   useEffect(() => { fitbitStatus().then(setFitbit); }, [state.profile.fitbitLive]);
   const picked = state.today.current;
+  /** The app runs with the backend: Memory remembers the user and the backend works out the numbers. */
+  const withBackend = numbersFor(state) !== null;
 
   const skipOnboarding = () => {
     dispatch({ type: "completeOnboarding", profile: personaProfile(state), plan: state.plan });
@@ -71,7 +74,7 @@ export function DemoPanel({ go }: { go: (s: Screen) => void }) {
 
       <div className="group">
         <label htmlFor="source">Suggestions from</label>
-        <select id="source" value={suggestSourceOf(state)} onChange={(e) => {
+        <select id="source" value={suggestSourceOf(state)} disabled={withBackend} onChange={(e) => {
           dispatch({ type: "setSuggestSource", source: e.target.value as SuggestSource });
           if (state.onboarded) { dispatch({ type: "restartDay" }); go("today"); }
         }}>
@@ -79,10 +82,14 @@ export function DemoPanel({ go }: { go: (s: Screen) => void }) {
           <option value="table">The activity table (backend)</option>
         </select>
         <p className="hint">
-          {suggestSourceOf(state) === "table"
-            ? "Today asks the backend to pick from the activity table and falls back to the in-app pick if it can't."
-            : "Today picks from the app's own list, and Jev re-ranks it when the backend is running."}
-          {" "}Changing this starts today's check-in over.
+          {withBackend
+            ? "With the backend, Today sends only the check-in. The backend picks from the activity table, using what Memory holds about the user."
+            : <>
+                {suggestSourceOf(state) === "table"
+                  ? "Today asks the backend to pick from the activity table and falls back to the in-app pick if it can't."
+                  : "Today picks from the app's own list, and Jev re-ranks it when the backend is running."}
+                {" "}Changing this starts today's check-in over.
+              </>}
         </p>
       </div>
 
@@ -92,6 +99,7 @@ export function DemoPanel({ go }: { go: (s: Screen) => void }) {
           {backend === undefined ? "Checking for the Python backend…"
             : backend === null ? "Python backend not running: suggestions come from the in-app ranker, data stays in this browser."
             : `Python backend connected (SQLite). Jev: ${backend.jev === "live" ? `live, ${backend.model}` : "mock (no API key set)"}.`}
+          {withBackend && " Memory remembers this user, and the numbers on screen are worked out by the backend."}
           {picked && ` Current pick from: ${picked.pending ? "waiting for the activity table" : picked.source === "jev" ? "Jev" : picked.source === "mock" ? "mock Jev" : "in-app ranker"}${!picked.pending && picked.source !== "rules" && isTableId(picked.lead.variantId) ? ", activity table" : ""}.`}
           {backend && ` Fitbit: ${!fitbit?.configured ? "simulated (no Google client id in backend/.env)" : fitbit.connected ? "real, connected through the Google Health API" : "real Fitbit set up, not connected yet"}.`}
         </p>

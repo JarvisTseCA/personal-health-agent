@@ -9,6 +9,10 @@ FastAPI backend for the Personal Health Agent.
     GET    /api/state             load the saved app state
     PUT    /api/state             save it
     DELETE /api/state             forget it
+    GET    /api/memory            what Memory holds about a user, in its five groups (memory.py)
+    POST   /api/memory            add to it or update it: any part of the five groups
+    DELETE /api/memory/{kind}/{key}   take one entry out: a check-in, a suggestion or a workout
+    DELETE /api/memory            forget the user
     GET    /api/suggestions/log   recent prompts and Jev answers, for prompt tuning
     GET    /api/activities        the activity table, optionally by place and heading
     GET    /api/health            is the backend up, and is Jev live or mocked?
@@ -46,7 +50,7 @@ from fastapi import Body, FastAPI, HTTPException, Query, Request  # noqa: E402
 from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
 from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse, StreamingResponse  # noqa: E402
 
-from . import activities, chat_gate, chat_prompt, chat_replies, chat_rules, chat_writer, db  # noqa: E402
+from . import activities, chat_gate, chat_prompt, chat_replies, chat_rules, chat_writer, db, memory  # noqa: E402
 from . import google_health as gh  # noqa: E402
 from .jev import (  # noqa: E402
     JevError, call_jev, has_api_key, jev_model, mock_activity, mock_durations,
@@ -430,6 +434,52 @@ def put_state(state: Dict[str, Any] = Body(...), user_id: str = "demo") -> Dict[
 @app.delete("/api/state")
 def delete_state(user_id: str = "demo") -> Dict[str, bool]:
     db.clear_state(user_id)
+    return {"ok": True}
+
+
+# --- Memory: what the backend remembers about a user, in five groups (memory.py) ---------------
+# Not called by the app yet; it still uses /api/state above.
+
+
+@app.get("/api/memory")
+def get_memory(user_id: str = "demo", group: Optional[List[str]] = Query(None)) -> Dict[str, Any]:
+    """Read. All five groups, or only the ones asked for: ?group=preferences&group=daily."""
+    try:
+        return {"memory": memory.read(user_id, group)}
+    except memory.MemoryDataError as e:
+        raise HTTPException(422, str(e)) from e
+
+
+@app.post("/api/memory")
+def post_memory(part: Dict[str, Any] = Body(...), user_id: str = "demo") -> Dict[str, bool]:
+    """Add or update. Send any part of the five groups; what is left out stays as it is.
+
+    Entries under "daily" and "health" are added (or replace the one with the same key);
+    "who", "preferences" and a week's goal and plan are updated. The shape is at the top of memory.py.
+    """
+    try:
+        memory.save(user_id, part)
+    except memory.MemoryDataError as e:
+        raise HTTPException(422, str(e)) from e
+    return {"ok": True}
+
+
+@app.delete("/api/memory/{kind}/{key}")
+def delete_memory_entry(kind: str, key: str, user_id: str = "demo") -> Dict[str, bool]:
+    """Delete one entry: /api/memory/suggestions/<id>, /api/memory/workouts/<id> or /api/memory/check_ins/<date>."""
+    try:
+        found = memory.delete(user_id, kind, key)
+    except memory.MemoryDataError as e:
+        raise HTTPException(422, str(e)) from e
+    if not found:
+        raise HTTPException(404, f"This user has no {kind} entry '{key}'")
+    return {"ok": True}
+
+
+@app.delete("/api/memory")
+def delete_memory(user_id: str = "demo") -> Dict[str, bool]:
+    """Forget everything Memory holds about this user."""
+    memory.clear(user_id)
     return {"ok": True}
 
 

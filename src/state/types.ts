@@ -143,6 +143,8 @@ export interface TodayState {
      * you…" until it arrives, or shows the ranker's pick if the backend fails or is too slow.
      */
     pending?: boolean;
+    /** With the backend: no pick came back. The card offers to try again instead of showing the ranker's pick. */
+    failed?: boolean;
     /** The prompt sent to Jev and its answers, for the demo panel */
     jev?: { model: string; logId: number; request: unknown; answers: unknown };
   };

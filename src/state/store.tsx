@@ -132,6 +132,8 @@ export type Action =
   | { type: "updateMessage"; id: string; text: string; suggestions?: string[] }
   | { type: "backendSuggestion"; replaces: Suggestion; result: BackendSuggestion }
   | { type: "backendFailed"; replaces: Suggestion }
+  | { type: "suggestionFailed"; replaces: Suggestion }
+  | { type: "retrySuggestion" }
   | { type: "setSuggestSource"; source: SuggestSource }
   | { type: "reset" };
 
@@ -263,6 +265,10 @@ function reduce(state: AppState, action: Action): AppState {
       return Today.applyBackendSuggestion(state, action.replaces, action.result);
     case "backendFailed":
       return Today.backendFailed(state, action.replaces);
+    case "suggestionFailed":
+      return Today.suggestionFailed(state, action.replaces);
+    case "retrySuggestion":
+      return Today.retrySuggestion(state);
     case "setSuggestSource":
       return { ...state, suggestSource: action.source };
     case "reset":

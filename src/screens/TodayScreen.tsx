@@ -103,6 +103,18 @@ function FindingCard() {
   );
 }
 
+/** With the backend, when no pick came back: say so and offer to ask again. */
+function NoPickCard({ onRetry }: { onRetry: () => void }) {
+  return (
+    <div className="pick lead finding" role="status">
+      <p className="pick-kicker">From the backend</p>
+      <h2>No suggestion came back</h2>
+      <p className="small muted">The backend didn't answer, or nothing in the activity table fits right now.</p>
+      <button className="btn btn-primary" style={{ marginTop: 12 }} onClick={onRetry}>Try again</button>
+    </div>
+  );
+}
+
 function SuggestionCard({ s, lead }: { s: Suggestion; lead: boolean }) {
   const { ctx, dispatch } = useStore();
   const { family, variant } = getVariant(s.variantId);
@@ -294,7 +306,10 @@ export function TodayScreen({ go, openPrefs }: { go: (s: Screen) => void; openPr
         {t.step === "suggested" && t.current?.pending && (
           <div className="live"><FindingCard /></div>
         )}
-        {t.step === "suggested" && t.current && !t.current.pending && (
+        {t.step === "suggested" && t.current?.failed && (
+          <div className="live"><NoPickCard onRetry={() => dispatch({ type: "retrySuggestion" })} /></div>
+        )}
+        {t.step === "suggested" && t.current && !t.current.pending && !t.current.failed && (
           <div className="live">
             <SuggestionCard s={t.current.lead} lead />
             <div className="btn-stack">

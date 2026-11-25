@@ -4,6 +4,8 @@ FastAPI backend for the Personal Health Agent.
     POST   /api/suggest           check-in variables → Jev: which activity → Jev: how long → pick + 2 backups
     POST   /api/suggest/table     the same, with the options taken from the activity table:
                                   filter the table → Jev: which heading → which activity → how long
+    POST   /api/suggest/memory    the same again, from today's check-in alone: the rest is read from Memory
+                                  and today's numbers are worked out here (memory_suggest.py, calculator.py)
     POST   /api/chat              a Chat message → urgent keywords → Jev: three yes/no questions →
                                   a fixed reply, or the model that writes. Plain text, streamed
     GET    /api/state             load the saved app state
@@ -50,7 +52,7 @@ from fastapi import Body, FastAPI, HTTPException, Query, Request  # noqa: E402
 from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
 from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse, StreamingResponse  # noqa: E402
 
-from . import activities, chat_gate, chat_prompt, chat_replies, chat_rules, chat_writer, db, memory  # noqa: E402
+from . import activities, chat_gate, chat_prompt, chat_replies, chat_rules, chat_writer, db, memory, memory_suggest  # noqa: E402
 from . import google_health as gh  # noqa: E402
 from .jev import (  # noqa: E402
     JevError, call_jev, has_api_key, jev_model, mock_activity, mock_durations,
@@ -62,7 +64,8 @@ from .prompt import (  # noqa: E402
     group_by_heading, table_activity_question,
 )
 from .schemas import (  # noqa: E402
-    ChatRequest, SuggestRequest, SuggestResponse, TableSuggestRequest, TableSuggestResponse,
+    ChatRequest, MemorySuggestRequest, MemorySuggestResponse, SuggestRequest, SuggestResponse,
+    TableSuggestRequest, TableSuggestResponse,
 )
 from .suggest import (  # noqa: E402
     HEADINGS_TO_ASK, AnswerError, assemble, assemble_table, pick_activities, pick_from_table, rank_headings,
@@ -320,6 +323,39 @@ def suggest_from_table(req: TableSuggestRequest) -> TableSuggestResponse:
         source=source, model=model, lead=lead, backups=picks[1:], candidate_count=len(rows),
         jev_request=jev_request, jev_answers=jev_answers, log_id=log_id,
     )
+
+
+@app.post("/api/suggest/memory", response_model=MemorySuggestResponse)
+def suggest_from_memory(req: MemorySuggestRequest) -> MemorySuggestResponse:
+    """A suggestion from today's check-in alone. Everything else about the user is read from Memory.
+
+    The check-in is stored in Memory. The goal, plan and workouts there give today's numbers
+    (calculator.py); the likes, picks and declines there fill in the rest (memory_suggest.py).
+    Then it is /api/suggest/table. The numbers come back with the suggestion, so an app that
+    uses this route shows them and doesn't work out its own. Not called by the app yet.
+    """
+    try:
+        today = date.fromisoformat(req.date) if req.date else date.today()
+    except ValueError:
+        raise HTTPException(422, f"date {req.date!r} is not a date like 2026-11-23") from None
+    c = req.check_in
+    memory.save(req.user_id, {"daily": {"check_ins": [
+        {"date": today.isoformat(), "minutes": c.minutes, "place": c.place, "energy": c.energy, "mood": c.mood},
+    ]}})
+    try:
+        table_req, numbers = memory_suggest.build_request(req.user_id, c, today, want_more=req.want_more)
+    except memory_suggest.NotEnoughMemory as e:
+        raise HTTPException(422, str(e)) from e
+
+    log.info("── POST /api/suggest/memory  user=%s  %s %s ──", req.user_id, numbers["day_name"], today.isoformat())
+    log.info("[0] From Memory: goal %.2f MET-h · done this week %.2f · today's target %.2f, still needed %.2f",
+             numbers["weekly_goal_met_hours"], numbers["done_this_week_met_hours"],
+             numbers["target_met_hours"], numbers["needed_met_hours"])
+    log.info("    👍 %s · left out: %s · picked here before: %s", ", ".join(table_req.liked_categories) or "none",
+             ", ".join([*table_req.exclude_headings, *table_req.exclude_codes]) or "nothing",
+             ", ".join(table_req.picked_codes) or "nothing yet")
+    result = suggest_from_table(table_req)
+    return MemorySuggestResponse(**result.model_dump(), today=numbers)
 
 
 def _short(text: str, limit: int = 80) -> str:

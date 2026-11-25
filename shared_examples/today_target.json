@@ -1,0 +1,130 @@
+{
+  "about": [
+    "Examples for one number: today's target in MET-hours, the 2.1 in \"0.0/2.1\" on the Today page.",
+    "The app and the backend each have their own copy of this calculation:",
+    "src/lib/met.ts and src/lib/plan.ts in the app, backend/app/calculator.py in the backend.",
+    "Two tests read this file and work every example out, one with each copy:",
+    "src/lib/todayTarget.shared.test.ts and backend/tests/test_today_target_shared.py.",
+    "Both have to get `today_target`, to 3 decimals. The answers were worked out by hand; `how` shows the arithmetic.",
+    "When a rule changes on purpose: change both copies, then the answers here."
+  ],
+  "fields": {
+    "weekly_goal": "MET-hours for the week",
+    "plan": "the 7 days, Monday first, each one of: off | 0 | 5 | 10 | 30 | 45 (minutes)",
+    "today": "0 = Monday … 6 = Sunday",
+    "workouts": "this week's workouts: day (0 = Monday … 6 = Sunday), met, minutes. A workout from Fitbit also has its Fitbit band (fairly | very) and whether the user confirmed it; one without `confirmed` is confirmed."
+  },
+  "examples": [
+    {
+      "name": "Monday, nothing done yet this week",
+      "weekly_goal": 7.5,
+      "plan": ["30", "off", "30", "off", "off", "45", "off"],
+      "today": 0,
+      "workouts": [],
+      "how": "The week has 105 planned minutes and Monday has 30 of them: 7.5 × 30 / 105",
+      "today_target": 2.1429
+    },
+    {
+      "name": "Wednesday, one workout on Monday",
+      "weekly_goal": 7.5,
+      "plan": ["30", "off", "30", "off", "off", "45", "off"],
+      "today": 2,
+      "workouts": [
+        { "day": 0, "met": 5, "minutes": 30 }
+      ],
+      "how": "Monday earned 5 × 30 / 60 = 2.5, so 5.0 is left. Wednesday and Saturday have 75 minutes, Wednesday 30 of them: 5.0 × 30 / 75",
+      "today_target": 2.0
+    },
+    {
+      "name": "Light activity does not count, and 3 MET is where counting starts",
+      "weekly_goal": 7.5,
+      "plan": ["30", "off", "30", "off", "off", "45", "off"],
+      "today": 2,
+      "workouts": [
+        { "day": 0, "met": 2, "minutes": 30 },
+        { "day": 0, "met": 3, "minutes": 20 }
+      ],
+      "how": "The 2 MET workout earns nothing. The 3 MET one earns 3 × 20 / 60 = 1.0, so 6.5 is left: 6.5 × 30 / 75",
+      "today_target": 2.6
+    },
+    {
+      "name": "Fitbit workouts nobody confirmed count at the bottom of their band",
+      "weekly_goal": 7.5,
+      "plan": ["30", "off", "30", "off", "off", "45", "off"],
+      "today": 2,
+      "workouts": [
+        { "day": 0, "met": 4.5, "minutes": 40, "band": "fairly", "confirmed": false },
+        { "day": 1, "met": 6.8, "minutes": 30, "band": "very", "confirmed": false }
+      ],
+      "how": "Monday counts at 3.0 MET (fairly): 3.0 × 40 / 60 = 2.0. Tuesday counts at 6.0 MET (very): 6.0 × 30 / 60 = 3.0. 2.5 is left: 2.5 × 30 / 75",
+      "today_target": 1.0
+    },
+    {
+      "name": "The same Fitbit workouts, confirmed, count at their own MET",
+      "weekly_goal": 7.5,
+      "plan": ["30", "off", "30", "off", "off", "45", "off"],
+      "today": 2,
+      "workouts": [
+        { "day": 0, "met": 4.5, "minutes": 40, "band": "fairly", "confirmed": true },
+        { "day": 1, "met": 6.8, "minutes": 30, "band": "very", "confirmed": true }
+      ],
+      "how": "Monday earned 4.5 × 40 / 60 = 3.0 and Tuesday 6.8 × 30 / 60 = 3.4. 1.1 is left: 1.1 × 30 / 75",
+      "today_target": 0.44
+    },
+    {
+      "name": "Today is a day off",
+      "weekly_goal": 7.5,
+      "plan": ["30", "off", "30", "off", "off", "45", "off"],
+      "today": 1,
+      "workouts": [
+        { "day": 0, "met": 5, "minutes": 30 }
+      ],
+      "how": "Tuesday is off in the plan, so it has no target",
+      "today_target": 0
+    },
+    {
+      "name": "A workout today does not move today's target",
+      "weekly_goal": 7.5,
+      "plan": ["30", "off", "30", "off", "off", "45", "off"],
+      "today": 2,
+      "workouts": [
+        { "day": 0, "met": 5, "minutes": 30 },
+        { "day": 2, "met": 4, "minutes": 15 }
+      ],
+      "how": "The target is set at the start of the day, when 5.0 was left: 5.0 × 30 / 75. Today's own 1.0 does not change it",
+      "today_target": 2.0
+    },
+    {
+      "name": "The week's goal is already reached",
+      "weekly_goal": 7.5,
+      "plan": ["30", "off", "30", "off", "off", "45", "off"],
+      "today": 2,
+      "workouts": [
+        { "day": 0, "met": 8, "minutes": 60 }
+      ],
+      "how": "Monday earned 8 × 60 / 60 = 8.0, more than 7.5, so nothing is left",
+      "today_target": 0
+    },
+    {
+      "name": "Today is the last planned day of the week",
+      "weekly_goal": 7.5,
+      "plan": ["30", "off", "30", "off", "off", "45", "off"],
+      "today": 5,
+      "workouts": [
+        { "day": 0, "met": 5, "minutes": 30 },
+        { "day": 2, "met": 4, "minutes": 30 }
+      ],
+      "how": "Monday earned 2.5 and Wednesday 4 × 30 / 60 = 2.0, so 3.0 is left. Saturday has all 45 of the minutes still planned: 3.0 × 45 / 45",
+      "today_target": 3.0
+    },
+    {
+      "name": "Another plan, with 0, 5 and 10 minute days",
+      "weekly_goal": 7.5,
+      "plan": ["0", "10", "30", "off", "5", "45", "0"],
+      "today": 1,
+      "workouts": [],
+      "how": "Tuesday to Sunday have 10 + 30 + 5 + 45 = 90 minutes, Tuesday 10 of them: 7.5 × 10 / 90",
+      "today_target": 0.8333
+    }
+  ]
+}

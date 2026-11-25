@@ -2,10 +2,10 @@ import { withPref, type CategoryPref } from "../lib/categories";
 import { createContext, useCallback, useContext, useEffect, useMemo, useReducer, useRef, type ReactNode } from "react";
 import { PERSONAS } from "../data/mockFitbit";
 import { importFitbit, syncSince, type FitbitImport } from "../lib/fitbit";
-import { fmt, withCredit, type Session } from "../lib/met";
+import { fmt, type Session } from "../lib/met";
 import { ALL_FROM_PLAN, applyCalendarEdit, migratePlan, migrateSources, shorterSlot, SLOT_MINUTES, type DaySlot, type WeekPlan } from "../lib/plan";
 import { migratePlace, type Access, type DeclineReason, type Energy, type Place, type Suggestion } from "../lib/suggest";
-import { buildAgentContext, type AgentContext } from "../services/context";
+import { buildAgentContext, creditOf, type AgentContext } from "../services/context";
 import { backendHealth, fetchSuggestion, fetchTableSuggestion, type BackendSuggestion } from "../services/backend";
 import { registerTable } from "../lib/tableActivities";
 import { suggestSourceOf, TABLE_WAIT_MS } from "./suggestSource";
@@ -176,8 +176,9 @@ function reduce(state: AppState, action: Action): AppState {
       return { ...state, profile: { ...state.profile, enjoyed: e } };
     }
     case "addSessionManual": {
-      const credit = withCredit(action.session).credit;
-      return { ...state, sessions: [...state.sessions, action.session], toast: credit > 0 ? `Added: +${fmt(credit)} MET-hours.` : "Added. Light activity earns a medal, not goal credit." };
+      const added = { ...state, sessions: [...state.sessions, action.session] };
+      const credit = creditOf(added, action.session);
+      return { ...added, toast: credit > 0 ? `Added: +${fmt(credit)} MET-hours.` : "Added. Light activity earns a medal, not goal credit." };
     }
     case "forgetDecline":
       return { ...state, declines: state.declines.filter((d) => d.id !== action.id) };

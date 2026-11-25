@@ -16,6 +16,8 @@ export interface WeekIn {
   signIns: boolean[];
   /** Planned days off ("off"), for the calendar */
   plan?: readonly string[];
+  /** The week reached its goal, when that has already been worked out (the calendar uses it as it is) */
+  trophy?: boolean;
 }
 
 /** The month (0–11) a week counts in: the month its Thursday falls in. */

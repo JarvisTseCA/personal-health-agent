@@ -18,6 +18,7 @@ import { DAY_NAMES_LONG, fmt, fmtGoal } from "../lib/met";
 import { SLOT_HINT, SLOT_LABEL, SLOT_MINUTES } from "../lib/plan";
 import { useStore } from "../state/store";
 import { groupWeeks, type WeekIn } from "../lib/periods";
+import { numbersFor, periodsFromNumbers } from "../services/numbers";
 import { weekStart } from "../services/context";
 import { LogWorkoutSheet } from "./LogWorkoutSheet";
 
@@ -311,8 +312,13 @@ function MonthByMonth() {
   const { ctx } = useStore();
   const [pick, setPick] = useState<string | null>(null);
   const months = useMemo(
-    () => groupWeeks(ctx.past.map((w): WeekIn => ({ start: w.start, label: w.label, done: w.totals.done, goal: w.goal, active: w.totals.activeByDay, signIns: w.signIns, plan: w.plan })), weekStart(0)),
-    [ctx.past],
+    () => {
+      // With the backend, the months come added up already; otherwise they are added up here.
+      const fromBackend = numbersFor(ctx.state);
+      if (fromBackend) return periodsFromNumbers(ctx.past, fromBackend);
+      return groupWeeks(ctx.past.map((w): WeekIn => ({ start: w.start, label: w.label, done: w.totals.done, goal: w.goal, active: w.totals.activeByDay, signIns: w.signIns, plan: w.plan, trophy: w.trophy })), weekStart(0));
+    },
+    [ctx.past, ctx.state],
   );
   if (!months.length) return null;
 

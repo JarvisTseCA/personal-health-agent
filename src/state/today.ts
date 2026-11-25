@@ -13,14 +13,14 @@ import { UNPLANNED_BOUTS } from "../data/mockFitbit";
 import { getFamily, getVariant, PICKABLE } from "../lib/activities";
 import { HISTORY_WEEKS, weekBefore, type FitbitImport } from "../lib/fitbit";
 import { howTos } from "../lib/moves";
-import { countsTowardGoal, fmt, fmtGoal, minutesFor, UNCONFIRMED_MET, withCredit, type Session } from "../lib/met";
+import { countsTowardGoal, fmt, fmtGoal, minutesFor, UNCONFIRMED_MET, type Session } from "../lib/met";
 import { WEEKLY_UPPER_LIMIT } from "../lib/goal";
 import { ALL_FROM_PLAN, SLOT_MINUTES, type DaySlot } from "../lib/plan";
 import { afterDecline, DECLINE_LABEL, suggest, type DeclineReason, type Energy, type Place, type Suggestion } from "../lib/suggest";
 import { matchActivity, parseEnergy, parseMinutes, parsePlace, parseReason, parseYesNo } from "../lib/freeText";
 import { SCRIPTED_REPLIES } from "../services/mockResponses";
 import type { BackendSuggestion } from "../services/backend";
-import { buildAgentContext, buildSuggestInput, equipmentAt } from "../services/context";
+import { buildAgentContext, buildSuggestInput, creditOf, equipmentAt } from "../services/context";
 import type { AppState, TodayEntry, TodayRewind, TodayState } from "./types";
 import { codeOfTableId, isTableId, registerTable } from "../lib/tableActivities";
 import { suggestSourceOf } from "./suggestSource";
@@ -373,7 +373,7 @@ function afterCredit(before: AppState, after: AppState, s: Session): AppState {
   const had = buildAgentContext(before).trophy;
   const ctx = buildAgentContext(after);
   const { family, variant } = getVariant(s.variantId);
-  const credit = withCredit(s).credit;
+  const credit = creditOf(after, s);
   let st = after;
 
   st = push(st, agent(credit > 0

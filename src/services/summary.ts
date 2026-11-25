@@ -10,11 +10,15 @@
  * "Brisk minutes" are moderate-equivalent minutes: MET-hours ÷ 3 MET × 60.
  * That's the unit the guideline's 150 minutes is written in, and vigorous
  * minutes count about double, as in the guideline.
+ *
+ * When the app runs with the backend, the numbers are the backend's
+ * (numbers.ts); only the "things to mention" sentences are written here.
  */
 import { getFamily } from "../lib/activities";
 import { GUIDELINE_GOAL, MODERATE_MET, VIGOROUS_MET } from "../lib/met";
 import { DECLINE_LABEL, type DeclineReason } from "../lib/suggest";
 import type { AgentContext } from "./context";
+import { numbersFor, summaryFromNumbers } from "./numbers";
 
 /** Full weeks averaged for the headline numbers */
 export const SUMMARY_WEEKS = 4;
@@ -58,7 +62,13 @@ export interface Summary {
 }
 
 export function buildSummary(ctx: AgentContext): Summary {
-  const s = ctx.state;
+  const fromBackend = numbersFor(ctx.state);
+  const numbers = fromBackend ? summaryFromNumbers(fromBackend) : ownSummary(ctx);
+  return { ...numbers, mention: mentions(ctx, numbers.longestGap) };
+}
+
+/** The numbers, worked out here from the context's weeks. */
+export function ownSummary(ctx: AgentContext): Omit<Summary, "mention"> {
   const recent = ctx.past.slice(-SUMMARY_WEEKS);
   const n = recent.length;
   const avg = (f: (w: (typeof recent)[number]) => number) => (n ? recent.reduce((a, w) => a + f(w), 0) / n : 0);
@@ -82,17 +92,6 @@ export function buildSummary(ctx: AgentContext): Summary {
   let longestGap = 0;
   for (const a of days) { gap = a ? 0 : gap + 1; longestGap = Math.max(longestGap, gap); }
 
-  const reasons = new Map<DeclineReason, number>();
-  for (const d of s.declines) reasons.set(d.reason, (reasons.get(d.reason) ?? 0) + 1);
-  const healthNotes = s.notes.filter((x) => /health|anything we should know/i.test(x.where) || /pain|hurt|sore|injur|pregnan|blood|heart|diabet|dizz|breath/i.test(x.text));
-  const mention: string[] = [];
-  if (s.profile.hasHealthCondition) mention.push("You told the app about a health condition, so it's suggesting moderate activity only.");
-  if (s.painReports) mention.push(`You said something hurt ${s.painReports === 1 ? "once" : `${s.painReports} times`} when skipping a workout.`);
-  for (const x of healthNotes) mention.push(`You wrote: "${x.text}"`);
-  if (longestGap >= 5) mention.push(`Your longest stretch without activity was ${longestGap} days.`);
-  const top = [...reasons.entries()].sort((a, b) => b[1] - a[1])[0];
-  if (top && top[1] >= 2) mention.push(`The most common reason you skipped a workout: "${DECLINE_LABEL[top[0]].toLowerCase()}" (${top[1]} times).`);
-
   return {
     weeks: n,
     avgMetHours,
@@ -110,6 +109,21 @@ export function buildSummary(ctx: AgentContext): Summary {
       vigorous: perWeek(sum((m) => m >= VIGOROUS_MET)),
     },
     mix,
-    mention,
   };
+}
+
+/** Plain-language things worth bringing up at a visit, from what the user told the app. */
+function mentions(ctx: AgentContext, longestGap: number): string[] {
+  const s = ctx.state;
+  const reasons = new Map<DeclineReason, number>();
+  for (const d of s.declines) reasons.set(d.reason, (reasons.get(d.reason) ?? 0) + 1);
+  const healthNotes = s.notes.filter((x) => /health|anything we should know/i.test(x.where) || /pain|hurt|sore|injur|pregnan|blood|heart|diabet|dizz|breath/i.test(x.text));
+  const mention: string[] = [];
+  if (s.profile.hasHealthCondition) mention.push("You told the app about a health condition, so it's suggesting moderate activity only.");
+  if (s.painReports) mention.push(`You said something hurt ${s.painReports === 1 ? "once" : `${s.painReports} times`} when skipping a workout.`);
+  for (const x of healthNotes) mention.push(`You wrote: "${x.text}"`);
+  if (longestGap >= 5) mention.push(`Your longest stretch without activity was ${longestGap} days.`);
+  const top = [...reasons.entries()].sort((a, b) => b[1] - a[1])[0];
+  if (top && top[1] >= 2) mention.push(`The most common reason you skipped a workout: "${DECLINE_LABEL[top[0]].toLowerCase()}" (${top[1]} times).`);
+  return mention;
 }

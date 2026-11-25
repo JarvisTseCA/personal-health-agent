@@ -271,6 +271,15 @@ def test_it_gives_the_same_picks_as_the_table_route_given_the_same_request(clien
     ]
 
 
+def test_each_pick_says_what_it_would_add_toward_the_goal(client):
+    data = suggest(client).json()
+    for pick in [data["lead"], *data["backups"]]:
+        assert pick["met_hours"] == pytest.approx(pick["met_value"] * pick["duration_min"] / 60)
+    # The table route leaves that to the app, as before.
+    table = client.post("/api/suggest/table", json=built().model_dump()).json()
+    assert "met_hours" not in table["lead"]
+
+
 def test_the_check_in_is_stored_in_memory(client):
     suggest(client)
     assert memory.read("sam", ["daily"])["daily"]["check_ins"] == [{"date": "2026-11-25", **CHECK_IN}]

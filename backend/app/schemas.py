@@ -205,9 +205,20 @@ class TodayNumbers(BaseModel):
     needed_met_hours: float  # what is still missing from today's share
 
 
-class MemorySuggestResponse(TableSuggestResponse):
-    """The table route's answer, plus the numbers it was based on."""
+class MemoryPick(TablePick):
+    """A pick from the activity table, plus what it would add toward the weekly goal.
 
+    On /api/suggest/table the app works that out itself. Here the backend does the math, so the app only shows it.
+    """
+
+    met_hours: float
+
+
+class MemorySuggestResponse(TableSuggestResponse):
+    """The table route's answer, plus the numbers it was based on and what each pick would add."""
+
+    lead: MemoryPick
+    backups: List[MemoryPick]
     today: TodayNumbers
 
 

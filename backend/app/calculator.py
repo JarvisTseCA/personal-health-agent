@@ -95,6 +95,14 @@ def daily_targets(goal: float, plan: Sequence[str], done: Sequence[float], today
     return targets
 
 
+def unplanned_left(goal: float, plan: Sequence[str], done: Sequence[float], today_index: int) -> float:
+    """MET-hours that no day left in the week can take: every day after today is off (unplannedLeft in src/lib/plan.ts)."""
+    target = daily_targets(goal, plan, done, today_index)[today_index]
+    left_after_today = max(0.0, goal - total(done[:today_index]) - max(target, done[today_index]))
+    minutes_ahead = sum(SLOT_MINUTES[slot] for slot in plan[today_index + 1:])
+    return 0.0 if minutes_ahead > 0 else left_after_today
+
+
 def today_numbers(goal: float, plan: Sequence[str], workouts: Iterable[Dict[str, Any]], today: date) -> Dict[str, Any]:
     """What a suggestion needs to know about today, from the week's goal and plan and the workouts in Memory.
 

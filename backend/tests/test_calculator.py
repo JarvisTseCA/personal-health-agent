@@ -11,7 +11,7 @@ from datetime import date
 import pytest
 
 from app import calculator
-from app.calculator import credit, counted_met, daily_targets, done_by_day, met_hours, today_numbers, total
+from app.calculator import credit, counted_met, daily_targets, done_by_day, met_hours, today_numbers, total, unplanned_left
 
 close = lambda a, b: a == pytest.approx(b, abs=0.005)  # noqa: E731  (the app's tests compare to 2 decimals)
 
@@ -76,6 +76,13 @@ def test_extra_effort_today_lowers_later_days_but_not_todays_own_target():
 
 def test_never_lowers_the_weekly_goal_because_of_off_days():
     assert close(daily_targets(7.5, ["off"] * 6 + ["10"], NOTHING_DONE, 0)[6], 7.5)
+
+
+def test_reports_what_no_remaining_day_can_absorb():
+    # Today and the rest of the week are off.
+    plan = ["30", "30", "off", "off", "off", "off", "off"]
+    assert close(unplanned_left(7.5, plan, [1, 1, 0, 0, 0, 0, 0], 2), 5.5)
+    assert unplanned_left(7.5, plan, [1, 1, 0, 0, 0, 0, 0], 1) == 0  # Tuesday still has time, so it takes the rest
 
 
 def test_zero_minute_days_get_no_target_and_the_goal_is_split_by_minutes():

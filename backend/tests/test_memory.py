@@ -1,5 +1,6 @@
-"""Memory: the five groups of what the backend remembers about a user, in SQLite (app/memory.py)."""
+"""Memory: the six groups of what the backend remembers about a user, in SQLite (app/memory.py)."""
 import copy
+import json
 
 import pytest
 
@@ -32,10 +33,20 @@ ALEX = {
              "met": 5.0, "duration_min": 30, "source": "fitbit", "confirmed": False, "band": "fairly",
              "start_time": "2026-11-23T18:05:00"},
         ],
+        "app_opens": ["2026-11-22", "2026-11-23"],
     },
     "health": {
         "vo2_max": [{"month": "2026-10", "ml_kg_min": 37.9, "source": "fitbit"}, {"month": "2026-11", "ml_kg_min": 38.2, "source": "fitbit"}],
         "heart_rates": [{"workout_id": "w1", "avg_bpm": 132}],
+    },
+    # The app's own: the backend keeps these and gives them back, and reads none of it.
+    "other": {
+        "chat": [
+            {"id": "c1", "role": "user", "text": "Is walking enough?", "at": 1795478400000},
+            {"id": "c2", "role": "agent", "text": "Brisk walking counts.", "at": 1795478404000, "suggestions": ["How brisk?"]},
+        ],
+        "notes": [{"id": "n1", "text": "knee is sore after stairs", "where": "Today: mood", "day": 0}],
+        "clinician": {"entries": [{"id": "k1", "text": "Keep it moderate for two weeks.", "at": "2026-11-23T09:30:00.000Z"}]},
     },
 }
 
@@ -43,8 +54,9 @@ NOTHING = {
     "who": {"name": None, "fitbit_connected": None},
     "preferences": {"categories": {}, "equipment": {"home": None, "gym": None}, "no_vigorous": None},
     "goals": [],
-    "daily": {"check_ins": [], "suggestions": [], "workouts": []},
+    "daily": {"check_ins": [], "suggestions": [], "workouts": [], "app_opens": []},
     "health": {"vo2_max": [], "heart_rates": []},
+    "other": {},
 }
 
 
@@ -62,7 +74,7 @@ def rows(table, user_id="alex"):
 # --- The shape ---------------------------------------------------------------------------------
 
 
-def test_a_user_nothing_is_known_about_reads_as_the_five_groups_empty():
+def test_a_user_nothing_is_known_about_reads_as_the_six_groups_empty():
     assert memory.read("nobody") == NOTHING
     assert tuple(NOTHING) == memory.GROUPS
 
@@ -182,6 +194,35 @@ def test_a_vo2_max_reading_is_found_by_its_month():
     ]
 
 
+def test_a_day_the_app_was_opened_is_kept_once_and_days_come_back_oldest_first():
+    memory.save("alex", ALEX)  # opened on the 22nd and the 23rd
+    memory.save("alex", {"daily": {"app_opens": ["2026-11-25", "2026-11-23", "2026-11-20"]}})
+    daily = memory.read("alex")["daily"]
+    assert daily["app_opens"] == ["2026-11-20", "2026-11-22", "2026-11-23", "2026-11-25"]
+    assert daily["check_ins"] == ALEX["daily"]["check_ins"]  # not sent: stay
+
+
+def test_other_comes_back_exactly_as_it_was_sent():
+    kept = {
+        "today": {"step": "suggested", "nudged": False, "entries": [{"id": "t1", "role": "agent", "text": "How much time today? ⏱️"}]},
+        "chat": [],
+        "painReports": 2,
+        "fitbitWeek": None,
+        "tableActivities": {"01216": {"met": 5.0, "tags": ["indoor", "bike"], "deeper": {"mixed": [1, 2.5, True, None, "一"]}}},
+    }
+    memory.save("sam", {"other": kept})
+    got = memory.read("sam")["other"]
+    assert got == kept
+    assert json.dumps(got, sort_keys=True) == json.dumps(kept, sort_keys=True)  # true stays true, 5.0 stays 5.0
+
+
+def test_a_name_in_other_sent_again_replaces_only_that_name():
+    memory.save("alex", ALEX)
+    memory.save("alex", {"other": {"notes": []}})  # e.g. the user took their note back
+    assert memory.read("alex")["other"] == {**ALEX["other"], "notes": []}
+    assert len(rows("memory_other")) == len(ALEX["other"])
+
+
 # --- Taking one entry out ----------------------------------------------------------------------
 
 
@@ -236,6 +277,14 @@ def test_users_are_kept_apart_and_clear_forgets_only_one():
         assert rows(table) == []
 
 
+def test_forgetting_a_user_takes_the_opened_days_and_other_too():
+    memory.save("alex", ALEX)
+    memory.clear("alex")
+    after = memory.read("alex")
+    assert after["daily"]["app_opens"] == []
+    assert after["other"] == {}
+
+
 def test_memory_and_the_saved_app_state_dont_touch_each_other():
     db.save_state("alex", {"version": 2, "goal": 7.5})
     memory.save("alex", ALEX)
@@ -271,8 +320,14 @@ MISTAKES = [
     (changed("daily", lambda d: d["workouts"][0].update(met=0)), "daily.workouts[0].met is 0, expected a number above 0"),
     (changed("daily", lambda d: d["workouts"][0].update(source="strava")), "daily.workouts[0].source is 'strava'"),
     (changed("daily", lambda d: d.update(workouts={"id": "w1"})), "daily.workouts should be a list"),
+    (changed("daily", lambda d: d["app_opens"].append("yesterday")), "daily.app_opens[2]: 'yesterday' is not a date like 2026-11-23"),
+    (changed("daily", lambda d: d.update(app_opens="2026-11-23")), "daily.app_opens should be a list"),
     (changed("health", lambda h: h["vo2_max"][0].update(month="November")), "health.vo2_max[0]: 'November' is not a month like 2026-11"),
     (changed("health", lambda h: h["heart_rates"][0].pop("avg_bpm")), "health.heart_rates[0]: avg_bpm is required"),
+    ({"other": ["chat"]}, "other should be an object"),
+    ({"other": {"": []}}, "other: '' can't be a name"),
+    ({"other": {"chat": {"c1", "c2"}}}, "other.chat can't be kept"),  # a Python set
+    ({"other": {"vo2": float("nan")}}, "other.vo2 can't be kept"),
 ]
 
 

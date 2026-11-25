@@ -19,8 +19,10 @@ SAM = {
             {"id": "w1", "date": "2026-11-23", "activity_code": "17190", "activity_name": "Walking, brisk",
              "met": 4.3, "duration_min": 30, "source": "manual", "confirmed": True, "band": None, "start_time": None},
         ],
+        "app_opens": ["2026-11-23"],
     },
     "health": {"vo2_max": [{"month": "2026-11", "ml_kg_min": 41.0, "source": "fitbit"}], "heart_rates": []},
+    "other": {"notes": [{"id": "n1", "text": "mornings work best", "where": "Onboarding: health", "day": 0}]},
 }
 
 
@@ -37,11 +39,12 @@ def stored(client, user="sam", **params):
 # --- Read --------------------------------------------------------------------------------------
 
 
-def test_a_new_user_reads_as_the_five_groups_empty(client):
+def test_a_new_user_reads_as_the_six_groups_empty(client):
     got = stored(client)
     assert tuple(got) == memory.GROUPS
     assert got["who"] == {"name": None, "fitbit_connected": None}
-    assert got["daily"] == {"check_ins": [], "suggestions": [], "workouts": []}
+    assert got["daily"] == {"check_ins": [], "suggestions": [], "workouts": [], "app_opens": []}
+    assert got["other"] == {}
 
 
 def test_what_is_posted_reads_back_the_same(client):
@@ -74,6 +77,27 @@ def test_a_preference_is_updated_and_a_workout_is_added(client):
     assert got["preferences"]["categories"] == {"Bicycling": "dislike"}
     assert [w["id"] for w in got["daily"]["workouts"]] == ["w1", "w2"]
     assert got["who"] == SAM["who"] and got["goals"] == SAM["goals"]  # not sent: stay
+
+
+def test_an_opened_day_and_what_the_app_keeps_go_in_and_come_back(client):
+    client.post("/api/memory?user_id=sam", json=SAM)  # opened on the 23rd, one note
+    chat = [{"id": "c1", "role": "user", "text": "Is walking enough?", "at": 1795478400000}]
+    res = client.post("/api/memory?user_id=sam", json={
+        "daily": {"app_opens": ["2026-11-24", "2026-11-23"]},  # the next day; the 23rd is there already
+        "other": {"chat": chat},
+    })
+    assert res.json() == {"ok": True}
+    got = stored(client)
+    assert got["daily"]["app_opens"] == ["2026-11-23", "2026-11-24"]
+    assert got["other"] == {"notes": SAM["other"]["notes"], "chat": chat}
+    assert stored(client, group="other") == {"other": got["other"]}
+
+
+def test_a_day_that_is_not_a_date_is_a_422(client):
+    res = client.post("/api/memory?user_id=sam", json={"daily": {"app_opens": ["2026-11-23", "today"]}})
+    assert res.status_code == 422
+    assert "daily.app_opens[1]: 'today' is not a date" in res.json()["detail"]
+    assert stored(client)["daily"]["app_opens"] == []
 
 
 def test_a_mistake_is_a_422_that_names_it_and_stores_nothing(client):
@@ -123,6 +147,8 @@ def test_forgetting_a_user_leaves_the_others(client):
     assert client.delete("/api/memory?user_id=sam").json() == {"ok": True}
     assert stored(client)["who"]["name"] is None
     assert stored(client)["goals"] == []
+    assert stored(client)["daily"]["app_opens"] == []
+    assert stored(client)["other"] == {}
     assert stored(client, user="alex")["who"]["name"] == "Alex"
 
 

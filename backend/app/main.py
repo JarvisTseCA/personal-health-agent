@@ -11,8 +11,8 @@ FastAPI backend for the Personal Health Agent.
     GET    /api/state             load the saved app state
     PUT    /api/state             save it
     DELETE /api/state             forget it
-    GET    /api/memory            what Memory holds about a user, in its five groups (memory.py)
-    POST   /api/memory            add to it or update it: any part of the five groups
+    GET    /api/memory            what Memory holds about a user, in its six groups (memory.py)
+    POST   /api/memory            add to it or update it: any part of the six groups
     DELETE /api/memory/{kind}/{key}   take one entry out: a check-in, a suggestion or a workout
     DELETE /api/memory            forget the user
     GET    /api/suggestions/log   recent prompts and Jev answers, for prompt tuning
@@ -473,13 +473,13 @@ def delete_state(user_id: str = "demo") -> Dict[str, bool]:
     return {"ok": True}
 
 
-# --- Memory: what the backend remembers about a user, in five groups (memory.py) ---------------
+# --- Memory: what the backend remembers about a user, in six groups (memory.py) ----------------
 # Not called by the app yet; it still uses /api/state above.
 
 
 @app.get("/api/memory")
 def get_memory(user_id: str = "demo", group: Optional[List[str]] = Query(None)) -> Dict[str, Any]:
-    """Read. All five groups, or only the ones asked for: ?group=preferences&group=daily."""
+    """Read. All six groups, or only the ones asked for: ?group=preferences&group=daily."""
     try:
         return {"memory": memory.read(user_id, group)}
     except memory.MemoryDataError as e:
@@ -488,10 +488,11 @@ def get_memory(user_id: str = "demo", group: Optional[List[str]] = Query(None)) 
 
 @app.post("/api/memory")
 def post_memory(part: Dict[str, Any] = Body(...), user_id: str = "demo") -> Dict[str, bool]:
-    """Add or update. Send any part of the five groups; what is left out stays as it is.
+    """Add or update. Send any part of the six groups; what is left out stays as it is.
 
     Entries under "daily" and "health" are added (or replace the one with the same key);
-    "who", "preferences" and a week's goal and plan are updated. The shape is at the top of memory.py.
+    "who", "preferences" and a week's goal and plan are updated; each name under "other" is
+    replaced by what is sent. The shape is at the top of memory.py.
     """
     try:
         memory.save(user_id, part)

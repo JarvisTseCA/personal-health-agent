@@ -1,8 +1,8 @@
 """
 Memory: what the backend remembers about each user, kept in SQLite.
 
-It has five groups, the same five as in the team's design picture. Every table
-is named memory_<group>..., so the groups are easy to find in the database:
+It has six groups: the five in the team's design picture, and "other". Every
+table is named memory_<group>..., so the groups are easy to find in the database:
 
     who           memory_who                      name; is a Fitbit connected
     preferences   memory_preferences              can't do vigorous exercise; which places have their equipment listed
@@ -12,8 +12,15 @@ is named memory_<group>..., so the groups are easy to find in the database:
     daily         memory_daily_check_ins          each day's check-in
                   memory_daily_suggestions        suggestions the user accepted or declined
                   memory_daily_workouts           workouts done, logged by hand or synced from Fitbit
+                  memory_daily_app_opens          the days the user opened the app
     health        memory_health_vo2_max           VO2 max, one reading per month
                   memory_health_heart_rates       average heart rate during a workout
+    other         memory_other                    what the app keeps here for itself, under names of its own
+
+The backend works with the first five. "other" it only looks after: the Today
+conversation, the chat, the user's notes, the clinician's feedback and anything
+else the app wants back the next time it opens. Whatever the app stores under a
+name comes back exactly as it was sent.
 
 `save()` stores any part of a user's memory, and `read()` gives it back in the
 same shape:
@@ -38,19 +45,26 @@ same shape:
         "workouts": [{"id": "w1", "date": "2026-11-23", "activity_code": "01216",
                       "activity_name": "Bicycling, stationary, 60 watts", "met": 5.0, "duration_min": 30,
                       "source": "manual", "confirmed": True, "band": None, "start_time": None}],
+        "app_opens": ["2026-11-22", "2026-11-23"],                # oldest first
       },
       "health": {
         "vo2_max": [{"month": "2026-11", "ml_kg_min": 38.2, "source": "fitbit"}],
         "heart_rates": [{"workout_id": "w1", "avg_bpm": 132}],
+      },
+      "other": {                                                  # the names and what is under them are the app's
+        "chat": [{"id": "c1", "role": "user", "text": "Is walking enough?"}],
+        "notes": [{"id": "n1", "text": "knee is sore", "where": "Today: mood"}],
       },
     }
 
 What a save changes:
 - Groups and fields that are left out stay as they are.
 - "categories", and each place under "equipment", are replaced by what is sent.
+- Each name under "other" is replaced by what is sent; the other names stay.
 - Everything else is added, or replaces the entry with the same key: a week by
   its week_start, a check-in by its date, a suggestion or a workout by its id,
-  a VO2 max reading by its month, a heart rate by its workout_id.
+  a VO2 max reading by its month, a heart rate by its workout_id. A day in
+  "app_opens" is its own key, so a day sent again is still one day.
 - A save that has a mistake in it stores nothing.
 
 `delete()` takes one entry out of "daily" again: a check-in by its date, a
@@ -61,6 +75,7 @@ call them yet: it still saves its whole state through /api/state (the
 `app_state` table in db.py), and the suggest routes still get the user's
 preferences from the app with each request.
 """
+import json
 import sqlite3
 import uuid
 from contextlib import contextmanager
@@ -69,7 +84,7 @@ from typing import Any, Dict, Iterable, Iterator, List, Optional
 
 from . import db
 
-GROUPS = ("who", "preferences", "goals", "daily", "health")
+GROUPS = ("who", "preferences", "goals", "daily", "health", "other")
 DAYS = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")
 SLOTS = ("off", "0", "5", "10", "30", "45")  # minutes planned for a day; DaySlot in src/lib/plan.ts
 EQUIPMENT_PLACES = ("home", "gym")
@@ -152,6 +167,11 @@ CREATE TABLE IF NOT EXISTS memory_daily_workouts (
     start_time    TEXT,
     PRIMARY KEY (user_id, id)
 );
+CREATE TABLE IF NOT EXISTS memory_daily_app_opens (
+    user_id TEXT NOT NULL,
+    date    TEXT NOT NULL,                             -- a day the user opened the app, "2026-11-23"
+    PRIMARY KEY (user_id, date)
+);
 
 -- health
 CREATE TABLE IF NOT EXISTS memory_health_vo2_max (
@@ -167,14 +187,24 @@ CREATE TABLE IF NOT EXISTS memory_health_heart_rates (
     avg_bpm    REAL NOT NULL,
     PRIMARY KEY (user_id, workout_id)
 );
+
+-- other
+CREATE TABLE IF NOT EXISTS memory_other (
+    user_id    TEXT NOT NULL,
+    name       TEXT NOT NULL,                          -- the app's name for it: chat, notes, ...
+    content    TEXT NOT NULL,                          -- what the app sent, as JSON
+    updated_at TEXT NOT NULL,
+    PRIMARY KEY (user_id, name)
+);
 """
 
 TABLES = (
     "memory_who",
     "memory_preferences", "memory_preferences_categories", "memory_preferences_equipment",
     "memory_goals",
-    "memory_daily_check_ins", "memory_daily_suggestions", "memory_daily_workouts",
+    "memory_daily_check_ins", "memory_daily_suggestions", "memory_daily_workouts", "memory_daily_app_opens",
     "memory_health_vo2_max", "memory_health_heart_rates",
+    "memory_other",
 )
 
 
@@ -207,7 +237,7 @@ def save(user_id: str, memory: Dict[str, Any]) -> None:
 
 
 def read(user_id: str, groups: Optional[Iterable[str]] = None) -> Dict[str, Any]:
-    """A user's memory: all five groups, or only the ones named. An unknown user gets the same shape, empty."""
+    """A user's memory: all six groups, or only the ones named. An unknown user gets the same shape, empty."""
     wanted = GROUPS if groups is None else tuple(groups)
     unknown = sorted(set(wanted) - set(GROUPS))
     if unknown:
@@ -307,7 +337,7 @@ def _save_goals(conn: sqlite3.Connection, user_id: str, weeks: Any) -> None:
 
 
 def _save_daily(conn: sqlite3.Connection, user_id: str, daily: Any) -> None:
-    part = _fields(daily, ("check_ins", "suggestions", "workouts"), (), "daily")
+    part = _fields(daily, ("check_ins", "suggestions", "workouts", "app_opens"), (), "daily")
 
     for i, entry in enumerate(_list(part.get("check_ins"), "daily.check_ins")):
         what = f"daily.check_ins[{i}]"
@@ -350,6 +380,12 @@ def _save_daily(conn: sqlite3.Connection, user_id: str, daily: Any) -> None:
             "band": e.get("band"), "start_time": e.get("start_time"),
         })
 
+    for i, day in enumerate(_list(part.get("app_opens"), "daily.app_opens")):
+        conn.execute(
+            "INSERT OR IGNORE INTO memory_daily_app_opens (user_id, date) VALUES (?, ?)",
+            (user_id, _date(day, f"daily.app_opens[{i}]")),
+        )
+
 
 def _save_health(conn: sqlite3.Connection, user_id: str, health: Any) -> None:
     part = _fields(health, ("vo2_max", "heart_rates"), (), "health")
@@ -370,9 +406,24 @@ def _save_health(conn: sqlite3.Connection, user_id: str, health: Any) -> None:
         })
 
 
+def _save_other(conn: sqlite3.Connection, user_id: str, other: Any) -> None:
+    if not isinstance(other, dict):
+        raise MemoryDataError('other should be an object: the app\'s own names, each with what to keep, like {"chat": [...]}')
+    for name, content in other.items():
+        if not isinstance(name, str) or not name.strip():
+            raise MemoryDataError(f"other: {name!r} can't be a name; a name is a word like chat or notes")
+        try:
+            as_json = json.dumps(content, ensure_ascii=False, allow_nan=False)
+        except (TypeError, ValueError):
+            raise MemoryDataError(f"other.{name} can't be kept: it has something in it that JSON can't hold") from None
+        _upsert(conn, "memory_other", ("user_id", "name"), {
+            "user_id": user_id, "name": name, "content": as_json, "updated_at": _now(),
+        })
+
+
 _SAVE = {
     "who": _save_who, "preferences": _save_preferences, "goals": _save_goals,
-    "daily": _save_daily, "health": _save_health,
+    "daily": _save_daily, "health": _save_health, "other": _save_other,
 }
 
 
@@ -426,10 +477,14 @@ def _read_daily(conn: sqlite3.Connection, user_id: str) -> Dict[str, Any]:
         "SELECT id, date, activity_code, activity_name, met, duration_min, source, confirmed, band, start_time "
         "FROM memory_daily_workouts WHERE user_id = ? ORDER BY date, rowid", (user_id,)
     ).fetchall()
+    app_opens = conn.execute(
+        "SELECT date FROM memory_daily_app_opens WHERE user_id = ? ORDER BY date", (user_id,)
+    ).fetchall()
     return {
         "check_ins": [dict(r) for r in check_ins],
         "suggestions": [dict(r) for r in suggestions],
         "workouts": [{**dict(r), "confirmed": bool(r["confirmed"])} for r in workouts],
+        "app_opens": [r["date"] for r in app_opens],
     }
 
 
@@ -443,9 +498,14 @@ def _read_health(conn: sqlite3.Connection, user_id: str) -> Dict[str, Any]:
     return {"vo2_max": [dict(r) for r in vo2_max], "heart_rates": [dict(r) for r in heart_rates]}
 
 
+def _read_other(conn: sqlite3.Connection, user_id: str) -> Dict[str, Any]:
+    rows = conn.execute("SELECT name, content FROM memory_other WHERE user_id = ? ORDER BY rowid", (user_id,)).fetchall()
+    return {r["name"]: json.loads(r["content"]) for r in rows}
+
+
 _READ = {
     "who": _read_who, "preferences": _read_preferences, "goals": _read_goals,
-    "daily": _read_daily, "health": _read_health,
+    "daily": _read_daily, "health": _read_health, "other": _read_other,
 }
 
 

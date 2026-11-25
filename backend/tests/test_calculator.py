@@ -11,7 +11,7 @@ from datetime import date
 import pytest
 
 from app import calculator
-from app.calculator import credit, counted_met, daily_targets, done_by_day, met_hours, today_numbers
+from app.calculator import credit, counted_met, daily_targets, done_by_day, met_hours, today_numbers, total
 
 close = lambda a, b: a == pytest.approx(b, abs=0.005)  # noqa: E731  (the app's tests compare to 2 decimals)
 
@@ -25,6 +25,13 @@ NOTHING_DONE = [0] * 7
 def test_matches_the_guideline_150_min_at_3_met_is_75_min_at_6_met_is_7_5():
     assert close(met_hours(3, 150), 7.5)
     assert close(met_hours(6, 75), 7.5)
+
+
+def test_adding_up_gives_the_apps_answer_on_every_python():
+    # Four workouts: 6.8 + 1.025 + 2.175 + 1.675. The app adds them in order and gets 11.675.
+    # sum() on Python 3.12 and later gets 11.674999999999999, a brisk minute less once rounded.
+    assert total([met_hours(6.8, 60), met_hours(4.1, 15), met_hours(8.7, 15), met_hours(6.7, 15)]) == 11.675
+    assert total([]) == 0
 
 
 def test_light_activity_is_left_out_of_the_goal():

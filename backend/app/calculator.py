@@ -47,6 +47,19 @@ def monday_of(day: date) -> date:
     return day - timedelta(days=day.weekday())
 
 
+def total(values: Iterable[float]) -> float:
+    """Add up one at a time, in order, as the app does (`reduce((a, b) => a + b, 0)`).
+
+    Python's own sum() corrects for rounding from version 3.12 on, so its last digit can differ
+    from the app's: 11.674999999999999 where the app has 11.675, which is 233 brisk minutes
+    instead of 234. Adding plainly gives the app's answer on every Python.
+    """
+    result = 0.0
+    for value in values:
+        result += value
+    return result
+
+
 def done_by_day(workouts: Iterable[Dict[str, Any]], today: date) -> List[float]:
     """MET-hours earned on each day of today's week, Monday first. Other weeks and days after today don't count."""
     monday = monday_of(today)
@@ -69,13 +82,13 @@ def daily_targets(goal: float, plan: Sequence[str], done: Sequence[float], today
 
     # Past days and today: what was left at the start of that day, split over that day onward.
     for d in range(today_index + 1):
-        left = max(0.0, goal - sum(done[:d]))
+        left = max(0.0, goal - total(done[:d]))
         ahead = sum(minutes[d:])
         targets[d] = left * minutes[d] / ahead if ahead > 0 else 0.0
 
     # Later days: what is left after today, split over them. Today counts as at least its own
     # target, so later days don't look bigger just because today isn't over yet.
-    left_after_today = max(0.0, goal - sum(done[:today_index]) - max(targets[today_index], done[today_index]))
+    left_after_today = max(0.0, goal - total(done[:today_index]) - max(targets[today_index], done[today_index]))
     ahead = sum(minutes[today_index + 1:])
     for d in range(today_index + 1, 7):
         targets[d] = left_after_today * minutes[d] / ahead if ahead > 0 else 0.0
@@ -90,7 +103,7 @@ def today_numbers(goal: float, plan: Sequence[str], workouts: Iterable[Dict[str,
     done = done_by_day(workouts, today)
     index = today.weekday()
     target = daily_targets(goal, plan, done, index)[index]
-    done_this_week = sum(done)
+    done_this_week = total(done)
     return {
         "day_name": DAY_NAMES[index],
         "weekly_goal_met_hours": goal,

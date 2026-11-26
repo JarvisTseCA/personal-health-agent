@@ -138,6 +138,8 @@ export interface AppOwn {
   goalSet?: GoalSet;
   /** Today's first conversation still sets the week's goal and plan */
   weekSetup?: boolean;
+  /** This week's goal and plan are set */
+  weekPlanned?: boolean;
 }
 
 /** What the app keeps under Memory's "other". */

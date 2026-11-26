@@ -62,6 +62,11 @@ function setToday(state: AppState, patch: Partial<TodayState>): AppState {
   return { ...state, today: { ...state.today, ...patch } };
 }
 
+/** No earlier day of this week is on record as opened: today is the week's first log-in. */
+export function firstOpenOfWeek(state: Pick<AppState, "todayIndex" | "signIns">): boolean {
+  return !(state.signIns ?? []).slice(0, state.todayIndex).some(Boolean);
+}
+
 export const dayKeyOf = (s: Pick<AppState, "personaId" | "todayIndex">) => `${s.personaId}:${s.todayIndex}`;
 
 /** This week's sign-ins with today on record as opened. The streak counts only the days on record. */
@@ -75,9 +80,13 @@ export function openedToday(state: Pick<AppState, "todayIndex" | "signIns">): bo
  * a missed day just gets "welcome back": no mention of the old one.
  */
 export function startDay(state: AppState): AppState {
+  const first = firstOpenOfWeek(state);
   // Opening the app today is a sign-in.
   const st: AppState = { ...state, signIns: openedToday(state) };
-  if (st.weekSetup) return startSetup(st);
+  // The week's first log-in, whatever day it is (the user may skip days): last week's recap comes
+  // first, once ChatGPT has written it (weekRecap), then the week's goal and plan unless they're set.
+  const recap = first && st.history.length > 0 ? { recap: "due" as const } : {};
+  if (st.weekSetup || (st.onboarded && first && !st.weekPlanned)) return startSetup({ ...st, weekSetup: true }, recap);
   const ctx = buildAgentContext(st);
   const off = st.plan[st.todayIndex] === "off";
   const n = ctx.streak.current;
@@ -99,13 +108,12 @@ export function startDay(state: AppState): AppState {
     // A planned day starts by confirming its time; an off day asks if there's any time at all.
     today: {
       dayKey: dayKeyOf(st), step: off ? "time" : "time-confirm", checkIn: {}, entries, exclude: [], boost: false, nudged: false,
-      // Monday: last week's recap comes first, once ChatGPT has written it (weekRecap).
-      ...(st.todayIndex === 0 && st.history.length > 0 ? { recap: "due" as const } : {}),
+      ...recap,
     },
   };
 }
 
-// --- First time in Today: set the weekly goal, then the weekly plan -------------------------------
+// --- The week's first log-in: set the weekly goal, then the weekly plan ----------------------------
 
 /** Quick answers for the goal question: the guideline first. */
 export const SETUP_GOAL_OPTIONS: Array<[string, number]> = [["7.5, the guideline", 7.5], ["5 to start", 5], ["10", 10]];
@@ -118,16 +126,37 @@ const SETUP_PLAN_Q =
   "How much time do you have each day? Every day starts at 10 min. Change the days that are different, " +
   "and mark days you can't exercise at all as Off. Days with more time get more of the goal.";
 
-function startSetup(st: AppState): AppState {
-  return { ...st, today: { dayKey: dayKeyOf(st), step: "setup-goal", checkIn: {}, entries: [agent(SETUP_GOAL_Q)], exclude: [], boost: false, nudged: false } };
+const NEW_WEEK_PLAN_Q =
+  "Here's your weekly plan. Change the days that are different this week, and mark days you can't exercise at all as Off. " +
+  "Days with more time get more of the goal.";
+
+/** A user with a past week on record is setting up a new week, not their first. */
+const returning = (st: AppState) => st.history.length > 0;
+
+function newWeekGoalQ(st: AppState): string {
+  return `A new week. Let's set it up before today's check-in. Your weekly goal is ${fmtGoal(st.goal)} MET-hours: keep it, or pick another? The guideline is 7.5.`;
+}
+
+/** Quick answers for the goal question. A new week offers to keep the current goal first. */
+export function setupGoalOptions(state: AppState): Array<[string, number]> {
+  if (!returning(state)) return SETUP_GOAL_OPTIONS;
+  return [[`Keep ${fmtGoal(state.goal)}`, state.goal], ...SETUP_GOAL_OPTIONS.filter(([, to]) => to !== state.goal)];
+}
+
+function startSetup(st: AppState, recap: Partial<TodayState> = {}): AppState {
+  const q = returning(st) ? newWeekGoalQ(st) : SETUP_GOAL_Q;
+  return { ...st, today: { dayKey: dayKeyOf(st), step: "setup-goal", checkIn: {}, entries: [agent(q)], exclude: [], boost: false, nudged: false, ...recap } };
 }
 
 /** The goal the user picked or typed: saved as theirs, with today's date. */
 export function setupGoal(state: AppState, label: string, to: number): AppState {
   const goal = clampGoal(to);
-  const s: AppState = { ...state, goal, goalSource: "user", goalSet: { by: "user", on: appDate(state.todayIndex), from: state.goal } };
-  const said = goal < 7.5 ? ` A good start; you can work up to 7.5.` : goal > 7.5 ? " Ambitious; I'll keep an eye on how it feels." : "";
-  return setToday(push(s, user(label), agent(`${fmtGoal(goal)} MET-hours a week it is.${said}`), agent(SETUP_PLAN_Q)), { step: "setup-plan" });
+  // Keeping the goal leaves who set it, and when, as it was.
+  const kept = returning(state) && goal === state.goal;
+  const s: AppState = kept ? state : { ...state, goal, goalSource: "user", goalSet: { by: "user", on: appDate(state.todayIndex), from: state.goal } };
+  const said = kept ? "" : goal < 7.5 ? ` A good start; you can work up to 7.5.` : goal > 7.5 ? " Ambitious; I'll keep an eye on how it feels." : "";
+  const planQ = returning(state) ? NEW_WEEK_PLAN_Q : SETUP_PLAN_Q;
+  return setToday(push(s, user(label), agent(`${fmtGoal(goal)} MET-hours a week it is.${said}`), agent(planQ)), { step: "setup-plan" });
 }
 
 /** The plan is set (the grid changes it as the user taps): on to today's usual check-in. */
@@ -135,8 +164,10 @@ export function setupPlanDone(state: AppState, label: string): AppState {
   if (state.plan.every((d) => d === "off")) return push(state, user(label), agent("Pick at least one day with time, so the goal has somewhere to go."));
   const days = state.plan.filter((d) => d !== "off").length;
   const done = push(state, user(label), agent(`Your week is set: ${fmtGoal(state.goal)} MET-hours over ${days} ${days === 1 ? "day" : "days"}. Now, today.`));
-  const day = startDay({ ...done, weekSetup: undefined });
-  return { ...day, today: { ...day.today, entries: [...done.today.entries, ...day.today.entries] } };
+  const day = startDay({ ...done, weekSetup: undefined, weekPlanned: true });
+  // The recap stays where it is: asked for once, at the top.
+  const { recap: _again, ...fresh } = day.today;
+  return { ...day, today: { ...fresh, ...(done.today.recap ? { recap: done.today.recap } : {}), entries: [...done.today.entries, ...day.today.entries] } };
 }
 
 /** Today's planned minutes: from the weekly plan, or from the calendar block if the user edited it. */
@@ -665,7 +696,7 @@ export function syncFitbit(state: AppState, imp: FitbitImport): AppState {
     removedFitbitIds: [...removed].filter((id) => imported.has(id)),
   };
   // With a real Fitbit the app's day is the real day, and a new week starts with no sign-ins.
-  if (state.fitbitWeek && state.fitbitWeek !== imp.week) base = startDay({ ...base, todayIndex: imp.todayIndex, signIns: [] });
+  if (state.fitbitWeek && state.fitbitWeek !== imp.week) base = startDay({ ...base, todayIndex: imp.todayIndex, signIns: [], weekPlanned: undefined });
   else if (base.todayIndex !== imp.todayIndex) base = startDay({ ...base, todayIndex: imp.todayIndex });
   if (!state.onboarded) return base;
   if (!newest) {
@@ -921,7 +952,7 @@ export function whyPending(state: AppState, key: string): AppState {
   return c && whyKey(state) === key && !c.why ? setToday(state, { current: { ...c, whyPending: true } }) : state;
 }
 
-/** Last week's numbers for Monday's recap. Only these numbers may appear in ChatGPT's two sentences. */
+/** Last week's numbers for the recap at the week's first log-in. Only these numbers may appear in ChatGPT's two sentences. */
 export function recapFacts(state: AppState): Record<string, number | string | boolean> | null {
   const ctx = buildAgentContext(state);
   const last = ctx.past.at(-1);
@@ -940,7 +971,7 @@ export function recapFacts(state: AppState): Record<string, number | string | bo
   };
 }
 
-/** ChatGPT's recap, at the top of Monday's conversation, once. */
+/** ChatGPT's recap, at the top of the week's first conversation, once. */
 export function addRecap(state: AppState, dayKey: string, text: string): AppState {
   const t = state.today;
   if (t.dayKey !== dayKey || t.recap !== "due") return state;
@@ -1077,7 +1108,7 @@ export function withRewind(prev: AppState, next: AppState): AppState {
   const rewind: TodayRewind = {
     entryCount: n, today, plan: prev.plan, planSource: prev.planSource, sessions: prev.sessions, declines: prev.declines, profile: prev.profile,
     notes: prev.notes, painReports: prev.painReports, syncCount: prev.syncCount,
-    goal: prev.goal, goalSource: prev.goalSource, goalSet: prev.goalSet, weekSetup: prev.weekSetup,
+    goal: prev.goal, goalSource: prev.goalSource, goalSet: prev.goalSet, weekSetup: prev.weekSetup, weekPlanned: prev.weekPlanned,
   };
   const entries = after.map((e, i) => (i >= n && e.role === "user" && !e.rewind ? { ...e, rewind } : e));
   return { ...next, today: { ...next.today, entries } };
@@ -1091,7 +1122,7 @@ export function editAnswer(state: AppState, entryId: string): AppState {
   return {
     ...state,
     plan: r.plan ?? state.plan, planSource: r.planSource ?? state.planSource, sessions: r.sessions, declines: r.declines, profile: r.profile, notes: r.notes, painReports: r.painReports, syncCount: r.syncCount,
-    ...(r.goal !== undefined ? { goal: r.goal, goalSource: r.goalSource ?? state.goalSource, goalSet: r.goalSet, weekSetup: r.weekSetup } : {}),
+    ...(r.goal !== undefined ? { goal: r.goal, goalSource: r.goalSource ?? state.goalSource, goalSet: r.goalSet, weekSetup: r.weekSetup, weekPlanned: r.weekPlanned } : {}),
     today: { ...r.today, entries: state.today.entries.slice(0, r.entryCount) },
   };
 }

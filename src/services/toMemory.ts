@@ -135,6 +135,7 @@ export function toMemory(state: AppState, monday: string): Memory {
     tableActivities: state.tableActivities,
     goalSet: state.goalSet,
     weekSetup: state.weekSetup,
+    weekPlanned: state.weekPlanned,
     workouts: Object.fromEntries(
       sessions
         .filter((s) => !isTableId(s.variantId) || s.customName)

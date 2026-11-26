@@ -148,7 +148,7 @@ Tests: `.venv/bin/python -m pytest` (from `backend/`). They never call Jev or Ch
 | `POST /api/chat` | The same, with what the model is told about the user sent by the caller as `system`. For trying the checks and the model on their own |
 | `POST /api/today/read` | A typed answer on Today → the fields the buttons would give, or "it's a question" (ChatGPT on Today) |
 | `POST /api/today/why` | Today's pick and the code's facts → one "Based on …" sentence (ChatGPT on Today) |
-| `POST /api/today/recap` | Last week's numbers → Monday's two sentences (ChatGPT on Today) |
+| `POST /api/today/recap` | Last week's numbers → two sentences at the week's first log-in (ChatGPT on Today) |
 | `GET / POST / DELETE /api/memory` | Read Memory, add to it or update it, forget the user (the Memory section) |
 | `DELETE /api/memory/{kind}/{key}` | Take one entry out of Memory: a check-in, a suggestion, a workout, a chat message, or what the app keeps under one name in "other" |
 | `GET /api/numbers?date=` | Every number on the app's screens for one day, worked out from Memory |
@@ -477,7 +477,7 @@ fields or fields into words: Jev still ranks the activities, and code still coun
 | Read a typed answer | The "Other" box sends the text and the question on screen to `/api/today/read`. "maybe 20 min at home, pretty tired" fills time, place and energy at once; "it's pouring" under a pick is the *Weather* reason | Only allowed values are kept (minutes 0 to 240, the three places, the three energies, the decline reasons, plan slots); anything else is dropped. Fields that don't answer the question on screen go to the app's own reading |
 | Answer a question typed on Today | When the read says it's a question, the app sends it to `/api/chat/memory`, as the Chat tab does, with the last few turns of today's conversation and what's on the card. The backend reads the user from Memory. It goes through the urgent keywords and Jev's checks, like the Chat tab | The same fixed replies for urgent, medical-advice and off-topic messages |
 | The "Based on" line | Once the backend's pick is on screen, its reasons, today's energy, place and liked categories go to `/api/today/why` | One sentence, starts "Based on", no numbers, at most 160 characters |
-| Monday's recap | On Monday, last week's goal, MET-hours, active days, workouts, top activity and streak go to `/api/today/recap`; the two sentences go at the top of the conversation | At most two sentences and 320 characters; every number must be one of the numbers sent |
+| The week's recap | At the week's first log-in (any day: the user may skip days), last week's goal, MET-hours, active days, workouts, top activity and streak go to `/api/today/recap`; the two sentences go at the top of the conversation | At most two sentences and 320 characters; every number must be one of the numbers sent |
 
 Without the key (503), when the model is slow (the app waits 6 s for a read) or when an answer fails
 its check (422), the app does exactly what it did before: its own word rules, its scripted replies, no

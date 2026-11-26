@@ -126,14 +126,15 @@ describe("the 'Based on' line", () => {
   });
 });
 
-describe("Monday's recap", () => {
-  function monday(): AppState {
+describe("the recap at the week's first log-in", () => {
+  function opening(todayIndex: number, signIns: boolean[]): AppState {
     const s = initialState("alex");
-    return T.startDay({ ...s, onboarded: true, profile: personaProfile(s), todayIndex: 0 });
+    return T.startDay({ ...s, onboarded: true, profile: personaProfile(s), todayIndex, signIns });
   }
+  const none = [false, false, false, false, false, false, false];
 
-  it("is due on Monday only, and goes at the top of the conversation once", () => {
-    const s = monday();
+  it("is due at the week's first log-in, and goes at the top of the conversation once", () => {
+    const s = opening(0, none);
     expect(s.today.recap).toBe("due");
     const facts = T.recapFacts(s)!;
     expect(Object.keys(facts)).toEqual(expect.arrayContaining(["goal_met_hours", "done_met_hours", "active_days", "reached_goal"]));
@@ -141,8 +142,19 @@ describe("Monday's recap", () => {
     expect(after.today.entries[0].text).toBe("Last week you did a lot. Keep going.");
     expect(after.today.recap).toBe("done");
     expect(T.addRecap(after, s.today.dayKey, "Again.").today.entries.length).toBe(after.today.entries.length);
-    const tuesday = initialState("alex");
-    expect(T.startDay({ ...tuesday, onboarded: true, profile: personaProfile(tuesday), todayIndex: 1 }).today.recap).toBeUndefined();
+  });
+
+  it("comes on whichever day the week's first log-in is, since the user may skip days", () => {
+    expect(opening(3, none).today.recap).toBe("due"); // Monday to Wednesday skipped
+    expect(opening(1, [true, ...none.slice(1)]).today.recap).toBeUndefined(); // opened Monday already
+  });
+
+  it("stays at the top, asked for once, after the week's plan is set", () => {
+    let s = T.addRecap(opening(0, none), "alex:0", "Last week, well done.");
+    s = T.setupGoal(s, "Keep 10", 10);
+    s = T.setupPlanDone(s, T.SETUP_PLAN_DONE);
+    expect(s.today.entries[0].text).toBe("Last week, well done.");
+    expect(s.today.recap).toBe("done");
   });
 });
 

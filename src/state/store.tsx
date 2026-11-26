@@ -126,7 +126,7 @@ export type Action =
   | { type: "reason"; reason: DeclineReason }
   | { type: "freeText"; text: string }
   // ChatGPT on Today (src/services/todayWords.ts): a typed answer it read, a question it answered,
-  // the "Based on" line under the pick, and Monday's recap.
+  // the "Based on" line under the pick, and the recap at the week's first log-in.
   | { type: "typedRead"; text: string; read: Today.TypedRead }
   | { type: "todayReply"; question: string; reply: string }
   | { type: "whyPending"; key: string }
@@ -180,7 +180,7 @@ function reduce(state: AppState, action: Action): AppState {
       return action.state;
     case "completeOnboarding":
       // After real onboarding, Today first sets the weekly goal and plan; Skip onboarding (demo) goes straight to the day.
-      return Today.startDay({ ...state, onboarded: true, profile: action.profile, plan: action.plan, planSource: ALL_FROM_PLAN, weekSetup: action.setUpWeek || undefined });
+      return Today.startDay({ ...state, onboarded: true, profile: action.profile, plan: action.plan, planSource: ALL_FROM_PLAN, weekSetup: action.setUpWeek || undefined, weekPlanned: !action.setUpWeek || undefined });
     case "setupGoal": return Today.setupGoal(state, action.label, action.to);
     case "setupPlanDone": return Today.setupPlanDone(state, action.label);
     case "updateProfile":
@@ -248,10 +248,10 @@ function reduce(state: AppState, action: Action): AppState {
       // A new user (the "Fresh start" persona: no history, nothing this week), past onboarding, whose
       // first Today conversation sets the week's goal and plan before the day's check-in.
       const next = { ...state, ...personaState("fresh"), syncCount: 0, painReports: 0, clinician: DEFAULT_CLINICIAN, recapHandled: false, chat: [] };
-      return Today.startDay({ ...next, onboarded: true, profile: personaProfile(next), weekSetup: true });
+      return Today.startDay({ ...next, onboarded: true, profile: personaProfile(next), weekSetup: true, weekPlanned: undefined });
     }
     case "loadPersona": {
-      const next = { ...state, ...personaState(action.personaId), syncCount: 0, painReports: 0, clinician: DEFAULT_CLINICIAN, recapHandled: false };
+      const next = { ...state, ...personaState(action.personaId), syncCount: 0, painReports: 0, clinician: DEFAULT_CLINICIAN, recapHandled: false, weekSetup: undefined, weekPlanned: undefined };
       return Today.startDay(state.onboarded ? { ...next, profile: personaProfile(next) } : next);
     }
     case "confirmTime": return Today.confirmTime(state, action.keep);
@@ -476,7 +476,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     })();
   }, [state, dispatch]);
 
-  // Monday: ChatGPT's two sentences about last week, at the top of the conversation.
+  // The week's first log-in: ChatGPT's two sentences about last week, at the top of the conversation.
   const recapAsked = useRef(new Set<string>());
   useEffect(() => {
     const t = state.today;

@@ -16,7 +16,7 @@ import { countsTowardGoal, fmt, fmtGoal, intensityOf } from "../lib/met";
 import { DECLINE_LABEL, type DeclineReason, type Suggestion } from "../lib/suggest";
 import { equipmentAt } from "../services/context";
 import { useFitbitSync, useStore, useTypedAnswer } from "../state/store";
-import { CHANGE_TIME_LABEL, CONFIRM_CHOICES, ENERGY_OPTIONS, hasHowTo, keepTimeLabel, MAX_PASSES, PLACE_OPTIONS, REMIND_OPTIONS, SETUP_GOAL_OPTIONS, SETUP_PLAN_DONE } from "../state/today";
+import { CHANGE_TIME_LABEL, CONFIRM_CHOICES, ENERGY_OPTIONS, hasHowTo, keepTimeLabel, MAX_PASSES, PLACE_OPTIONS, REMIND_OPTIONS, SETUP_PLAN_DONE, setupGoalOptions } from "../state/today";
 import { TimeOptions } from "../components/TimeOptions";
 import { SLOT_LABEL, SLOT_MINUTES } from "../lib/plan";
 import type { Screen, TodayStep } from "../state/types";
@@ -296,7 +296,7 @@ export function TodayScreen({ go, openPrefs }: { go: (s: Screen) => void; openPr
 
         {t.step === "setup-goal" && (
           <Bubbles label="Weekly goal">
-            {SETUP_GOAL_OPTIONS.map(([label, to], i) => (
+            {setupGoalOptions(state).map(([label, to], i) => (
               <button key={label} className={`chip${i === 0 ? " chip-strong" : ""}`} onClick={() => dispatch({ type: "setupGoal", label, to })}>{label}</button>
             ))}
           </Bubbles>

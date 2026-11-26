@@ -144,6 +144,7 @@ export interface TodayRewind {
   goalSource?: AppState["goalSource"];
   goalSet?: GoalSet;
   weekSetup?: boolean;
+  weekPlanned?: boolean;
 }
 
 export interface TodayState {
@@ -240,8 +241,10 @@ export interface AppState {
   toast: string | null;
   recapHandled: boolean;
   /**
-   * True from the end of onboarding until the user has set the weekly goal and plan in Today's
-   * first conversation. Missing (older saves, demo personas): already set up.
+   * True while Today's conversation is setting the weekly goal and plan: after onboarding, and at
+   * the first log-in of each week. Missing: not setting up now.
    */
   weekSetup?: boolean;
+  /** This week's goal and plan are set, so a later log-in this week goes straight to the day. Reset each week. */
+  weekPlanned?: boolean;
 }

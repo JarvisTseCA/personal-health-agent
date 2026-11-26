@@ -15,20 +15,26 @@ It has three parts, in this order:
      from fixed_replies.csv (chat_replies.py), so when the model turns a
      message down it uses the same words as the two checks before it.
 
-  3. What the app sends as `system`: its own notes and the user's data
-     (buildSystemPrompt in src/services/prompts.ts). The brief comes first
-     and wins where the two differ.
+  3. What the model is told about the user. One of two, by the route:
+
+     POST /api/chat/memory   the user's data as the backend read it from
+                             Memory and worked it out (memory_chat.py), as JSON.
+                             This is what the app uses.
+     POST /api/chat          what the caller sends as `system`: its own notes
+                             and the user's data (buildSystemPrompt in
+                             src/services/prompts.ts). The brief comes first
+                             and wins where the two differ.
 
 The brief repeats the two checks on purpose. A message reaches the model only
 after the urgent keywords and Jev's three questions let it through; the brief
 is the third and last line.
 
 Open question for the team: the brief is a first draft and has not had a
-clinical review. The app's notes were written for the Today tab ("hand them
-ONE activity"); a cleaner split is for the app to send only the user's data.
+clinical review.
 """
+import json
 from pathlib import Path
-from typing import Dict, Optional, Union
+from typing import Any, Dict, Optional, Union
 
 from .chat_replies import REPLIES
 
@@ -41,6 +47,7 @@ APP_NOTES = (
     "The app's own notes and the user's data follow. "
     "Where they say something different from the rules above, follow the rules above."
 )
+USER_DATA = "The user's data, from the app's own records, as JSON. \"today\" is the user's today."
 
 
 class BriefFileError(ValueError):
@@ -63,11 +70,18 @@ def read_brief(path: Optional[Union[str, Path]] = None) -> str:
     return brief
 
 
-def build_system(brief: str, replies: Dict[str, str], app_system: str = "") -> str:
-    """The whole system prompt: the brief with the fixed replies in it, then what the app sent."""
+def build_system(
+    brief: str, replies: Dict[str, str], app_system: str = "", user_data: Optional[Dict[str, Any]] = None,
+) -> str:
+    """The whole system prompt: the brief with the fixed replies in it, then what the model is told about the user.
+
+    `user_data` is what memory_chat.user_data() read from Memory; `app_system` is what a caller of POST /api/chat sent.
+    """
     system = brief
     for name, marker in MARKERS.items():
         system = system.replace(marker, replies[name])
+    if user_data is not None:
+        system += f"\n\n{USER_DATA}\n\n{json.dumps(user_data, indent=2, ensure_ascii=False)}"
     app_system = (app_system or "").strip()
     if app_system:
         system += f"\n\n{APP_NOTES}\n\n{app_system}"

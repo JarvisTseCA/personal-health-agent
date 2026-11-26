@@ -846,4 +846,15 @@ input[type="range"] { width: 100%; accent-color: var(--ink); height: 32px; }
 /* A text checkmark (✓, not the emoji) on the Today tab once today's target is reached. A corner badge,
    so the tab bar doesn't shift. Green like "Done" on Today's progress bar. */
 .tab-icon { position: relative; display: inline-flex; }
+/* Like an app icon badge: a solid red dot over the icon's top-right corner, until today's target is reached. */
+.tab-dot { position: absolute; top: -5px; right: -7px; width: 12px; height: 12px; border-radius: 50%; background: #FF3B30; }
+.settings-sub { font-size: var(--t-sm, 15px); margin: 14px 0 8px; }
+.goal-input { margin-bottom: 8px; }
+.goal-row { display: flex; align-items: center; gap: 8px; }
+.goal-number { width: 64px; text-align: center; font-size: 20px; font-weight: 700; padding: 6px 4px; border: 1px solid var(--line); border-radius: 10px; background: transparent; color: inherit; }
+.step-btn { width: 36px; height: 36px; border-radius: 50%; border: 1px solid var(--line); background: transparent; font-size: 20px; line-height: 1; cursor: pointer; color: inherit; }
+.step-btn:disabled { opacity: .4; cursor: default; }
+.goal-equiv { margin: 6px 0 0; }
+.goal-note { margin: 4px 0 0; }
+.setup-plan { margin-top: 4px; }
 .tab-badge { position: absolute; top: -8px; right: -16px; font-size: 24px; font-weight: 800; line-height: 1; color: var(--good); font-variant-emoji: text; }

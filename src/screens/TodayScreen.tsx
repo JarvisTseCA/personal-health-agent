@@ -16,7 +16,7 @@ import { countsTowardGoal, fmt, fmtGoal, intensityOf } from "../lib/met";
 import { DECLINE_LABEL, type DeclineReason, type Suggestion } from "../lib/suggest";
 import { equipmentAt } from "../services/context";
 import { useFitbitSync, useStore } from "../state/store";
-import { CHANGE_TIME_LABEL, CONFIRM_CHOICES, ENERGY_OPTIONS, hasHowTo, keepTimeLabel, PLACE_OPTIONS, REMIND_OPTIONS } from "../state/today";
+import { CHANGE_TIME_LABEL, CONFIRM_CHOICES, ENERGY_OPTIONS, hasHowTo, keepTimeLabel, PLACE_OPTIONS, REMIND_OPTIONS, SETUP_GOAL_OPTIONS, SETUP_PLAN_DONE } from "../state/today";
 import { TimeOptions } from "../components/TimeOptions";
 import { SLOT_LABEL, SLOT_MINUTES } from "../lib/plan";
 import type { Screen, TodayStep } from "../state/types";
@@ -24,9 +24,12 @@ import { OtherInput } from "../components/OtherInput";
 import { UserMessage } from "../components/UserMessage";
 import type { AppState } from "../state/types";
 import { tableHeading } from "../lib/tableActivities";
+import { PlanDays } from "../components/PlanDays";
 
 /** What the Other box says at each step. Every step that asks something gets one. */
 const OTHER_PLACEHOLDER: Partial<Record<TodayStep, string>> = {
+  "setup-goal": "Other: e.g. 6",
+  "setup-plan": "Other: e.g. Thu off, Sat 45 min",
   "time-confirm": "Other: e.g. 45 min today",
   time: "Other: e.g. 25 min, or an hour",
   place: "Other: e.g. at the park",
@@ -268,6 +271,21 @@ export function TodayScreen({ go, openPrefs }: { go: (s: Screen) => void; openPr
           </div>
         )}
 
+        {t.step === "setup-goal" && (
+          <Bubbles label="Weekly goal">
+            {SETUP_GOAL_OPTIONS.map(([label, to], i) => (
+              <button key={label} className={`chip${i === 0 ? " chip-strong" : ""}`} onClick={() => dispatch({ type: "setupGoal", label, to })}>{label}</button>
+            ))}
+          </Bubbles>
+        )}
+        {t.step === "setup-plan" && (
+          <div className="live setup-plan">
+            <PlanDays plan={state.plan} onPick={(day, slot) => dispatch({ type: "setSlot", day, slot })} />
+            <div className="btn-row" style={{ marginTop: 12 }}>
+              <button className="btn btn-primary" disabled={state.plan.every((d) => d === "off")} onClick={() => dispatch({ type: "setupPlanDone", label: SETUP_PLAN_DONE })}>{SETUP_PLAN_DONE}</button>
+            </div>
+          </div>
+        )}
         {t.step === "time-confirm" && (
           <Bubbles label="Keep today's time">
             <button className="chip chip-strong" onClick={() => dispatch({ type: "confirmTime", keep: true })}>{keepTimeLabel(state)}</button>

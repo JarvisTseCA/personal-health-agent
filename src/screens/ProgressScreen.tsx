@@ -20,6 +20,7 @@ import { useStore } from "../state/store";
 import { groupWeeks, type WeekIn } from "../lib/periods";
 import { weekStart } from "../services/context";
 import { LogWorkoutSheet } from "./LogWorkoutSheet";
+import { goalNote } from "../lib/goalNote";
 
 export function ProgressScreen() {
   return (
@@ -221,7 +222,7 @@ function LastWeek() {
     const n = text.match(/(\d+(?:\.\d+)?)/);
     if (n) {
       const to = Math.min(30, Math.max(1, parseFloat(n[1])));
-      dispatch({ type: "acceptGoal", to });
+      dispatch({ type: "setGoal", to });
       return;
     }
     if (/\b(keep|same|stay|no change)\b/i.test(text)) { dispatch({ type: "keepGoal" }); return; }
@@ -270,7 +271,7 @@ function LastWeek() {
         {state.recapHandled ? (
           <>
             <b>Your goal this week: {fmtGoal(ctx.goal)} MET-hours</b>
-            <p className="small muted">{ctx.steppingStone ? "A stepping stone; the guideline is still 7.5." : "Saved."}</p>
+            <p className="small muted">{goalNote(state)}{ctx.steppingStone ? " A stepping stone; the guideline is still 7.5." : ""}</p>
           </>
         ) : offer.kind === "keep" ? (
           <>
@@ -287,7 +288,7 @@ function LastWeek() {
                 : "Rule: under half the goal 3 weeks in a row → half the goal."}
             </p>
             <div className="btn-row" style={{ marginTop: 12 }}>
-              <button className="btn btn-primary" onClick={() => dispatch({ type: "acceptGoal", to: offer.to })}>Change to {fmtGoal(offer.to)}</button>
+              <button className="btn btn-primary" onClick={() => dispatch({ type: "acceptGoal", to: offer.to, reason: offer.reason })}>Change to {fmtGoal(offer.to)}</button>
               <button className="btn btn-quiet" onClick={() => dispatch({ type: "keepGoal" })}>Keep {fmtGoal(offer.from)}</button>
             </div>
             <OtherInput placeholder="Other: e.g. make it 6" onSubmit={typedGoal} hint={hint} />

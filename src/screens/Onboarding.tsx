@@ -1,6 +1,6 @@
 /**
  * Onboarding, short: connect Fitbit, one health question, "Tell us what you love
- * doing", plan the first week.
+ * doing". The weekly goal and plan come next, in the Today conversation (today.ts, "setup").
  *
  * "Tell us what you love doing" shows the activity table's categories: one tap
  * likes a category (👍), a second dislikes it (👎), a third clears it. It's
@@ -10,24 +10,19 @@
  * steer away from it).
  *
  * Every page after the welcome has Back, which returns to the page the user came from.
- * Each day starts at 10 min.
  */
 import { useEffect, useState } from "react";
 import { BackIcon, WatchIcon } from "../components/Icons";
-import { OtherInput } from "../components/OtherInput";
-import { parsePlanChanges } from "../lib/freeText";
-import { DAY_NAMES_LONG } from "../lib/met";
-import { SLOT_LABEL, type WeekPlan } from "../lib/plan";
-import { PlanDays } from "../components/PlanDays";
+import type { WeekPlan } from "../lib/plan";
 import { CATEGORY_HELP, CategoryChips } from "../components/CategoryChips";
 import { withPref, type CategoryPrefs } from "../lib/categories";
 import { DEFAULT_PROFILE, pullFitbit, useStore } from "../state/store";
 import { connectFitbit, fitbitStatus } from "../services/fitbit";
 
-type Step = "welcome" | "fitbit" | "health" | "likes" | "plan";
-const ORDER: Step[] = ["fitbit", "health", "likes", "plan"];
+type Step = "welcome" | "fitbit" | "health" | "likes";
+const ORDER: Step[] = ["fitbit", "health", "likes"];
 
-/** Every day starts at 10 min; the user changes the days that differ. */
+/** Every day starts at 10 min; the user changes the days that differ in Today's first conversation. */
 const START_PLAN: WeekPlan = ["10", "10", "10", "10", "10", "10", "10"];
 
 export function Onboarding({ onDone }: { onDone: () => void }) {
@@ -42,15 +37,12 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
   const [real, setReal] = useState(false);
   const [connectFailed, setConnectFailed] = useState(false);
   useEffect(() => { fitbitStatus().then((s) => setReal(!!s?.configured)); }, []);
-  const [plan, setPlan] = useState<WeekPlan>(START_PLAN);
   const [prefs, setPrefs] = useState<CategoryPrefs>({});
 
-  const [hint, setHint] = useState<string | null>(null);
   /** Pages visited, so Back returns to the one the user came from */
   const [trail, setTrail] = useState<Step[]>([]);
-  const go = (s: Step) => { setTrail((t) => [...t, step]); setStep(s); setHint(null); };
+  const go = (s: Step) => { setTrail((t) => [...t, step]); setStep(s); };
   const back = () => {
-    setHint(null);
     const prev = trail.at(-1);
     if (!prev) return;
     setTrail(trail.slice(0, -1));
@@ -58,14 +50,6 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
   };
   const note = (text: string, where: string) => dispatch({ type: "addNote", text, where: `Onboarding: ${where}` });
 
-  // The "Other" box on the plan page: typed changes become the same choices the buttons make.
-  const typedPlan = (text: string) => {
-    const changes = parsePlanChanges(text);
-    const days = Object.keys(changes).map(Number);
-    if (!days.length) { note(text, "plan"); setHint('Noted. To change a day, try something like "Thursday off, Saturday 45 min".'); return; }
-    setPlan((p) => p.map((x, i) => changes[i] ?? x));
-    setHint(`Updated ${days.map((d) => `${DAY_NAMES_LONG[d]} to ${SLOT_LABEL[changes[d]]}`).join(", ")}.`);
-  };
   const idx = ORDER.indexOf(step);
 
   /** Google's sign-in opens in a new tab; once the backend has the tokens, the user's own weeks are imported. */
@@ -104,7 +88,8 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
         hasHealthCondition: healthFlag, fitbitConnected: connected,
         categoryPrefs: prefs,
       },
-      plan,
+      plan: START_PLAN,
+      setUpWeek: true,
     });
     onDone();
   };
@@ -205,24 +190,11 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
             <CategoryChips prefs={prefs} onChange={(c, p) => setPrefs((cur) => withPref(cur, c, p))} />
           </div>
           <div className="actions">
-            <button className="btn btn-primary btn-block" onClick={() => go("plan")}>{Object.keys(prefs).length ? "Continue" : "Skip for now"}</button>
+            <button className="btn btn-primary btn-block" onClick={finish}>{Object.keys(prefs).length ? "Continue" : "Skip for now"}</button>
           </div>
         </>
       )}
 
-      {step === "plan" && (
-        <>
-          <div className="grow">
-            <h1>Plan this week</h1>
-            <p className="lead">Every day starts at 10 min. Change the days that are different, and mark days you can't exercise at all as Off. The weekly goal stays the same; days with more time get more of it.</p>
-            <PlanDays plan={plan} onPick={(i, s) => setPlan((p) => p.map((x, j) => (j === i ? s : x)))} />
-            <OtherInput placeholder="Other: e.g. Thu off, Sat 45 min" onSubmit={typedPlan} hint={hint} />
-          </div>
-          <div className="actions">
-            <button className="btn btn-primary btn-block" onClick={finish} disabled={plan.every((s) => s === "off")}>Start today</button>
-          </div>
-        </>
-      )}
     </div>
   );
 }

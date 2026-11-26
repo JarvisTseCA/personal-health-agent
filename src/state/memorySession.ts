@@ -19,9 +19,12 @@
  *
  * Steps are taken one at a time, in the order they were asked for.
  *
+ * A step that changes only what the screen holds (a toast closing, a sheet opening) is shown
+ * and nothing is sent: Memory keeps neither.
+ *
  * When the backend doesn't answer:
  *  - a step that was already shown stays on screen, and what it changed goes out with the next
- *    step that gets through;
+ *    step that tells the backend something and gets through;
  *  - a step that was waiting for numbers is not taken at all. The backend may have stored part
  *    of it before it stopped answering, so before the next step the app reads Memory again and
  *    takes back whatever is there that the screen doesn't show.
@@ -57,6 +60,15 @@ interface Opening {
 }
 
 const NOT_SAVED = "The backend didn't answer, so that last step didn't go through. Is it still running?";
+
+/** What only the screen holds. Memory keeps neither, so a change to them is nothing to tell the backend. */
+const ON_SCREEN_ONLY: ReadonlyArray<keyof AppState> = ["toast", "overlay"];
+
+/** True when a step changed nothing but what only the screen holds. */
+function onlyTheScreenChanged(prev: AppState, next: AppState): boolean {
+  const keys = new Set([...Object.keys(prev), ...Object.keys(next)]) as Set<keyof AppState>;
+  return [...keys].every((key) => ON_SCREEN_ONLY.includes(key) || prev[key] === next[key]);
+}
 
 /** Open the app from Memory. Throws when the backend can't be used; the store then runs without it. */
 export async function openMemorySession(o: Opening): Promise<{ state: AppState; session: MemorySession }> {
@@ -114,6 +126,12 @@ export async function openMemorySession(o: Opening): Promise<{ state: AppState; 
     const mark = Today.idsMark();
     const draft = Today.withIds(mark, () => o.reduce(prev, action));
     if (draft === prev) return;
+    if (onlyTheScreenChanged(prev, draft)) {
+      // Closing the toast after a step that didn't go through is one of these: it closes, and stays closed.
+      current = draft;
+      o.show(draft);
+      return;
+    }
     const target = toMemory(draft, monday);
     // Another demo persona, Reset, or the first sync of a real Fitbit: Memory starts over with the new content.
     const startOver = prev.personaId !== draft.personaId || action.type === "reset" || (!prev.fitbitWeek && !!draft.fitbitWeek);

@@ -198,6 +198,7 @@ function reduceOne(state: AppState, action: Action): AppState {
     case "sync": return Today.sync(state);
     case "addMessage": return { ...state, chat: [...state.chat, action.message] };
     case "toast": return { ...state, toast: action.text };
+    case "overlay": return { ...state, overlay: action.overlay };
     case "moveEnjoyed": {
       const e = [...state.profile.enjoyed];
       const i = e.indexOf(action.familyId);
@@ -517,6 +518,38 @@ describe("running the app with the backend (memorySession)", () => {
 
     expect(memoryChat()).toEqual(["lost on the way", "this one gets through"]);
     expect(o.last().chat.map((m) => m.text)).toEqual(["lost on the way", "this one gets through"]);
+  });
+
+  it("closing the toast after a step that didn't go through sends nothing, and the toast stays closed", async () => {
+    const o = await open(onboarded());
+    backend.failNextSend = true;
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    await o.step({ type: "addMessage", message: message("lost on the way") });
+    expect(o.last().toast).toMatch(/backend didn't answer/i);
+    backend.calls = [];
+    backend.failNextSend = true; // still down: anything sent now would fail and bring the toast back
+
+    await o.step({ type: "toast", text: null }); // what "Dismiss" and the six-second timer both do
+
+    warn.mockRestore();
+    expect(o.last().toast).toBeNull();
+    expect(backend.calls).toEqual([]);
+
+    // The backend is back. What wasn't saved goes out with the next step that tells the backend something.
+    backend.failNextSend = false;
+    await o.step({ type: "addMessage", message: message("this one gets through") });
+    expect(memoryChat()).toEqual(["lost on the way", "this one gets through"]);
+    expect(o.last().toast).toBeNull();
+  });
+
+  it("opening a sheet changes only the screen: it is shown and nothing is sent", async () => {
+    const o = await open(onboarded());
+    backend.calls = [];
+
+    await o.step({ type: "overlay", overlay: "prefs" });
+
+    expect(o.last().overlay).toBe("prefs");
+    expect(backend.calls).toEqual([]);
   });
 
   it("a sync that reaches the week's goal says 'Trophy earned!' exactly once", async () => {

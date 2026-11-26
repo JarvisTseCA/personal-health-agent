@@ -100,7 +100,9 @@ export type TodayStep =
   | "setup-goal" | "setup-plan"
   | "time-confirm" | "time" | "place" | "energy" | "mood"
   | "suggested" | "reason" | "remind" | "reminded"
-  | "accepted" | "confirm" | "confirm-other" | "nudge" | "wrap";
+  | "accepted" | "confirm" | "confirm-other" | "nudge" | "wrap"
+  // The user's own exercise, after ten options or when nothing fits: what, how long, did or plan.
+  | "own" | "own-minutes" | "own-confirm";
 
 export interface TodayEntry {
   id: string;
@@ -149,6 +151,8 @@ export interface TodayState {
   boost: boolean;
   /** How many options "Give me another option" has passed over since the last reason (capped by MAX_PASSES) */
   passed?: number;
+  /** The exercise the user named themselves: what they typed, its table matches (best first) and minutes */
+  own?: { text: string; codes: string[]; minutes?: number };
   current?: {
     lead: Suggestion;
     backups: Suggestion[];

@@ -44,6 +44,9 @@ const OTHER_PLACEHOLDER: Partial<Record<TodayStep, string>> = {
   "confirm-other": "Other: type the activity",
   nudge: "Other: type your answer",
   wrap: "Other: ask anything",
+  own: "e.g. 40 min badminton",
+  "own-minutes": "Other: e.g. 25",
+  "own-confirm": "Something else? e.g. tennis",
 };
 
 const REASONS: DeclineReason[] = ["no-time", "tired", "not-mood", "recent", "no-access", "weather", "hurts"];
@@ -350,6 +353,21 @@ export function TodayScreen({ go, openPrefs }: { go: (s: Screen) => void; openPr
           </div>
         )}
 
+        {t.step === "own-minutes" && (
+          <Bubbles label="How many minutes">
+            {[15, 30, 45, 60].map((m) => <button key={m} className="chip" onClick={() => dispatch({ type: "own", answer: { minutes: m } })}>{m} min</button>)}
+          </Bubbles>
+        )}
+        {t.step === "own-confirm" && t.own && (
+          <Bubbles label="Done or planned">
+            <button className="chip chip-strong" onClick={() => dispatch({ type: "own", answer: "did" })}>I did it</button>
+            <button className="chip" onClick={() => dispatch({ type: "own", answer: "plan" })}>It's my plan</button>
+            {t.own.codes.slice(1).map((code) => {
+              const row = state.tableActivities?.[code];
+              return row ? <button key={code} className="chip" onClick={() => dispatch({ type: "own", answer: { code } })}>It's {row.label} ({fmt(row.met)} MET)</button> : null;
+            })}
+          </Bubbles>
+        )}
         {t.step === "reason" && (
           <Bubbles label="Why not today">
             {REASONS.map((r) => <button key={r} className={`chip${r === "hurts" ? " chip-care" : ""}`} onClick={() => dispatch({ type: "reason", reason: r })}>{DECLINE_LABEL[r]}</button>)}

@@ -16,6 +16,7 @@ interface Row extends TableActivity {
   first: string[];
   rest: string[];
   head: string[];
+  exercise: boolean;
 }
 
 /** One CSV line → cells, with quoted cells that hold commas. */
@@ -62,7 +63,7 @@ function load(): Row[] {
   const header = cells(lines[0]);
   const col = (name: string) => header.indexOf(name);
   const [h, code, met, desc, gym, home, out, rec] = ["major_heading", "activity_code", "met_value", "activity_description", "loc_gym", "at_home", "loc_outside", "exercise_rec"].map(col);
-  return lines.slice(1).map(cells).filter((c) => c[rec] === "1").map((c) => {
+  return lines.slice(1).map(cells).map((c) => {
     const description = c[desc];
     const places: TablePlace[] = [];
     if (c[gym] === "1") places.push("gym");
@@ -71,13 +72,22 @@ function load(): Row[] {
     const [first, ...rest] = description.split(",");
     return {
       code: c[code], heading: c[h], description, label: labelOf(description), met: parseFloat(c[met]), places,
-      first: words(first), rest: words(rest.join(" ")), head: words(c[h]),
+      first: words(first), rest: words(rest.join(" ")), head: words(c[h]), exercise: c[rec] === "1",
     };
   });
 }
 
+let all: Row[] | null = null;
 let rows: Row[] | null = null;
-const table = () => (rows ??= load());
+const everyRow = () => (all ??= load());
+/** The rows marked as exercise: the ones a typed exercise is matched to. */
+const table = () => (rows ??= everyRow().filter((r) => r.exercise));
+
+/** One row of the table by its Compendium code ("02064"), or undefined. */
+export function tableRow(code: string): TableActivity | undefined {
+  const r = everyRow().find((x) => x.code === code);
+  return r && { code: r.code, heading: r.heading, description: r.description, label: r.label, met: r.met, places: r.places };
+}
 
 /** Everyday words → the table's words. Keys and values are stems. */
 const SYNONYMS: Record<string, string[]> = {

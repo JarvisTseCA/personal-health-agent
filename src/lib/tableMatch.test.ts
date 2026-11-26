@@ -28,3 +28,15 @@ describe("matching a typed exercise to the activity table", () => {
     expect(labelOf("Basketball, game (Taylor Code 490)")).toBe("Basketball, game");
   });
 });
+
+describe("an activity-table id nobody registered", () => {
+  it("is found in the bundled table, so a saved pick still shows after a reload", async () => {
+    const { getVariant } = await import("./activities");
+    await import("./tableActivities");
+    const { family, variant } = getVariant("table-02064");
+    expect(variant.label).toBe("Home exercise");
+    expect(variant.met).toBe(3.8);
+    expect(family.name).toBe("Home exercise");
+    expect(() => getVariant("table-99999")).toThrow("Unknown activity variant");
+  });
+});

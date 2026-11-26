@@ -10,8 +10,8 @@
  * save over into Memory.
  *
  * The rest of the app only talks to the `UserRepository` interface, so no
- * screen code needs to change when the storage does. See
- * docs/architecture.md for a suggested table layout.
+ * screen code needs to change when the storage does. Memory's tables are
+ * described in docs/architecture.md.
  */
 import type { AppState } from "../state/types";
 import { backendHealth, clearRemoteState, loadRemoteState, saveRemoteState } from "./backend";

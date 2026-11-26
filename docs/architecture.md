@@ -5,18 +5,23 @@
 ```
 Screens ──► useStore() ──► AppState (React reducer)
    │                          │
-   │                          └─► repository                       services/store.ts
-   │                                SQLite via the backend when it's running,
-   │                                otherwise localStorage
+   │                          ├─► without the backend: repository  services/store.ts
+   │                          │     the whole state, in localStorage
+   │                          └─► with the backend: Memory          state/memorySession.ts
+   │                                read when the app opens, and    services/toMemory.ts, fromMemory.ts
+   │                                told what each step changed
    │
    ├─► ctx = buildAgentContext(state)                             services/context.ts
    │      MET-hours, daily targets, streak/trophies, goal offer   lib/met.ts, plan.ts, rewards.ts, goal.ts
+   │      with the backend: the backend's numbers, shown as sent  services/numbers.ts
    │
    ├─► Today flow (check-in → pick → decline/questions → sync)    state/today.ts
    │      check-in confirms today's planned time and its source:  lib/plan.ts (DaySource)
    │      the weekly plan, or the user's edited calendar block
    │      suggest() shows the in-app ranker's pick right away     lib/suggest.ts
    │      the backend's Jev pick replaces it when it arrives      services/backend.ts → backend/
+   │      with the backend: only the check-in is sent, and the
+   │      pick shown is the backend's
    │      verifySuggestion() checks whatever is shown             lib/verify.ts
    │
    └─► agent.reply(history, ctx) ──► MockAgent  (Chat tab)         services/agent.ts
@@ -33,8 +38,13 @@ Key idea: **the model chooses, the code calculates.** Jev only picks from option
 already checked, and MET-hours are always computed from Compendium MET values in `src/lib`. That
 keeps the numbers correct and testable no matter which model we use.
 
-The backend is optional. Without it (for example on GitHub Pages) the app runs exactly as the demo
-build: the in-app ranker picks, and data stays in the browser.
+**Two ways to run, one switch.** When the app opens it asks once whether the backend answers.
+
+- **Without the backend** (the online demo on GitHub Pages): the app remembers the user in the
+  browser, works the numbers out itself and picks with the in-app ranker, as the demo build always has.
+- **With the backend** (on a laptop today): Memory remembers the user, and the backend works out
+  every number on the screens and suggests. The app shows them and collects input. See
+  [Memory](#done-memory-and-the-numbers-worked-out-in-the-backend) below.
 
 ## Done: the suggestion backend (Jev)
 
@@ -116,7 +126,7 @@ Tests: `.venv/bin/python -m pytest` (from `backend/`). They never call Jev or Ch
 | `backend/app/chat_prompt.py` | Chat: builds the system prompt for the model that writes |
 | `backend/app/chat_writer.py` | Chat: calls ChatGPT with the API key and passes its reply on piece by piece; a placeholder when there's no key |
 | `backend/chat_content/` | The wording of the Chat route, editable without code: `urgent_keywords.csv`, `fixed_replies.csv`, `chat_brief.txt` |
-| `backend/app/db.py` | SQLite: the app state, a log of every prompt and answer, and the activity table |
+| `backend/app/db.py` | SQLite: the connection, a log of every prompt and answer, the activity table, and the app state in one piece as it was saved before Memory. Memory's own tables are in `memory.py` (the Memory section) |
 | `backend/app/main.py` | The API routes |
 | `backend/app/schemas.py` | Request and response shapes |
 | `src/services/backend.ts` | The frontend side: builds the request, turns picks back into suggestions with MET-hours |
@@ -126,10 +136,14 @@ Tests: `.venv/bin/python -m pytest` (from `backend/`). They never call Jev or Ch
 | Route | |
 |---|---|
 | `POST /api/suggest` | Check-in variables and options in, pick and backups out (plus the prompt and Jev's answers) |
-| `POST /api/suggest/table` | The same, with the options taken from the activity table (next section). Not used by the app yet |
+| `POST /api/suggest/table` | The same, with the options taken from the activity table (next section). The app calls it itself only when it isn't running on Memory and *Suggestions from* is set to the activity table |
+| `POST /api/suggest/memory` | The same again, from today's check-in alone: the rest is read from Memory (the Memory section). What the app uses when it runs with the backend |
 | `GET /api/activities` | The activity table. `?place=gym`, `?heading=Bicycling` (repeatable) and `?recommended=false` narrow or widen it |
 | `POST /api/chat` | A Chat message in, the reply out as streamed plain text (see the Chat section). Not used by the app yet |
-| `GET / PUT / DELETE /api/state` | Load, save, forget the app state |
+| `GET / POST / DELETE /api/memory` | Read Memory, add to it or update it, forget the user (the Memory section) |
+| `DELETE /api/memory/{kind}/{key}` | Take one entry out of Memory: a check-in, a suggestion or a workout |
+| `GET /api/numbers?date=` | Every number on the app's screens for one day, worked out from Memory |
+| `GET / PUT / DELETE /api/state` | The app state in one piece, as the app saved it before Memory. Now only read, once, to bring an earlier save over into Memory |
 | `GET /api/suggestions/log?limit=20` | Recent prompts and answers |
 | `GET /api/health` | Is the backend up, is Jev live or mocked, and what writes Chat replies? |
 
@@ -142,6 +156,11 @@ By default the app picks from its own small activity library (`src/lib/activitie
 `POST /api/suggest` (above). With the setting `VITE_SUGGEST_SOURCE=table`, or *Suggestions from* in
 the demo controls, Today picks from the team's activity table through `POST /api/suggest/table`
 instead (below). What's left to test and host: [testing-and-hosting.md](testing-and-hosting.md).
+
+When the app finds the backend as it opens, it runs on Memory, and Today sends only the check-in to
+`POST /api/suggest/memory`. That route reads the rest from Memory and then does what this section
+describes, so the picks still come from the activity table (see
+[Memory](#done-memory-and-the-numbers-worked-out-in-the-backend)). The setting then has nothing to choose.
 
 **The activity table.** `activity_tables/2024_compendium_exercise_recommendations.csv` lists the 2024
 Adult Compendium's activities, each marked with where it can be done, whether it needs equipment or a
@@ -222,33 +241,93 @@ Not handled yet:
 - "Up for a challenge" gives Jev the 1.5× aim but not the user's usual session length, because the
   table doesn't say which rows are paces of the same activity.
 
-## Next: store user data in proper tables
+## Done: Memory, and the numbers worked out in the backend
 
-Today SQLite has three tables: `app_state` (the whole app state as one JSON document per user, the
-same thing localStorage held), `suggestion_log` and `activities` (the copy of the activity CSV). Once
-the team settles the schema, split the app state into tables and update `backend/app/db.py` and the
-`UserRepository` in `src/services/store.ts`. A starting draft:
+When the app runs with the backend, the backend remembers the user and works out every number on
+the screens. The app shows them and collects input. Without the backend, none of this is used.
 
-| Table | Columns |
+**Memory** is what the backend remembers about each user, kept in SQLite in six groups
+(`backend/app/memory.py`):
+
+| Group | What it holds | Tables |
+|---|---|---|
+| who | Name; whether a Fitbit is connected | `memory_who` |
+| preferences | 👍 / 👎 on the activity table's categories; equipment at home and at the gym; no vigorous exercise | `memory_preferences`, `memory_preferences_categories`, `memory_preferences_equipment` |
+| goals | One row a week: the weekly goal, and the plan for its seven days | `memory_goals` |
+| daily | Each day's check-in; suggestions accepted or declined; workouts; the days the app was opened | `memory_daily_check_ins`, `memory_daily_suggestions`, `memory_daily_workouts`, `memory_daily_app_opens` |
+| health | VO2 max, one reading a month; the average heart rate of a workout | `memory_health_vo2_max`, `memory_health_heart_rates` |
+| other | What the app keeps for itself and gets back as it sent it: the Today conversation, the chat, notes, clinician feedback | `memory_other` |
+
+The backend works with the first five. "other" it only looks after.
+
+**Opening.** The app reads Memory (`GET /api/memory?date=…`), saves that it was opened today, and
+puts its state back together from what came back. The first time, when Memory doesn't have the
+app's content yet, the app puts what it has there once: an earlier save, or the demo persona.
+
+**One step**, for example a 30-minute ride arriving from Fitbit:
+
+```
+the app runs the step once,  ──►  POST /api/memory?date=…  ──►  the backend stores it,  ──►  the app runs the step for real,
+only to see what it changes       (what changed)                works the numbers out        with the new numbers, and
+                                                                again and sends them back    shows the result
+```
+
+So the sentences in the Today conversation ("You're at 4.4 of 7.5 this week") use the backend's
+numbers too. Three kinds of step are lighter:
+
+- A step that changes no number (a chat message, a decline) is shown at once and saved right after.
+- A chat reply arrives a few words at a time. Each piece is shown, and the reply is saved once, when it is whole.
+- A step that changes only the screen (a toast closing, a sheet opening) is shown and nothing is sent.
+
+When the backend doesn't answer, a toast says the step didn't go through. What wasn't saved goes
+out with the next step that reaches the backend.
+
+**A suggestion.** The app sends only today's check-in to `POST /api/suggest/memory`. The backend
+reads the rest from Memory (likes, limits, equipment, recent workouts and declines), works out
+today's target, and from there it is the table route above. When no suggestion comes back, the
+card says so and offers "Try again"; the in-app ranker's pick is not shown in its place.
+
+**The numbers.** `GET /api/numbers?date=…` gives every number on the screens for one day: this week
+(done, each day's target, today's share), the streak, trophies, past weeks and months, the goal
+offer, the Summary page and VO2 max. The `/api/memory` routes give the same numbers in their reply
+when the request has `?date=`, so right after a save the app has the numbers that follow from it.
+
+Rules the numbers follow:
+
+- **The two calculators agree.** The app's own calculator (used without the backend) and the
+  backend's are held to the same examples in `shared_examples/` (`today_target.json`,
+  `progress.json`), each by a test of its own. When a rule changes, both copies and the examples
+  change together.
+- **The records decide.** A day counts toward the streak when it is on record as opened, today
+  included; the app saves today's open before it shows any number. A week with no opens on record
+  has none. Workouts are a separate record: they count toward the week's MET-hours and trophy
+  either way. A week with nothing recorded is a week with 0 done, and it is still a week.
+- **Memory keeps every week, and the app is given the last 26.** The past weeks and months in the
+  numbers, and the Memory content the app reads, cover this week and the 26 before it. The totals
+  (the streak, its best run, the trophies) count everything Memory holds.
+- **"Today" is the date the app sends**, not the backend's clock.
+
+### Files
+
+| File | What it does |
 |---|---|
-| `users` | id, name, created_at |
-| `profiles` | user_id, usual_time, has_health_condition, fitbit_connected, clinician_view_enabled, updated_at |
-| `enjoyed_activities` | user_id, family_id, rank, access (`have` / `sometimes` / `no`) |
-| `goals` | user_id, week_start, met_hours, set_by (`default` / `recap`; only the user changes it) |
-| `week_plans` | user_id, week_start, mon … sun (`off` / `0` / `5` / `10` / `30` / `45` minutes) |
-| `sessions` | id, user_id, date, variant_id, compendium_code, met, duration_min, avg_hr, source, confirmed, band |
-| `declines` | id, user_id, date, family_id, reason, note |
-| `clinician_notes` | id, user_id, text, created_at (what the user told Chat their clinician said; agent context, never changes the goal) |
-| `equipment` | user_id, place (`home` / `gym`), equipment_id; plus a "no gym" flag on `profiles` |
-| `sign_ins` | user_id, date (one row per day the app was opened; the streak is computed from these) |
-| `vo2_max` | user_id, month, ml_kg_min, source (`fitbit`) |
-| `fitbit_tokens` | user_id, access_token, refresh_token, expires_at, scope (already in SQLite) |
-| `check_ins` | user_id, date, minutes, place, energy, mood |
-| `chat_messages` | id, user_id, role, text, created_at |
+| `backend/app/memory.py` | Memory: its tables; store, read, take one entry out, forget a user |
+| `backend/app/calculator.py` | This week's numbers: each day's target, what is left, today's share |
+| `backend/app/progress.py` | The streak, trophies, past weeks, months, the goal offer and the Summary page's numbers |
+| `backend/app/memory_numbers.py` | All the numbers for one day in one piece; and the recent part of Memory, as the app is given it |
+| `backend/app/memory_suggest.py` | From the check-in and Memory to the request the table route takes |
+| `src/state/memorySession.ts` | The app running with the backend: opening from Memory, and how each step is taken |
+| `src/services/toMemory.ts`, `fromMemory.ts` | The app's state laid out as Memory's six groups, and what a step changed; and the state put back together from Memory |
+| `src/services/numbers.ts` | The backend's numbers, in the shape the screens use |
+| `src/services/memoryClient.ts`, `memoryTypes.ts` | The calls to `/api/memory` and `/api/numbers`, and the shapes of Memory and the numbers |
+| `shared_examples/` | The examples both calculators are held to |
 
-`buildAgentContext` then reads from these rows instead of in-memory state, and `serializeContext`
-turns them into the JSON block injected into the prompt. Move to per-week `date` fields (instead of
-`dayIndex`) at this point.
+### Still open
+
+- The Chat tab is still scripted in the app (see the Chat section).
+- A real Fitbit together with Memory hasn't been tried end to end.
+- With the real Jev, the picks tend to add up to more than today's target; that is for prompt tuning.
+- How the weekly goal gets set (a weekly offer, as now, or a default the user changes when they want to) is not settled.
 
 ## Done in the backend: the Chat route (not in the app yet)
 

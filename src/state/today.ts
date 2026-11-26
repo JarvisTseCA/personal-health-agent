@@ -86,8 +86,11 @@ export function startDay(state: AppState): AppState {
   // The week's first log-in, whatever day it is (the user may skip days): last week's recap comes
   // first, once ChatGPT has written it (weekRecap), then the week's goal and plan unless they're set.
   const recap = first && st.history.length > 0 ? { recap: "due" as const } : {};
-  if (st.weekSetup || (st.onboarded && first && !st.weekPlanned)) return startSetup({ ...st, weekSetup: true }, recap);
   const ctx = buildAgentContext(st);
+  // Only while nothing has counted toward this week's goal yet: once there are MET-hours, the week is under way.
+  const unstarted = ctx.week.done === 0;
+  if (unstarted && (st.weekSetup || (st.onboarded && first && !st.weekPlanned))) return startSetup({ ...st, weekSetup: true }, recap);
+  if (st.weekSetup) return startDay({ ...state, weekSetup: undefined });
   const off = st.plan[st.todayIndex] === "off";
   const n = ctx.streak.current;
   const hello = n >= 2 ? `Day ${n} in a row. ` : "Welcome back. ";

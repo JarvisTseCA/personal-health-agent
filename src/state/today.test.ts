@@ -142,7 +142,7 @@ describe("today flow", () => {
   });
 
   it("reaching the weekly goal earns the trophy, once", () => {
-    let s = onboarded("roll");
+    let s = onboarded("priya");
     s = { ...s, goal: buildAgentContext(s).week.done + 0.5 };
     s = checkIn(T.startDay(s));
     s = T.accept(s, s.today.current!.lead);
@@ -154,13 +154,13 @@ describe("today flow", () => {
   it("greets the streak and never mentions a missed day", () => {
     const alex = onboarded("alex");
     expect(alex.today.entries[0].text).toMatch(/^Day 12 in a row/);
-    const tough = onboarded("tough");
+    const tough = onboarded("maya");
     expect(tough.today.entries[0].text).toMatch(/^Welcome back\./);
     expect(tough.today.entries.map((e) => e.text).join(" ")).not.toMatch(/miss|lost|broke|why/i);
   });
 
   it("at the gym, offers equipment there and a how-to video", () => {
-    let s = onboarded("roll");
+    let s = onboarded("priya");
     s = T.answerTime(s, "30 min", 30);
     s = T.answerPlace(s, "Indoors, with others", "indoors_with_others");
     s = T.answerEnergy(s, "Normal", "normal");
@@ -172,7 +172,7 @@ describe("today flow", () => {
   });
 
   it("clinician feedback from Chat keeps picks moderate and favors strength, without changing the goal", () => {
-    let s = onboarded("roll");
+    let s = onboarded("priya");
     s = applyClinicianTurn(s, "My doctor said keep it moderate for now and add two strength days a week");
     expect(s.clinician.entries.length).toBe(1);
     expect(s.chat.at(-1)!.text).toMatch(/moderate activity/);
@@ -219,7 +219,7 @@ describe("today flow", () => {
   });
 
   it("nudges to keep going when a workout gets partway to the target", () => {
-    let s = checkIn(onboarded("tough"), 20);
+    let s = checkIn(onboarded("maya"), 20);
     s = T.accept(s, s.today.current!.lead);
     s = T.sync(s);
     const ctx = buildAgentContext(s);
@@ -503,22 +503,22 @@ it("a typed 'can't, my bike is broken' on a pick rules that activity out", () =>
 });
 
 describe("confirming today's time", () => {
-  // Alex's plan: Wednesday (the demo's today) is 30 min.
+  // Alex's plan: Wednesday (the demo's today) is 10 min.
   it("names the weekly plan as the source and invites more", () => {
     const s = onboarded();
     expect(s.today.step).toBe("time-confirm");
-    expect(s.today.entries[0].text).toMatch(/Your weekly plan has 30 min for today\. Keep it, or do you want to exercise more or less\?$/);
+    expect(s.today.entries[0].text).toMatch(/Your weekly plan has 10 min for today\. Keep it, or do you want to exercise more or less\?$/);
   });
 
   it("the buttons say what they do", () => {
-    expect(T.keepTimeLabel(onboarded())).toBe("Keep 30 min");
+    expect(T.keepTimeLabel(onboarded())).toBe("Keep 10 min");
     expect(T.CHANGE_TIME_LABEL).toBe("Pick a different time");
   });
 
-  it("Keep 30 min keeps the planned time and moves on to place", () => {
+  it("Keep 10 min keeps the planned time and moves on to place", () => {
     const s = T.confirmTime(onboarded(), true);
-    expect(s.today.entries.find((e) => e.role === "user")?.text).toBe("Keep 30 min");
-    expect(s.today.checkIn.minutes).toBe(30);
+    expect(s.today.entries.find((e) => e.role === "user")?.text).toBe("Keep 10 min");
+    expect(s.today.checkIn.minutes).toBe(10);
     expect(s.today.step).toBe("place");
     expect(s.plan).toEqual(onboarded().plan);
   });
@@ -551,7 +551,7 @@ describe("confirming today's time", () => {
 
   it("typed answers: yes, no, 'more' and minutes", () => {
     const s = onboarded();
-    expect(T.freeText(s, "yes please").today.checkIn.minutes).toBe(30);
+    expect(T.freeText(s, "yes please").today.checkIn.minutes).toBe(10);
     expect(T.freeText(s, "no").today.step).toBe("time");
     expect(T.freeText(s, "I want more today").today.step).toBe("time");
     expect(T.freeText(s, "25 min").today.checkIn.minutes).toBe(25);

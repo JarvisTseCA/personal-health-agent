@@ -113,7 +113,7 @@ describe("streaks and trophies", () => {
       return buildAgentContext(st).streak.current;
     };
     expect(streak("alex")).toBe(12);
-    expect(streak("tough")).toBe(1);
+    expect(streak("maya")).toBe(1);
     expect(streak("fresh")).toBe(1);
   });
 });
@@ -329,8 +329,8 @@ describe("goal adjustment", () => {
   it("each demo persona triggers the offer its blurb promises", () => {
     const totals = (id: string) => PERSONAS.find((p) => p.id === id)!.history.map((w) => totalsFor(w.sessions).done);
     expect(goalOffer(7.5, totals("alex")).kind).toBe("keep");
-    expect(goalOffer(7.5, totals("roll"))).toMatchObject({ kind: "raise", to: 10 });
-    expect(goalOffer(7.5, totals("tough"))).toMatchObject({ kind: "lower", to: 3.75 });
+    expect(goalOffer(7.5, totals("priya"))).toMatchObject({ kind: "raise", to: 10 });
+    expect(goalOffer(7.5, totals("maya"))).toMatchObject({ kind: "lower", to: 3.75 });
   });
 });
 

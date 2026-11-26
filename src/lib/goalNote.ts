@@ -2,7 +2,7 @@
  * The line shown beside the weekly goal: who set it, when, and for the agent's offers, why.
  *   default → "The guideline: 150 min of moderate or 75 min of vigorous activity a week"
  *   user    → "Set by you on Nov 25"
- *   agent   → "Raised by the agent from 7.5 on Nov 23, and you accepted. Last week you did 11.4 MET-hours, well above your 7.5 goal."
+ *   agent   → "Raised by the agent from 7.5 on Nov 23, and you accepted. Last week you did 11.6 MET-hours, well above your 7.5 goal."
  */
 import { fmtGoal } from "./met";
 import type { AppState, GoalSet } from "../state/types";

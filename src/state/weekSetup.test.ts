@@ -58,11 +58,11 @@ describe("first time in Today: goal, then plan", () => {
 });
 
 describe("the note beside the goal", () => {
-  it("demo: Alex's goal was raised to 10 by the agent on Monday, with the reason", () => {
-    const s = initialState("alex");
+  it("demo: Jordan's goal was raised to 10 by the agent on Monday, with the reason", () => {
+    const s = initialState("jordan");
     expect(s.goal).toBe(10);
-    expect(goalNote(s)).toBe(`Raised by the agent from 7.5 on ${shortDate(appDate(0))}, and you accepted. Last week you did 11.4 MET-hours, well above your 7.5 goal.`);
-    expect(initialState("roll").goal).toBe(7.5);
+    expect(goalNote(s)).toBe(`Raised by the agent from 7.5 on ${shortDate(appDate(0))}, and you accepted. Last week you did 11.6 MET-hours, well above your 7.5 goal.`);
+    expect(initialState("priya").goal).toBe(7.5);
   });
 
   it("default, set by the user, and the agent's accepted offer with its reason", () => {
@@ -84,15 +84,22 @@ describe("the week's first log-in: goal and plan once a week", () => {
   }
 
   it("asks again at the week's first log-in, on any day, offering to keep the goal", () => {
-    const s = open(2, none);
+    const s = open(2, none, { sessions: [] });
     expect(s.weekSetup).toBe(true);
     expect(s.today.step).toBe("setup-goal");
-    expect(s.today.entries[0].text).toMatch(/^A new week\. .*Your weekly goal is 10 MET-hours: keep it, or pick another\?/);
-    expect(T.setupGoalOptions(s)[0]).toEqual(["Keep 10", 10]);
+    expect(s.today.entries[0].text).toMatch(/^A new week\. .*Your weekly goal is 7\.5 MET-hours: keep it, or pick another\?/);
+    expect(T.setupGoalOptions(s)[0]).toEqual(["Keep 7.5", 7.5]);
+  });
+
+  it("only while the week has no MET-hours yet: a workout already synced means the week is under way", () => {
+    const s = open(2, none); // Alex's Monday and Tuesday workouts synced, though the app wasn't opened
+    expect(s.weekSetup).toBeUndefined();
+    expect(["time-confirm", "time"]).toContain(s.today.step);
+    expect(s.today.recap).toBe("due"); // last week's recap still comes at the first log-in
   });
 
   it("keeping the goal leaves who set it as it was; then the plan, then the day", () => {
-    let s = open(0, none);
+    let s = open(0, none, { goal: 10, goalSource: "recap", goalSet: { by: "agent", on: "2026-11-23", from: 7.5 } });
     const before = s.goalSet;
     s = reducer(s, { type: "setupGoal", label: "Keep 10", to: 10 });
     expect(s.goalSet).toEqual(before);

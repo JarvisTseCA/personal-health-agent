@@ -159,6 +159,8 @@ export interface TodayState {
   boost: boolean;
   /** How many options "Give me another option" has passed over since the last reason (capped by MAX_PASSES) */
   passed?: number;
+  /** Monday's recap of last week: "due" until ChatGPT's two sentences arrive (weekRecap), then "done" */
+  recap?: "due" | "done";
   /** The exercise the user named themselves: what they typed, its table matches (best first) and minutes */
   own?: { text: string; codes: string[]; minutes?: number };
   current?: {
@@ -170,6 +172,8 @@ export interface TodayState {
     seen?: number;
     /** The option just passed over with "Give me another option": the user may say why (optional) */
     skipped?: Suggestion;
+    /** "Based on …": ChatGPT's one line under the pick, from the facts the code has (whyLine) */
+    why?: string;
     /** Who picked it: the in-app ranker, or Jev via the backend (live or mocked) */
     source?: "rules" | "jev" | "mock";
     /**

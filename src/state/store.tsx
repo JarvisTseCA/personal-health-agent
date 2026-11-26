@@ -1,5 +1,5 @@
 import { withPref, type CategoryPref } from "../lib/categories";
-import { createContext, useCallback, useContext, useEffect, useMemo, useReducer, useRef, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useReducer, useRef, useState, type ReactNode } from "react";
 import { PERSONAS } from "../data/mockFitbit";
 import { importFitbit, syncSince, type FitbitImport } from "../lib/fitbit";
 import { fmt, type Session } from "../lib/met";
@@ -14,6 +14,9 @@ import { repository } from "../services/store";
 import { applyClinicianTurn } from "../services/clinicianChat";
 import { showNumbers } from "../services/numbers";
 import { openMemorySession, type MemorySession } from "./memorySession";
+import { askToday, askTodayFromMemory, chatModelLive, readTyped, weekRecap, whyLine } from "../services/todayWords";
+import { buildMemoryChatRequest } from "../services/agent";
+import { buildSystemPrompt } from "../services/prompts";
 import * as Today from "./today";
 import type { EquipmentProfile } from "../data/mockFitbit";
 import type { AppState, ChatMessage, ChatReply, ClinicianNotes, Overlay, SuggestSource, UserProfile } from "./types";
@@ -120,6 +123,12 @@ export type Action =
   | { type: "reminderDue" }
   | { type: "reason"; reason: DeclineReason }
   | { type: "freeText"; text: string }
+  // ChatGPT on Today (src/services/todayWords.ts): a typed answer it read, a question it answered,
+  // the "Based on" line under the pick, and Monday's recap.
+  | { type: "typedRead"; text: string; read: Today.TypedRead }
+  | { type: "todayReply"; question: string; reply: string }
+  | { type: "whyLine"; key: string; line: string }
+  | { type: "weekRecap"; dayKey: string; text: string }
   | { type: "addNote"; text: string; where: string }
   | { type: "forgetNote"; id: string }
   | { type: "wantMore" }
@@ -247,6 +256,10 @@ function reduce(state: AppState, action: Action): AppState {
     case "reminderDue": return Today.reminderDue(state);
     case "reason": return Today.chooseReason(state, action.reason);
     case "freeText": return Today.freeText(state, action.text);
+    case "typedRead": return Today.applyTyped(state, action.text, action.read);
+    case "todayReply": return Today.todayReply(state, action.question, action.reply);
+    case "whyLine": return Today.setWhy(state, action.key, action.line);
+    case "weekRecap": return Today.addRecap(state, action.dayKey, action.text);
     case "own": return Today.ownAnswer(state, action.answer);
     case "addNote": return { ...state, notes: [...state.notes, { id: Today.newId("n"), text: action.text, where: action.where, day: state.todayIndex }] };
     case "forgetNote": return { ...state, notes: state.notes.filter((n) => n.id !== action.id) };
@@ -424,6 +437,31 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     });
   }, [state, dispatch]);
 
+  // ChatGPT's "Based on" line under a pick from the backend, once per pick. Without ChatGPT there's none.
+  const whyAsked = useRef(new Set<string>());
+  useEffect(() => {
+    const key = Today.whyKey(state);
+    const want = key && !whyAsked.current.has(key) ? Today.whyFacts(state) : null;
+    if (!key || !want) return;
+    whyAsked.current.add(key);
+    chatModelLive()
+      .then((live) => (live ? whyLine(want.activity, want.facts) : null))
+      .then((line) => line && dispatch({ type: "whyLine", key, line }));
+  }, [state, dispatch]);
+
+  // Monday: ChatGPT's two sentences about last week, at the top of the conversation.
+  const recapAsked = useRef(new Set<string>());
+  useEffect(() => {
+    const t = state.today;
+    if (t.recap !== "due" || recapAsked.current.has(t.dayKey)) return;
+    recapAsked.current.add(t.dayKey);
+    const facts = Today.recapFacts(state);
+    if (!facts) return;
+    chatModelLive()
+      .then((live) => (live ? weekRecap(facts) : null))
+      .then((text) => text && dispatch({ type: "weekRecap", dayKey: t.dayKey, text }));
+  }, [state, dispatch]);
+
   const ctx = useMemo(() => buildAgentContext(state), [state]);
   // `memory.current` is set just before the state read from Memory is shown, so it is in step with `state`.
   const value = useMemo(() => ({ state, dispatch, ctx, session: memory.current }), [state, dispatch, ctx]);
@@ -453,6 +491,69 @@ export function useFitbitSync(): () => void {
   const { state, dispatch } = useStore();
   const live = !!state.profile.fitbitLive;
   return useCallback(() => (live ? void pullFitbit(dispatch) : dispatch({ type: "sync" })), [live, dispatch]);
+}
+
+/** Steps whose typed answer ChatGPT reads. The own-exercise steps keep the table search; Fitbit's "Right?" keeps its own. */
+const READ_STEPS = new Set(["setup-goal", "setup-plan", "time-confirm", "time", "place", "energy", "suggested", "reason", "reminded", "accepted", "nudge", "wrap"]);
+
+/**
+ * The "Other" box on Today. With ChatGPT connected, the typed answer is read by it first
+ * (readTyped): its fields fill in the check-in, and a question is answered through /api/chat with
+ * today's context. Without ChatGPT, or when it's slow or unsure, the app reads the answer itself,
+ * as before. `pending` is the typed text while it waits, shown with the typing dots.
+ */
+export function useTypedAnswer(): { submit: (text: string) => Promise<void>; pending: string | null } {
+  const { state, ctx, dispatch, session } = useStore();
+  const [pending, setPending] = useState<string | null>(null);
+  const submit = useCallback(async (text: string) => {
+    const step = state.today.step;
+    if (!READ_STEPS.has(step) || !(await chatModelLive())) {
+      dispatch({ type: "freeText", text });
+      return;
+    }
+    setPending(text);
+    try {
+      const question = [...state.today.entries].reverse().find((e) => e.role === "agent")?.text ?? "";
+      const read = await readTyped(step, question, text);
+      if (read?.intent === "question") {
+        // On Memory (the usual case with the backend): /api/chat/memory, as the Chat tab, so the backend
+        // reads the user from Memory and the app sends no prompt of its own. Otherwise /api/chat.
+        const reply = session
+          ? await session.settled().then(() => askTodayFromMemory(buildMemoryChatRequest(todayHistory(state, text), state, session.today(state))))
+          : await askToday(todaySystem(state, ctx), todayHistory(state, text).map((m) => ({ role: m.role === "user" ? "user" : "assistant", content: m.text })));
+        dispatch(reply ? { type: "todayReply", question: text, reply } : { type: "freeText", text });
+        return;
+      }
+      dispatch(read ? { type: "typedRead", text, read } : { type: "freeText", text });
+    } finally {
+      setPending(null);
+    }
+  }, [state, ctx, dispatch, session]);
+  return { submit, pending };
+}
+
+/** What ChatGPT knows when it answers on Today: the Chat tab's prompt, plus where the user is in today's check-in. */
+function todaySystem(state: AppState, ctx: AgentContext): string {
+  const c = state.today.current;
+  const pick = c ? `Today's suggestion on screen: ${c.lead.durationMin} min, ${c.lead.reasons.join("; ")}.` : "No suggestion on screen yet.";
+  return `${buildSystemPrompt(ctx)}\n\nThe user is in today's check-in on the Today tab and typed a question there. ${pick} Answer in two or three sentences; they will go back to the check-in after.`;
+}
+
+/**
+ * The last few turns of today's conversation, what's on the card (the model can't see it), then the
+ * question. Shaped as Chat messages, so the Chat tab's request builder can send them.
+ */
+function todayHistory(state: AppState, text: string): ChatMessage[] {
+  const recent = state.today.entries.filter((e) => e.role === "agent" || e.role === "user").slice(-6);
+  const c = state.today.current;
+  const card = c && ["suggested", "accepted", "reminded"].includes(state.today.step)
+    ? [{ id: "today-card", role: "agent" as const, text: `Today's suggestion on the card: ${c.lead.durationMin} min (${c.lead.reasons.join("; ")}).` }]
+    : [];
+  return [
+    ...recent.map((e) => ({ id: e.id, role: e.role === "user" ? ("user" as const) : ("agent" as const), text: e.text })),
+    ...card,
+    { id: "today-question", role: "user", text },
+  ];
 }
 
 export function useStore(): Store {

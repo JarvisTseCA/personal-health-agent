@@ -11,7 +11,7 @@ POST /api/suggest/table is the same idea with one difference: the options
 come from the activity table in the backend, not from the frontend
 (TableSuggestRequest, TablePick).
 """
-from typing import Dict, List, Literal, Optional
+from typing import Dict, List, Literal, Optional, Union
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -262,3 +262,24 @@ class MemoryChatRequest(BaseModel):
     # The recent conversation, oldest first; the last user message is the one to answer.
     messages: List[ChatMessage]
     clinician_notes: List[ClinicianNote] = []
+
+
+class TodayReadRequest(BaseModel):
+    """A typed answer on the Today tab, for ChatGPT to turn into fields (POST /api/today/read)."""
+
+    step: str
+    question: str = ""
+    text: str = Field(min_length=1, max_length=500)
+
+
+class TodayWhyRequest(BaseModel):
+    """Today's pick and the facts the code already has, for the "Based on" line (POST /api/today/why)."""
+
+    activity: str
+    facts: List[str] = Field(default_factory=list, max_length=12)
+
+
+class TodayRecapRequest(BaseModel):
+    """Last week's numbers, for Monday's two-sentence recap (POST /api/today/recap)."""
+
+    facts: Dict[str, Union[float, int, str, bool]]

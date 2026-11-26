@@ -97,7 +97,11 @@ export function startDay(state: AppState): AppState {
   return {
     ...st,
     // A planned day starts by confirming its time; an off day asks if there's any time at all.
-    today: { dayKey: dayKeyOf(st), step: off ? "time" : "time-confirm", checkIn: {}, entries, exclude: [], boost: false, nudged: false },
+    today: {
+      dayKey: dayKeyOf(st), step: off ? "time" : "time-confirm", checkIn: {}, entries, exclude: [], boost: false, nudged: false,
+      // Monday: last week's recap comes first, once ChatGPT has written it (weekRecap).
+      ...(st.todayIndex === 0 && st.history.length > 0 ? { recap: "due" as const } : {}),
+    },
   };
 }
 
@@ -190,8 +194,9 @@ export const REMIND_OPTIONS = ["In 30 min", "In 1 hour", "This evening"];
  * block, and the rest of the week is re-split. Typed minutes ("25 min") count
  * for today's suggestion only.
  */
-export function answerTime(state: AppState, label: string, minutes: number, slot?: DaySlot): AppState {
-  let s = push(state, user(label));
+export function answerTime(state: AppState, label: string, minutes: number, slot?: DaySlot, quiet = false): AppState {
+  // quiet: the user's words are already on screen (one typed answer that answers several questions).
+  let s = quiet ? state : push(state, user(label));
   const i = s.todayIndex;
   if (slot && s.plan[i] !== "off" && slot !== "off" && slot !== s.plan[i]) {
     s = {
@@ -224,8 +229,8 @@ export function takeDayOff(state: AppState, typed?: string): AppState {
   return setToday(push(s, agent(text)), { step: "wrap", checkIn: { ...s.today.checkIn, minutes: 0 } });
 }
 
-export function answerPlace(state: AppState, label: string, place: Place): AppState {
-  const s = push(state, user(label));
+export function answerPlace(state: AppState, label: string, place: Place, quiet = false): AppState {
+  const s = quiet ? state : push(state, user(label));
   return setToday(push(s, agent("How do you feel?")), { step: "energy", checkIn: { ...s.today.checkIn, place } });
 }
 
@@ -233,8 +238,8 @@ export function answerPlace(state: AppState, label: string, place: Place): AppSt
  * Last check-in question. No "what are you in the mood for?" step: to avoid
  * decision fatigue the coach goes straight to one pick.
  */
-export function answerEnergy(state: AppState, label: string, energy: Energy): AppState {
-  const s = setToday(push(state, user(label)), { checkIn: { ...state.today.checkIn, energy, mood: state.today.checkIn.mood ?? "surprise" } });
+export function answerEnergy(state: AppState, label: string, energy: Energy, quiet = false): AppState {
+  const s = setToday(quiet ? state : push(state, user(label)), { checkIn: { ...state.today.checkIn, energy, mood: state.today.checkIn.mood ?? "surprise" } });
   const intro = energy === "challenge"
     ? "Let's push a little: same time, harder pace."
     : energy === "low"
@@ -786,6 +791,150 @@ function coachReply(state: AppState, text: string): AppState {
 const HOW_WORDS = /\b(how (do|to|should) i|show me|video|demo|technique|form|teach me)\b/i;
 const DECLINE_WORDS = /\b(not today|no thanks|no thank|something else|don't want|dont want|can't|cannot|skip|pass|nah|no)\b/;
 
+/** Days of the week's plan changed during the first-time setup ("Thursday off, Saturday 45 min"). */
+function changePlan(state: AppState, text: string, changes: Partial<Record<number, DaySlot>>): AppState {
+  const days = Object.keys(changes).map(Number);
+  const plan = state.plan.map((x, i) => changes[i] ?? x);
+  return push({ ...state, plan }, user(text), agent(`Updated ${days.map((d) => `${DAY_NAMES_LONG[d]} to ${SLOT_LABEL[changes[d]!]}`).join(", ")}. Anything else? Tap "${SETUP_PLAN_DONE}" when it's right.`));
+}
+
+// --- ChatGPT on the Today tab (src/services/todayWords.ts, backend/app/today_words.py) ------------
+
+/** What ChatGPT read from a typed answer (POST /api/today/read). Only allowed values; any may be missing. */
+export interface TypedRead {
+  intent?: "answer" | "question";
+  minutes?: number;
+  day_off?: boolean;
+  keep_time?: boolean;
+  place?: Place;
+  energy?: Energy;
+  reason?: DeclineReason;
+  goal?: number;
+  plan?: Partial<Record<number, DaySlot>>;
+  done?: boolean;
+}
+
+/** Drop the question the agent just asked: the same typed answer already answers it. */
+function answered(s: AppState): AppState {
+  return s.today.entries.at(-1)?.role === "agent" ? { ...s, today: { ...s.today, entries: s.today.entries.slice(0, -1) } } : s;
+}
+
+/**
+ * The check-in answers in one typed message, from the question on screen onward: "20 min at home,
+ * pretty tired" answers time, place and energy at once. One user bubble; the questions it already
+ * answers aren't asked. null when it doesn't answer the question on screen.
+ */
+function checkInFrom(state: AppState, text: string, r: TypedRead, from: "time" | "place" | "energy"): AppState | null {
+  let s = state;
+  let quiet = false;
+  if (from === "time") {
+    if (r.day_off) return takeDayOff(state, text);
+    const minutes = r.minutes ?? (r.keep_time && state.today.step === "time-confirm" ? plannedMinutes(state) : undefined);
+    if (minutes === undefined) return null;
+    s = answerTime(s, text, Math.min(minutes, 120));
+    quiet = true;
+    if (s.today.step !== "place") return s;
+  }
+  if (from !== "energy") {
+    if (!r.place) return quiet ? s : null;
+    s = answerPlace(quiet ? answered(s) : s, text, r.place, quiet);
+    quiet = true;
+  }
+  if (!r.energy) return quiet ? s : null;
+  return answerEnergy(quiet ? answered(s) : s, text, r.energy, quiet);
+}
+
+/**
+ * A typed answer that ChatGPT has read: its fields are used where they answer the question on
+ * screen; anything else goes to the app's own reading (freeText), as without ChatGPT.
+ */
+export function applyTyped(state: AppState, text: string, r: TypedRead): AppState {
+  const step = state.today.step;
+  switch (step) {
+    case "setup-goal":
+      if (r.goal) return setupGoal(state, text, r.goal);
+      break;
+    case "setup-plan":
+      if (r.plan && Object.keys(r.plan).length) return changePlan(state, text, r.plan);
+      if (r.done) return setupPlanDone(state, text);
+      break;
+    case "time-confirm":
+    case "time":
+    case "place":
+    case "energy": {
+      const s = checkInFrom(state, text, r, step === "time-confirm" ? "time" : step);
+      if (s) return s;
+      break;
+    }
+    case "reason":
+      if (r.reason) return chooseReason(state, r.reason, text);
+      break;
+    case "suggested":
+    case "reminded":
+    case "accepted":
+      if (r.reason === "other") return setToday(push(state, user(text), agent("No problem. What's getting in the way?")), { step: "reason", accepted: undefined });
+      if (r.reason && state.today.current) return chooseReason(state, r.reason, text);
+      break;
+  }
+  return freeText(state, text);
+}
+
+/** A question typed on Today, answered by /api/chat (its checks, then ChatGPT). The step stays where it was. */
+export function todayReply(state: AppState, question: string, reply: string): AppState {
+  return push(state, user(question), agent(reply));
+}
+
+/** Which pick a "Based on" line belongs to: it is dropped if the user has moved on. */
+export function whyKey(state: AppState): string | null {
+  const c = state.today.current;
+  return c && state.today.step === "suggested" ? `${state.today.dayKey}:${c.lead.variantId}:${c.lead.durationMin}` : null;
+}
+
+/** The facts the code already has about today's pick, for ChatGPT's "Based on" line. No numbers it would have to invent. */
+export function whyFacts(state: AppState): { activity: string; facts: string[] } | null {
+  const c = state.today.current;
+  if (!c || c.desk || c.pending || c.failed || c.source === "rules" || c.why) return null;
+  const { family, variant } = getVariant(c.lead.variantId);
+  const ci = state.today.checkIn;
+  const facts = [...c.lead.reasons];
+  if (ci.energy) facts.push(ci.energy === "challenge" ? "Up for a challenge today" : ci.energy === "low" ? "Low energy today" : "Normal energy today");
+  if (ci.place) facts.push(`Exercising ${PLACE_OPTIONS.find(([, p]) => p === ci.place)?.[0].toLowerCase() ?? "here"}`);
+  const liked = Object.entries(state.profile.categoryPrefs ?? {}).filter(([, v]) => v === "like").map(([k]) => k);
+  if (liked.length) facts.push(`Likes ${liked.slice(0, 3).join(", ")}`);
+  return { activity: isTableId(c.lead.variantId) ? family.name : variant.label, facts };
+}
+
+export function setWhy(state: AppState, key: string, line: string): AppState {
+  const c = state.today.current;
+  return c && whyKey(state) === key ? setToday(state, { current: { ...c, why: line } }) : state;
+}
+
+/** Last week's numbers for Monday's recap. Only these numbers may appear in ChatGPT's two sentences. */
+export function recapFacts(state: AppState): Record<string, number | string | boolean> | null {
+  const ctx = buildAgentContext(state);
+  const last = ctx.past.at(-1);
+  if (!last) return null;
+  const byFamily = new Map<string, number>();
+  for (const s of last.totals.sessions) byFamily.set(s.familyId, (byFamily.get(s.familyId) ?? 0) + s.credit);
+  const top = [...byFamily.entries()].sort((a, b) => b[1] - a[1])[0];
+  return {
+    goal_met_hours: Number(fmt(last.goal)),
+    done_met_hours: Number(fmt(last.totals.done)),
+    active_days: last.totals.activeByDay.filter(Boolean).length,
+    workouts: last.totals.sessions.length,
+    reached_goal: last.trophy,
+    ...(top ? { top_activity: getFamily(top[0]).name } : {}),
+    ...(ctx.streak.current >= 2 ? { days_in_a_row_now: ctx.streak.current } : {}),
+  };
+}
+
+/** ChatGPT's recap, at the top of Monday's conversation, once. */
+export function addRecap(state: AppState, dayKey: string, text: string): AppState {
+  const t = state.today;
+  if (t.dayKey !== dayKey || t.recap !== "due") return state;
+  return setToday(state, { recap: "done", entries: [agent(text), ...t.entries] });
+}
+
 /**
  * The "Other" text box under every set of bubbles. Reads the typed answer for
  * the current step; anything it can't place becomes a note or a coach reply.
@@ -801,11 +950,7 @@ export function freeText(state: AppState, text: string): AppState {
     }
     case "setup-plan": {
       const changes = parsePlanChanges(text);
-      const days = Object.keys(changes).map(Number);
-      if (days.length) {
-        const plan = state.plan.map((x, i) => changes[i] ?? x);
-        return push({ ...state, plan }, user(text), agent(`Updated ${days.map((d) => `${DAY_NAMES_LONG[d]} to ${SLOT_LABEL[changes[d]]}`).join(", ")}. Anything else? Tap "${SETUP_PLAN_DONE}" when it's right.`));
-      }
+      if (Object.keys(changes).length) return changePlan(state, text, changes);
       if (parseYesNo(text) === true || /\b(done|good|fine|looks good|that's it|thats it)\b/i.test(text)) return setupPlanDone(state, text);
       return push(state, user(text), agent('Tap the days to change them, or type something like "Thursday off, Saturday 45 min".'));
     }

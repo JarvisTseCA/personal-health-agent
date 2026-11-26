@@ -15,7 +15,8 @@ options are rows of the activity table and Jev is asked three times: which
 heading (`rank_headings`), which activity in each of the top headings
 (`pick_from_table`), and how long (`assemble_table`).
 """
-from typing import Dict, Iterable, List, Tuple
+import hashlib
+from typing import Dict, Iterable, List, Optional, Tuple
 
 from .activities import label_of
 from .prompt import Row, duration_question, heading_key, table_activity_question, table_duration_question
@@ -160,8 +161,79 @@ def pick_from_table(
     return [p for _, _, p in sorted(picked, key=lambda t: (t[0], t[1]))]
 
 
-def table_reasons(row: Row, req: TableSuggestRequest, liked: List[str]) -> List[str]:
+# --- Balance across the week, and now and then a category the user hasn't tried -------------
+
+# When at least this many of this week's workouts, and this share of them, are one kind (cardio,
+# strength, mind_body, ...), today's lead is the best pick of another kind.
+BALANCE_MIN = 3
+BALANCE_SHARE = 0.75
+# About one check-in in five, one of the five options is a category the user hasn't rated or done.
+EXPLORE_CHANCE = 0.2
+TYPE_NAMES = {"mind_body": "mind-body", "water": "water activities", "winter": "winter activities"}
+
+
+def week_types(req: "TableSuggestRequest", types: Dict[str, str]) -> Dict[str, int]:
+    """How many of this week's workouts (Monday on) were of each kind. `types`: code → type."""
+    from .calculator import DAY_NAMES
+    weekday = DAY_NAMES.index(req.day_name) if req.day_name in DAY_NAMES else 6
+    counts: Dict[str, int] = {}
+    for r in req.recent:
+        kind = types.get((r.code or "").strip().zfill(5)) if r.code else None
+        if kind and r.days_ago <= weekday:
+            counts[kind] = counts.get(kind, 0) + 1
+    return counts
+
+
+def lopsided(counts: Dict[str, int]) -> Optional[str]:
+    """The kind of workout this week has been mostly about, if it has: at least 3, and 3 in 4."""
+    total = sum(counts.values())
+    if not total:
+        return None
+    kind, n = max(counts.items(), key=lambda kv: kv[1])
+    return kind if n >= BALANCE_MIN and n / total >= BALANCE_SHARE else None
+
+
+def balance_week(picked: List[Tuple[Row, float, float]], dominant: Optional[str]) -> Tuple[List[Tuple[Row, float, float]], bool]:
+    """With a lopsided week, the best pick of another kind leads; the others keep their order."""
+    if not dominant or not picked or (picked[0][0].get("type") or "") != dominant:
+        return picked, False
+    other = next((i for i, (row, _, _) in enumerate(picked) if (row.get("type") or "") not in ("", dominant)), None)
+    if other is None:
+        return picked, False
+    return [picked[other], *picked[:other], *picked[other + 1:]], True
+
+
+def explore_today(req: "TableSuggestRequest") -> bool:
+    """About one check-in in five (EXPLORE_CHANCE), the same answer all day for the same user and place."""
+    if req.explore is not None:
+        return req.explore
+    seed = f"{req.user_id}:{req.date or req.day_name}:{req.check_in.place}"
+    return int(hashlib.sha256(seed.encode()).hexdigest()[:8], 16) / 0xFFFFFFFF < EXPLORE_CHANCE
+
+
+def with_new_category(ranked: List[Tuple[str, float]], known: Iterable[str], n: int = HEADINGS_TO_ASK) -> Tuple[List[Tuple[str, float]], Optional[str]]:
+    """The headings for call 2, with the best one the user hasn't rated, picked or done in second place.
+
+    `ranked` is Jev's order of today's headings. When the new one isn't among the top `n`, it takes
+    the place of the last. When every heading is known, nothing changes.
+    """
+    known = set(known)
+    top = ranked[:n]
+    new = next((x for x in ranked if x[0] not in known), None)
+    if new is None or len(ranked) < 2:
+        return top, None
+    rest = [x for x in top if x[0] != new[0]]
+    return [rest[0], new, *rest[1:]][:n], new[0]
+
+
+def table_reasons(
+    row: Row, req: TableSuggestRequest, liked: List[str], new_heading: Optional[str] = None, change_from: Optional[str] = None,
+) -> List[str]:
     out: List[str] = []
+    if change_from:
+        out.append(f"A change from this week's {TYPE_NAMES.get(change_from, change_from)}")
+    if new_heading and row["major_heading"] == new_heading:
+        out.append(f"Something new: you haven't tried {row['major_heading']} yet")
     if row["activity_code"] in {str(c).strip().zfill(5) for c in req.picked_codes}:
         out.append("You picked this before")
     elif row["major_heading"] in liked:
@@ -181,11 +253,16 @@ def assemble_table(
     picked: List[Tuple[Row, float, float]],
     duration_answers: Dict[str, dict],
     liked: List[str],
+    new_heading: Optional[str] = None,
+    change_from: Optional[str] = None,
 ) -> List[TablePick]:
-    """After call 3: each picked activity with its own minutes and what the app needs to show it."""
+    """After call 3: each picked activity with its own minutes and what the app needs to show it.
+
+    `new_heading`: the category tried as something new today; `change_from`: the kind of workout the
+    week has been mostly about, when the lead was moved for balance (it says so in its reasons)."""
     allowed = [str(d) for d in req.durations]
     picks = []
-    for row, heading_p, activity_p in picked:
+    for i, (row, heading_p, activity_p) in enumerate(picked):
         duration = _probabilities(duration_answers, table_duration_question(row), allowed)
         picks.append(
             TablePick(
@@ -198,7 +275,7 @@ def assemble_table(
                 duration_min=int(max(duration, key=duration.get)),
                 heading_probability=heading_p,
                 probability=activity_p,
-                reasons=table_reasons(row, req, liked),
+                reasons=table_reasons(row, req, liked, new_heading, change_from if i == 0 else None),
             )
         )
     return picks

@@ -221,6 +221,16 @@ def families_of(codes: Iterable[str]) -> List[str]:
         return sorted(r["family"] for r in rows if r["family"])
 
 
+def types_by_code(codes: Iterable[str]) -> Dict[str, str]:
+    """The `type` of each code that is in the table and has one, e.g. {"01020": "cardio"}."""
+    wanted = sorted({str(c).strip().zfill(5) for c in codes if str(c).strip()})
+    if not wanted:
+        return {}
+    with db.session() as conn:
+        rows = conn.execute(f"SELECT activity_code, type FROM activities WHERE activity_code IN ({_marks(wanted)})", wanted)
+        return {r["activity_code"]: r["type"] for r in rows if r["type"]}
+
+
 def headings_of(codes: Iterable[str]) -> List[str]:
     """The major_heading of each activity code, each heading once, in the order given.
 

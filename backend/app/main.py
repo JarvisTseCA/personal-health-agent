@@ -77,7 +77,8 @@ from .schemas import (  # noqa: E402
     TableSuggestRequest, TableSuggestResponse, TodayReadRequest, TodayRecapRequest, TodayWhyRequest,
 )
 from .suggest import (  # noqa: E402
-    HEADINGS_TO_ASK, AnswerError, assemble, assemble_table, pick_activities, pick_from_table, rank_headings,
+    HEADINGS_TO_ASK, AnswerError, assemble, assemble_table, balance_week, explore_today, lopsided, pick_activities,
+    pick_from_table, rank_headings, week_types, with_new_category,
 )
 
 VIGOROUS_MET = 6.0  # "no vigorous activity" means under this, as in the app (src/lib/met.ts)
@@ -255,7 +256,9 @@ def suggest_from_table(req: TableSuggestRequest) -> TableSuggestResponse:
 
     by_heading = group_by_heading(rows)
     named_codes = [x.code for x in [*req.recent, *req.declines] if x.code]
-    state = build_table_state(req, liked, activities.descriptions_of(named_codes))
+    this_week = week_types(req, activities.types_by_code(r.code for r in req.recent if r.code))
+    dominant = lopsided(this_week)
+    state = build_table_state(req, liked, activities.descriptions_of(named_codes), this_week)
     log.info("── POST /api/suggest/table  user=%s  (Jev: %s) ──", req.user_id, model)
     log.info("[1] Check-in: %d min · %s · energy=%s · mood=%s", c.minutes, c.place, c.energy, c.mood_name or c.mood)
     log.info("    Need %.2f MET-h today · picked before: %s · 👍 %s", req.needed_met_hours,
@@ -281,7 +284,15 @@ def suggest_from_table(req: TableSuggestRequest) -> TableSuggestResponse:
         else:
             ranked = [(next(iter(by_heading)), 1.0)]
             log.info("[2] Only one heading fits today (%s), so Jev #1 is skipped", ranked[0][0])
-        top = ranked[:HEADINGS_TO_ASK]
+        # Now and then one of the five is a category the user hasn't rated, picked or done (second place).
+        new_heading = None
+        if explore_today(req):
+            done_headings = activities.headings_of([r.code for r in req.recent if r.code])
+            top, new_heading = with_new_category(ranked, [*req.liked_categories, *liked, *done_headings])
+            if new_heading:
+                log.info("    Something new today: %s", new_heading)
+        else:
+            top = ranked[:HEADINGS_TO_ASK]
 
         # Call 2: which activity, in each of the top headings
         jev_request["activity"] = build_table_activity_request(
@@ -296,6 +307,10 @@ def suggest_from_table(req: TableSuggestRequest) -> TableSuggestResponse:
         log.info("[3] Ask Jev #2 (which activity in each heading)… %.1fs", time.perf_counter() - t)
         log.debug("    Answer #2: %s", json.dumps(jev_answers["activity"], ensure_ascii=False))
         picked = pick_from_table(top, jev_answers["activity"], by_heading)
+        # A week that has been mostly one kind of workout: the best pick of another kind leads.
+        picked, balanced = balance_week(picked, dominant)
+        if balanced:
+            log.info("    This week is mostly %s, so %s leads", dominant, picked[0][0]["activity_code"])
         for h, _ in top:
             log.info("    %s: %s", h, _top(jev_answers["activity"][table_activity_question(h)]))
 
@@ -310,7 +325,7 @@ def suggest_from_table(req: TableSuggestRequest) -> TableSuggestResponse:
             jev_answers["duration"] = mock_table_durations(req, picked_rows)
         log.info("[4] Ask Jev #3 (how long)… %.1fs", time.perf_counter() - t)
         log.debug("    Answer #3: %s", json.dumps(jev_answers["duration"], ensure_ascii=False))
-        picks = assemble_table(req, picked, jev_answers["duration"], liked)
+        picks = assemble_table(req, picked, jev_answers["duration"], liked, new_heading, dominant if balanced else None)
         log.info("    %s", " · ".join(f"{p.activity_code} → {p.duration_min} min" for p in picks))
     except (JevError, AnswerError) as e:
         log.warning("    ✗ Failed: %s", e)

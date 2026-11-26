@@ -16,7 +16,7 @@ import { howTos } from "../lib/moves";
 import { countsTowardGoal, DAY_NAMES_LONG, fmt, fmtGoal, minutesFor, UNCONFIRMED_MET, type Session } from "../lib/met";
 import { WEEKLY_UPPER_LIMIT } from "../lib/goal";
 import { ALL_FROM_PLAN, SLOT_LABEL, SLOT_MINUTES, type DaySlot } from "../lib/plan";
-import { afterDecline, DECLINE_LABEL, suggest, type DeclineReason, type Energy, type Place, type Suggestion } from "../lib/suggest";
+import { afterDecline, DECLINE_LABEL, shorterMinutes, suggest, type DeclineReason, type Energy, type Place, type Suggestion } from "../lib/suggest";
 import { matchActivity, parseEnergy, parseMinutes, parsePlace, parsePlanChanges, parseReason, parseYesNo } from "../lib/freeText";
 import { appDate, clampGoal } from "../lib/goalNote";
 import { SCRIPTED_REPLIES } from "../services/mockResponses";
@@ -538,9 +538,14 @@ export function chooseReason(state: AppState, reason: DeclineReason, typed?: str
     return offer(s, "Here's another idea.");
   }
 
-  const { constraint, excludeFamily, minutes } = afterDecline(reason, cur, s.today.constraint);
+  const { constraint, excludeFamily, shorter } = afterDecline(reason, cur, s.today.constraint);
   const exclude = excludeFamily ? [...s.today.exclude, cur.familyId] : s.today.exclude;
-  const checkIn = minutes !== undefined ? { ...s.today.checkIn, minutes: (s.today.checkIn.minutes ?? 30) <= minutes ? 0 : minutes } : s.today.checkIn;
+  const checkIn = shorter ? { ...s.today.checkIn, minutes: shorterMinutes(s.today.checkIn.minutes ?? 30) } : s.today.checkIn;
+  if (shorter) {
+    // Say the new time in place of the general "Then let's go short."
+    const m = checkIn.minutes ?? 0;
+    s = { ...s, today: { ...s.today, entries: [...s.today.entries.slice(0, -1), agent(m > 0 ? `Then let's go shorter: ${m} min.` : "Then no workout today; here's something you can do at your desk.")] } };
+  }
   s = setToday(s, { constraint, exclude, checkIn });
   if (reason === "no-access") s = { ...s, profile: { ...s.profile, access: { ...s.profile.access, [cur.familyId]: "no" } } };
   if (reason === "hurts") {

@@ -241,7 +241,8 @@ def group_by_heading(rows: List[Row]) -> Dict[str, List[Row]]:
 
 
 def build_table_state(
-    req: TableSuggestRequest, picked_headings: List[str], descriptions: Optional[Dict[str, str]] = None
+    req: TableSuggestRequest, picked_headings: List[str], descriptions: Optional[Dict[str, str]] = None,
+    this_week_by_type: Optional[Dict[str, int]] = None,
 ) -> Dict[str, Any]:
     """The same state as build_state, plus what the user likes, in the table's own words.
 
@@ -269,6 +270,9 @@ def build_table_state(
         if req.liked_categories:
             state["categories_they_like"] = req.liked_categories
         state["kinds_of_activity_picked_before"] = picked_headings
+    if this_week_by_type:
+        # So Jev can balance the week: e.g. {"cardio": 3} after three cardio days.
+        state["this_weeks_workouts_by_kind"] = this_week_by_type
     return state
 
 

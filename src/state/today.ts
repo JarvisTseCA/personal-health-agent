@@ -315,9 +315,8 @@ export const MAX_PASSES = 9;
 /**
  * "Give me another option": no question asked. The next option of the set shows (the backups, in
  * turn); once all three have been seen, a fresh set comes, leaving those three out for today.
- * Under the new option the user may say why they passed the last one (skipReason), optionally.
  * After ten options the button reads "None of these work", and pressing it asks for the user's own
- * exercise, found in the activity table (askOwn). A reason given on the way starts the count again.
+ * exercise, found in the activity table (askOwn). A decline reason starts the count again.
  */
 export function anotherOption(state: AppState, typed?: string): AppState {
   const c = state.today.current;
@@ -332,7 +331,7 @@ export function anotherOption(state: AppState, typed?: string): AppState {
     const [next, ...rest] = c.backups;
     return setToday(push(s, agent("How about this instead?")), {
       step: "suggested", reminder: undefined, howShown: 0, passed: passed + 1,
-      current: { ...c, lead: next, backups: [...rest, c.lead], showBackups: false, seen: seen + 1, skipped: c.lead },
+      current: { ...c, lead: next, backups: [...rest, c.lead], showBackups: false, seen: seen + 1 },
     });
   }
   // All three seen: leave them out for today and ask for a new set (the backend too, from the table).
@@ -342,14 +341,7 @@ export function anotherOption(state: AppState, typed?: string): AppState {
   if (!nc || nc.desk || shown.includes(nc.lead.familyId)) {
     return askOwn(s, "Those are all the options that fit your time and place today.");
   }
-  return setToday(fresh, { current: { ...nc, skipped: c.lead }, passed: passed + 1 });
-}
-
-/** The optional "why not that one?" after "Give me another option": the same as a decline reason for it. */
-export function skipReason(state: AppState, reason: DeclineReason): AppState {
-  const c = state.today.current;
-  if (!c?.skipped) return state;
-  return chooseReason(setToday(state, { current: { ...c, lead: c.skipped, skipped: undefined } }), reason);
+  return setToday(fresh, { passed: passed + 1 });
 }
 
 /** What the user is asked for their own exercise; the examples show the minutes can come along. */

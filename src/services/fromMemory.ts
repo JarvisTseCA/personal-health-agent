@@ -84,14 +84,10 @@ export function fromMemory(memory: Memory, numbers: Numbers, base: AppState): Fr
   const opened = new Set(memory.daily.app_opens);
   const opensOf = (weekMonday: string) => Array.from({ length: 7 }, (_, d) => opened.has(addDays(weekMonday, d)));
 
-  const history: WeekRecord[] = numbers.past_weeks.map((w) => {
-    const signIns = opensOf(w.week_start);
-    return {
-      goal: w.goal_met_hours, plan: w.plan as WeekPlan, sessions: sessionsOf(w.week_start),
-      // No day of this week on record as opened: left out, and the days with a workout stand in (as on the backend).
-      ...(signIns.some(Boolean) ? { signIns } : {}),
-    };
-  });
+  const history: WeekRecord[] = numbers.past_weeks.map((w) => ({
+    goal: w.goal_met_hours, plan: w.plan as WeekPlan, sessions: sessionsOf(w.week_start),
+    signIns: opensOf(w.week_start), // the days on record as opened; a week with none on record has none
+  }));
 
   const declines: DeclineRecord[] = [];
   const picked: Partial<Record<Place, string[]>> = {};

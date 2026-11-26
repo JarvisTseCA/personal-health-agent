@@ -298,11 +298,12 @@ function migrateSaved(saved: unknown): AppState | null {
   const s = saved as AppState;
   // Plans saved as Short/Medium/Long become 10/30/45 min.
   const plans = { plan: migratePlan(s.plan), history: (s.history ?? []).map((w) => ({ ...w, plan: migratePlan(w.plan) })) };
-  // Saves from before streaks, VO2 max and clinician notes: fill those in from the persona.
+  // Saves from before VO2 max and clinician notes: fill those in from the persona.
   const persona = personaState(s.personaId ?? "alex");
   const extra = {
     planSource: migrateSources(s.planSource),
-    signIns: s.signIns ?? persona.signIns,
+    // A save from before streaks has no record of opens: no day of this week counts until today's open, below.
+    signIns: s.signIns ?? [],
     vo2: s.vo2 ?? persona.vo2,
     clinician: migrateClinician(s.clinician),
     chat: s.chat ?? [],
@@ -311,6 +312,8 @@ function migrateSaved(saved: unknown): AppState | null {
   const checkIn = { ...s.today?.checkIn, place: migratePlace(s.today?.checkIn?.place) };
   const today = { ...s.today, checkIn, entries: (s.today?.entries ?? []).filter((e) => (e.role as string) !== "medal") };
   let loaded: AppState = { ...initialState(), ...s, ...plans, ...extra, today, overlay: null, toast: null };
+  // Opening the app puts today on record as opened: the streak counts only the days on record.
+  loaded = { ...loaded, signIns: Today.openedToday(loaded) };
   // A save still sitting on the old opener ("How much time do you have today?") on a planned day:
   // restart the check-in so it confirms the planned time instead.
   if (loaded.onboarded && today.step === "time" && today.entries.length === 1 && loaded.plan[loaded.todayIndex] !== "off") {

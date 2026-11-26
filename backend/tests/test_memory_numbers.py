@@ -45,7 +45,7 @@ def test_one_piece_with_every_part(client):
         "past_weeks", "months", "goal_offer", "summary", "vo2",
     }
     assert (n["today"], n["today_index"]) == ("2026-11-25", 2)
-    assert n["streak"] == {"current": 4, "best": 4}  # Sunday, Monday, Tuesday, today
+    assert n["streak"] == {"current": 0, "best": 3}  # Sunday to Tuesday were opened; today isn't on record yet
     assert (n["trophy"], n["trophies"]) == (False, 1)
     assert [week["week_start"] for week in n["past_weeks"]] == ["2026-11-16"]
     assert n["summary"]["weeks"] == 1
@@ -144,7 +144,7 @@ def test_numbers_route_refuses_a_date_it_cannot_read(client):
 def test_asking_for_numbers_saves_nothing(client):
     before = memory.read("sam")
     numbers(client)
-    assert memory.read("sam") == before  # today counts in the streak, but it isn't written down as opened
+    assert memory.read("sam") == before  # reading the numbers writes nothing, not even today as opened
 
 
 # --- The /api/memory routes, with ?date= -------------------------------------------------------

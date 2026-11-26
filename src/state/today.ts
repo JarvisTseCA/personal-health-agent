@@ -62,6 +62,11 @@ function setToday(state: AppState, patch: Partial<TodayState>): AppState {
 
 export const dayKeyOf = (s: Pick<AppState, "personaId" | "todayIndex">) => `${s.personaId}:${s.todayIndex}`;
 
+/** This week's sign-ins with today on record as opened. The streak counts only the days on record. */
+export function openedToday(state: Pick<AppState, "todayIndex" | "signIns">): boolean[] {
+  return Array.from({ length: 7 }, (_, i) => (i === state.todayIndex ? true : !!state.signIns?.[i]));
+}
+
 /**
  * A fresh check-in for the current demo day. Opening the app counts toward
  * the streak, so the coach greets the run when there is one. A new run after
@@ -69,8 +74,7 @@ export const dayKeyOf = (s: Pick<AppState, "personaId" | "todayIndex">) => `${s.
  */
 export function startDay(state: AppState): AppState {
   // Opening the app today is a sign-in.
-  const signIns = Array.from({ length: 7 }, (_, i) => (i === state.todayIndex ? true : !!state.signIns?.[i]));
-  const st: AppState = { ...state, signIns };
+  const st: AppState = { ...state, signIns: openedToday(state) };
   const ctx = buildAgentContext(st);
   const off = st.plan[st.todayIndex] === "off";
   const n = ctx.streak.current;

@@ -18,19 +18,15 @@ in the app). When one side changes a rule, change the other and the examples too
 `numbers()` works everything out from two of Memory's groups, "goals" and "daily", as
 memory.read() gives them, and one date: today.
 
-Three places where the app and Memory keep the same thing differently:
+Days. The app counts 0 = Monday … 6 = Sunday inside "this week" and "n weeks ago"; in its
+demo, today is one of those seven. Memory holds real dates. Here everything follows from
+`today`: the week it is in is this week, the weeks before it are the past weeks, and
+whatever is dated after `today` is left out, the way the app leaves out the days after today.
 
-- Days. The app counts 0 = Monday … 6 = Sunday inside "this week" and "n weeks ago"; in its
-  demo, today is one of those seven. Memory holds real dates. Here everything follows from
-  `today`: the week it is in is this week, the weeks before it are the past weeks, and
-  whatever is dated after `today` is left out, the way the app leaves out the days after today.
-- Today. The app counts today as opened as soon as it is open. Whoever asks for these numbers
-  is the open app, so today counts here too, whether or not Memory has it under "app_opens" yet.
-- A past week with no opens. In the app a past week can have no record of the days the app was
-  opened (weeks brought in from Fitbit, older saves); the days with a workout stand in for them.
-  Memory keeps the opens as one list of dates, so here that is a past week with none of its
-  seven days in "app_opens": its days with a workout stand in the same way. This week never
-  uses the stand-in.
+The streak follows the record. A day counts as opened when its date is under "app_opens",
+today the same as any other day: the app saves today's open first and asks for these numbers
+after. A day with no record is a day the app wasn't opened, in this week and in every past
+week. A workout on that day adds to the week's MET-hours as always, and adds no day to the streak.
 
 Past weeks start at the earliest week Memory knows anything about (a goal, a workout or an
 open) and run to last week with no gaps: a week with nothing in it is a week with nothing done.
@@ -130,15 +126,14 @@ def numbers(goals: List[Dict[str, Any]], daily: Dict[str, Any], today: date) -> 
     index = today.weekday()
 
     workouts = [w for w in daily.get("workouts") or [] if date.fromisoformat(w["date"]) <= today]
-    opens = {day for day in map(date.fromisoformat, daily.get("app_opens") or []) if day <= today}
-    opens.add(today)  # today counts as soon as the app is open
+    opens = {day for day in map(date.fromisoformat, daily.get("app_opens") or []) if day <= today}  # the record, today included
 
     by_week: Dict[date, List[Dict[str, Any]]] = {}
     for workout in workouts:
         by_week.setdefault(calculator.monday_of(date.fromisoformat(workout["date"])), []).append(workout)
 
     now = week_for(goals, today)  # NotEnoughMemory when nothing is saved yet
-    this_week = _week(monday, now["goal_met_hours"], now["plan"], by_week.get(monday, []), opens, current=True)
+    this_week = _week(monday, now["goal_met_hours"], now["plan"], by_week.get(monday, []), opens)
 
     # Past weeks: from the earliest week Memory knows anything about, to last week.
     known = [date.fromisoformat(week["week_start"]) for week in goals] + list(by_week) + [calculator.monday_of(day) for day in opens]
@@ -146,7 +141,7 @@ def numbers(goals: List[Dict[str, Any]], daily: Dict[str, Any], today: date) -> 
     start = min(known)
     while start < monday:
         goal, plan = _goal_and_plan(goals, start)
-        past.append(_week(start, goal, plan, by_week.get(start, []), opens, current=False))
+        past.append(_week(start, goal, plan, by_week.get(start, []), opens))
         start += timedelta(days=7)
 
     opened = [day for week in past for day in week["app_opens"]] + this_week["app_opens"][: index + 1]
@@ -164,10 +159,8 @@ def numbers(goals: List[Dict[str, Any]], daily: Dict[str, Any], today: date) -> 
     }
 
 
-def _week(
-    monday: date, goal: float, plan: List[str], workouts: List[Dict[str, Any]], opens: Set[date], current: bool
-) -> Dict[str, Any]:
-    """One week's numbers. `workouts` are that week's (for this week: up to today), `opens` every day the app was opened."""
+def _week(monday: date, goal: float, plan: List[str], workouts: List[Dict[str, Any]], opens: Set[date]) -> Dict[str, Any]:
+    """One week's numbers. `workouts` are that week's (for this week: up to today), `opens` every day on record as opened."""
     done = [0.0] * 7
     active = [False] * 7
     rows: List[Dict[str, Any]] = []
@@ -187,8 +180,6 @@ def _week(
         })
 
     opened = [monday + timedelta(days=d) in opens for d in range(7)]
-    if not current and not any(opened):
-        opened = list(active)  # no record of opens for this week: the days with a workout stand in
 
     total = calculator.total(done)
     by_activity = _minutes_by_activity(rows)
@@ -199,7 +190,7 @@ def _week(
         "done_met_hours": total,
         "done_by_day": done,
         "active_days": active,  # any workout that day, light ones too
-        "app_opens": opened,
+        "app_opens": opened,  # the days on record as opened
         "trophy": trophy_earned(total, goal),
         "minutes": sum(row["duration_min"] for row in rows),
         "top_activity": by_activity[0] if by_activity else None,  # the one with the most minutes

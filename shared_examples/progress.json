@@ -15,15 +15,15 @@
     "plan": "the 7 days, Monday first, each one of: off | 0 | 5 | 10 | 30 | 45 (minutes). Past weeks use the same plan.",
     "today": "0 = Monday … 6 = Sunday",
     "workouts": "this week's workouts: day (0 = Monday … 6 = Sunday), met, minutes. A workout from Fitbit also has its Fitbit band (fairly | very) and whether the user confirmed it; one without `confirmed` is confirmed.",
-    "opens": "the days of this week the app was opened, as day numbers. Today counts whether it is listed or not; days after today don't count.",
-    "past_weeks": "full weeks before this one, oldest first, so the last one is last week. Each has its own goal, its workouts, and `opens`: the days the app was opened, or null when there is no record of that for the week. An empty list is only for a week with no workouts: the backend keeps opens as dates, so it can't tell 'never opened' from 'no record' and would count that week's workout days.",
+    "opens": "the days of this week on record as opened, as day numbers. Today counts when it is listed, like any other day (the app puts today on record when it opens); days after today don't count.",
+    "past_weeks": "full weeks before this one, oldest first, so the last one is last week. Each has its own goal, its workouts, and `opens`: the days on record as opened. null is a week the app holds no record for (one brought in from Fitbit): no day of it counts as opened, the same as an empty list.",
     "expect": {
-      "streak": "current: days in a row ending today. best: the longest run so far.",
+      "streak": "current: days in a row on record as opened, ending today. best: the longest run so far.",
       "trophy": "this week's goal is reached",
       "trophies": "all trophies so far, this week's included",
       "week_done": "MET-hours done this week, up to today",
       "past_done": "MET-hours done in each past week",
-      "past_opens": "for each past week, the days that count as opened (day numbers)",
+      "past_opens": "for each past week, the days on record as opened (day numbers)",
       "past_active": "for each past week, the days with any workout (day numbers)",
       "offer": "the goal offer: kind (raise | lower | keep) and the goal it suggests",
       "summary": "the Summary page: weeks averaged (up to the last 4), avg_met_hours, avg_brisk_min, goal_weeks, avg_active_days, longest_gap (days in a row with no workout, up to today), and intensity (minutes a week that are light, moderate, vigorous)"
@@ -36,9 +36,9 @@
       "plan": ["30", "off", "30", "off", "off", "45", "off"],
       "today": 0,
       "workouts": [],
-      "opens": [],
+      "opens": [0],
       "past_weeks": [],
-      "how": "Today counts as opened, so the streak is 1. There are no past weeks: no trophies, nothing to average, and the goal stays.",
+      "how": "Opening the app put today on record, so the streak is 1. There are no past weeks: no trophies, nothing to average, and the goal stays.",
       "expect": {
         "streak": { "current": 1, "best": 1 },
         "trophy": false,
@@ -50,16 +50,16 @@
       }
     },
     {
-      "name": "The streak runs across the weekend into this week, and today counts",
+      "name": "The streak runs across the weekend into this week",
       "weekly_goal": 7.5,
       "plan": ["30", "off", "30", "off", "off", "45", "off"],
       "today": 2,
       "workouts": [],
-      "opens": [0, 1],
+      "opens": [0, 1, 2],
       "past_weeks": [
         { "goal": 7.5, "opens": [0, 3, 4, 5, 6], "workouts": [] }
       ],
-      "how": "Last week: Monday, then Tuesday and Wednesday missed, then Thursday to Sunday (4 days). This week: Monday, Tuesday, and today. 4 + 3 = 7 in a row.",
+      "how": "Last week: Monday, then Tuesday and Wednesday missed, then Thursday to Sunday (4 days). This week: Monday, Tuesday and today, all on record. 4 + 3 = 7 in a row.",
       "expect": {
         "streak": { "current": 7, "best": 7 },
         "trophy": false,
@@ -76,34 +76,34 @@
       "plan": ["30", "off", "30", "off", "off", "45", "off"],
       "today": 4,
       "workouts": [],
-      "opens": [0, 1, 3],
+      "opens": [0, 1, 3, 4],
       "past_weeks": [
         { "goal": 7.5, "opens": [0, 1, 2, 3, 4, 5, 6], "workouts": [] }
       ],
-      "how": "All of last week plus Monday and Tuesday is 9 days in a row. Wednesday was missed. Thursday and today make 2.",
+      "how": "All of last week plus Monday and Tuesday is 9 days in a row. Wednesday was missed. Thursday and today, both on record, make 2.",
       "expect": {
         "streak": { "current": 2, "best": 9 },
         "trophies": 0
       }
     },
     {
-      "name": "A past week with no record of opens uses its workout days",
+      "name": "A past week with no opens on record adds no day to the streak, and its workouts still count",
       "weekly_goal": 7.5,
       "plan": ["30", "off", "30", "off", "off", "45", "off"],
       "today": 0,
       "workouts": [],
-      "opens": [],
+      "opens": [0],
       "past_weeks": [
         { "goal": 7.5, "opens": [0, 1, 2, 3], "workouts": [{ "day": 4, "met": 5, "minutes": 60 }] },
         { "goal": 7.5, "opens": null, "workouts": [{ "day": 2, "met": 4, "minutes": 30 }, { "day": 5, "met": 6, "minutes": 30 }, { "day": 6, "met": 3, "minutes": 20 }] }
       ],
-      "how": "Two weeks ago has a record (Monday to Thursday), so its Friday workout doesn't add a day. Last week has none, so Wednesday, Saturday and Sunday count as opened. Saturday, Sunday and today make 3; the best run is the 4 days two weeks ago. Last week: 2.0 + 3.0 + 1.0 = 6.0 MET-hours.",
+      "how": "Two weeks ago was opened Monday to Thursday: a run of 4, and its Friday workout adds no day. Last week has workouts on Wednesday, Saturday and Sunday and no opens on record, so no day of it counts as opened. Today is on record: a run of 1; the best run is the 4 days two weeks ago. Last week's workouts count as always: 2.0 + 3.0 + 1.0 = 6.0 MET-hours.",
       "expect": {
-        "streak": { "current": 3, "best": 4 },
+        "streak": { "current": 1, "best": 4 },
         "trophy": false,
         "trophies": 0,
         "past_done": [5.0, 6.0],
-        "past_opens": [[0, 1, 2, 3], [2, 5, 6]],
+        "past_opens": [[0, 1, 2, 3], []],
         "past_active": [[4], [2, 5, 6]],
         "offer": { "kind": "keep", "to": 7.5 },
         "summary": {
@@ -118,14 +118,14 @@
       "plan": ["30", "off", "30", "off", "off", "45", "off"],
       "today": 2,
       "workouts": [{ "day": 0, "met": 8, "minutes": 45 }, { "day": 1, "met": 6, "minutes": 40 }],
-      "opens": [0, 1],
+      "opens": [0, 1, 2],
       "past_weeks": [
         { "goal": 7.5, "opens": [0, 1, 2, 3, 4, 5, 6], "workouts": [{ "day": 0, "met": 5, "minutes": 90 }] },
         { "goal": 7.5, "opens": [0, 1, 2, 3, 4, 5, 6], "workouts": [{ "day": 2, "met": 7, "minutes": 60 }] },
         { "goal": 7.5, "opens": [0, 1, 2, 3, 4, 5, 6], "workouts": [{ "day": 4, "met": 6, "minutes": 110 }] },
         { "goal": 7.5, "opens": [0, 1, 2, 3, 4, 5, 6], "workouts": [{ "day": 6, "met": 7, "minutes": 90 }] }
       ],
-      "how": "Past weeks did 7.5, 7.0, 11.0 and 10.5 against a goal of 7.5: three trophies (7.5 is exactly enough, 7.0 is not). This week: 6.0 + 4.0 = 10.0 of 10, a fourth. With the goal at 10, the lower of the last two weeks (10.5) rounds down to 10, which is not higher, so the goal stays. Average 36.0 / 4 = 9.0 MET-hours, 180 brisk minutes. Moderate minutes: 90 / 4 = 22.5, shown as 23. Vigorous: 260 / 4 = 65. 28 days opened, then Monday, Tuesday and today.",
+      "how": "Past weeks did 7.5, 7.0, 11.0 and 10.5 against a goal of 7.5: three trophies (7.5 is exactly enough, 7.0 is not). This week: 6.0 + 4.0 = 10.0 of 10, a fourth. With the goal at 10, the lower of the last two weeks (10.5) rounds down to 10, which is not higher, so the goal stays. Average 36.0 / 4 = 9.0 MET-hours, 180 brisk minutes. Moderate minutes: 90 / 4 = 22.5, shown as 23. Vigorous: 260 / 4 = 65. 28 days opened, then Monday, Tuesday and today: 31 on record in a row.",
       "expect": {
         "streak": { "current": 31, "best": 31 },
         "trophy": true,
@@ -145,18 +145,18 @@
       "plan": ["30", "off", "30", "off", "off", "45", "off"],
       "today": 0,
       "workouts": [],
-      "opens": [],
+      "opens": [0],
       "past_weeks": [
         { "goal": 7.5, "opens": null, "workouts": [{ "day": 1, "met": 6, "minutes": 110 }] },
         { "goal": 7.5, "opens": null, "workouts": [{ "day": 3, "met": 6, "minutes": 103 }] }
       ],
-      "how": "11.0 and 10.3 MET-hours. The lower one, 10.3, rounded down to a multiple of 2.5 is 10, above the goal of 7.5: raise to 10. Both weeks earned a trophy. Vigorous minutes: 213 / 2 = 106.5, shown as 107.",
+      "how": "11.0 and 10.3 MET-hours. The lower one, 10.3, rounded down to a multiple of 2.5 is 10, above the goal of 7.5: raise to 10. Both weeks earned a trophy. Neither has an open on record, so the streak is today alone. Vigorous minutes: 213 / 2 = 106.5, shown as 107.",
       "expect": {
         "streak": { "current": 1, "best": 1 },
         "trophy": false,
         "trophies": 2,
         "past_done": [11.0, 10.3],
-        "past_opens": [[1], [3]],
+        "past_opens": [[], []],
         "offer": { "kind": "raise", "to": 10 },
         "summary": {
           "weeks": 2, "avg_met_hours": 10.65, "avg_brisk_min": 213, "goal_weeks": 2, "avg_active_days": 1, "longest_gap": 8,
@@ -170,19 +170,19 @@
       "plan": ["30", "off", "30", "off", "off", "45", "off"],
       "today": 3,
       "workouts": [],
-      "opens": [0, 1, 2],
+      "opens": [0, 1, 2, 3],
       "past_weeks": [
         { "goal": 7.5, "opens": null, "workouts": [{ "day": 0, "met": 3, "minutes": 60 }] },
         { "goal": 7.5, "opens": null, "workouts": [{ "day": 2, "met": 4.5, "minutes": 52, "band": "fairly", "confirmed": false }] },
         { "goal": 7.5, "opens": null, "workouts": [{ "day": 5, "met": 6, "minutes": 34 }, { "day": 6, "met": 2, "minutes": 60 }] }
       ],
-      "how": "3.0, then 2.6 (an unconfirmed Fitbit workout counts at 3.0 MET: 3.0 × 52 / 60), then 3.4 (the 2 MET hour is light and adds nothing). All under 3.75, half the goal: lower to 3.75. Last week's Saturday and Sunday count as opened, then Monday to today: 6 in a row. Minutes a week: light 60 / 3 = 20, moderate 112 / 3 = 37.3, vigorous 34 / 3 = 11.3.",
+      "how": "3.0, then 2.6 (an unconfirmed Fitbit workout counts at 3.0 MET: 3.0 × 52 / 60), then 3.4 (the 2 MET hour is light and adds nothing). All under 3.75, half the goal: lower to 3.75. Last week's Saturday and Sunday have workouts and no opens on record, so the run is Monday to today: 4 in a row. Minutes a week: light 60 / 3 = 20, moderate 112 / 3 = 37.3, vigorous 34 / 3 = 11.3.",
       "expect": {
-        "streak": { "current": 6, "best": 6 },
+        "streak": { "current": 4, "best": 4 },
         "trophy": false,
         "trophies": 0,
         "past_done": [3.0, 2.6, 3.4],
-        "past_opens": [[0], [2], [5, 6]],
+        "past_opens": [[], [], []],
         "past_active": [[0], [2], [5, 6]],
         "offer": { "kind": "lower", "to": 3.75 },
         "summary": {
@@ -197,7 +197,7 @@
       "plan": ["30", "off", "30", "off", "off", "45", "off"],
       "today": 2,
       "workouts": [{ "day": 0, "met": 5, "minutes": 30 }, { "day": 4, "met": 6, "minutes": 60 }],
-      "opens": [0, 1, 4, 5],
+      "opens": [0, 1, 2, 4, 5],
       "past_weeks": [],
       "how": "Today is Wednesday. Friday's workout and the opens on Friday and Saturday are after today, so they are left out: 2.5 MET-hours done, and Monday, Tuesday and today make 3 in a row. Tuesday and today have no workout: a gap of 2.",
       "expect": {
@@ -216,12 +216,12 @@
       "plan": ["30", "off", "30", "off", "off", "45", "off"],
       "today": 0,
       "workouts": [],
-      "opens": [],
+      "opens": [0],
       "past_weeks": [
         { "goal": 7.5, "opens": [0, 1, 2, 3, 4, 5, 6], "workouts": [{ "day": 2, "met": 5, "minutes": 90 }] },
         { "goal": 7.5, "opens": [], "workouts": [] }
       ],
-      "how": "Two weeks ago: opened every day, 7.5 MET-hours, a trophy. Last week: nothing. The run of 7 ended, and today starts a new one. Average (7.5 + 0) / 2 = 3.75 MET-hours, 75 brisk minutes. No workout from that Thursday to today: 4 + 7 + 1 = 12 days.",
+      "how": "Two weeks ago: opened every day, 7.5 MET-hours, a trophy. Last week: nothing. The run of 7 ended, and today's open starts a new one. Average (7.5 + 0) / 2 = 3.75 MET-hours, 75 brisk minutes. No workout from that Thursday to today: 4 + 7 + 1 = 12 days.",
       "expect": {
         "streak": { "current": 1, "best": 7 },
         "trophy": false,
@@ -238,22 +238,40 @@
       "plan": ["30", "off", "30", "off", "off", "45", "off"],
       "today": 0,
       "workouts": [],
-      "opens": [],
+      "opens": [0],
       "past_weeks": [
         { "goal": 7.5, "opens": null, "workouts": [{ "day": 0, "met": 6.8, "minutes": 60 }, { "day": 1, "met": 4.1, "minutes": 15 }, { "day": 2, "met": 8.7, "minutes": 15 }, { "day": 3, "met": 6.7, "minutes": 15 }] }
       ],
-      "how": "6.8 + 1.025 + 2.175 + 1.675 = 11.675 MET-hours, which is 233.5 brisk minutes, shown as 234. A sum that corrects its own rounding (Python 3.12's sum()) lands just under 11.675 and shows 233. Vigorous: 60 + 15 + 15 = 90 minutes, moderate 15. Monday to Thursday count as opened; Friday to Sunday don't, so today starts a new run.",
+      "how": "6.8 + 1.025 + 2.175 + 1.675 = 11.675 MET-hours, which is 233.5 brisk minutes, shown as 234. A sum that corrects its own rounding (Python 3.12's sum()) lands just under 11.675 and shows 233. Vigorous: 60 + 15 + 15 = 90 minutes, moderate 15. No day of that week is on record as opened, so the streak is today alone.",
       "expect": {
-        "streak": { "current": 1, "best": 4 },
+        "streak": { "current": 1, "best": 1 },
         "trophy": false,
         "trophies": 1,
         "past_done": [11.675],
-        "past_opens": [[0, 1, 2, 3]],
+        "past_opens": [[]],
         "offer": { "kind": "keep", "to": 7.5 },
         "summary": {
           "weeks": 1, "avg_met_hours": 11.675, "avg_brisk_min": 234, "goal_weeks": 1, "avg_active_days": 4, "longest_gap": 4,
           "intensity": { "light": 0, "moderate": 15, "vigorous": 90 }
         }
+      }
+    },
+    {
+      "name": "Today counts once it is on record",
+      "weekly_goal": 7.5,
+      "plan": ["30", "off", "30", "off", "off", "45", "off"],
+      "today": 2,
+      "workouts": [],
+      "opens": [0, 1],
+      "past_weeks": [
+        { "goal": 7.5, "opens": [0, 1, 2, 3, 4, 5, 6], "workouts": [] }
+      ],
+      "how": "All of last week, Monday and Tuesday are on record: 9 in a row. Today, Wednesday, isn't on record, so the run that ends today is 0 and the 9 stays as the best. The app puts today on record when it opens, before it shows these numbers, so the screen has it as 10.",
+      "expect": {
+        "streak": { "current": 0, "best": 9 },
+        "trophy": false,
+        "trophies": 0,
+        "past_opens": [[0, 1, 2, 3, 4, 5, 6]]
       }
     }
   ]

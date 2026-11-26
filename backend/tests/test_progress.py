@@ -97,54 +97,72 @@ def test_brisk_minutes_round_a_half_up_the_way_the_app_does():
 # --- The streak, from Memory's dates -----------------------------------------------------------
 
 
-def test_today_counts_as_opened_before_memory_has_it():
+def test_today_is_not_opened_until_it_is_on_record():
     n = numbers()
-    assert n["streak"] == {"current": 1, "best": 1}
-    assert n["this_week"]["app_opens"] == [False, False, True, False, False, False, False]
+    assert n["streak"] == {"current": 0, "best": 0}
+    assert n["this_week"]["app_opens"] == [False] * 7
     assert (n["today"], n["today_index"]) == ("2026-11-25", 2)
 
 
-def test_the_streak_runs_across_weeks():
-    # Last week: Monday, then Thursday to Sunday. This week: Monday and Tuesday. Today isn't in Memory yet.
+def test_today_counts_as_opened_once_it_is_on_record():
+    n = numbers(opens=["2026-11-25"])
+    assert n["streak"] == {"current": 1, "best": 1}
+    assert n["this_week"]["app_opens"] == [False, False, True, False, False, False, False]
+
+
+def test_a_day_not_on_record_today_ends_the_run_at_0_and_the_best_run_stays():
+    # The same days as the next test, without today: Thursday to Tuesday is 6 days, and today is not on record.
     n = numbers(opens=days_of("2026-11-16", 0, 3, 4, 5, 6) + days_of("2026-11-23", 0, 1))
+    assert n["streak"] == {"current": 0, "best": 6}
+    assert n["this_week"]["app_opens"][n["today_index"]] is False
+
+
+def test_the_streak_runs_across_weeks():
+    # Last week: Monday, then Thursday to Sunday. This week: Monday, Tuesday and today.
+    n = numbers(opens=days_of("2026-11-16", 0, 3, 4, 5, 6) + days_of("2026-11-23", 0, 1, 2))
     assert n["streak"] == {"current": 7, "best": 7}
     assert n["past_weeks"][-1]["app_opens"] == [True, False, False, True, True, True, True]
 
 
 def test_a_missed_day_starts_a_new_run_and_the_best_run_stays():
     friday = date(2026, 11, 27)
-    n = numbers(opens=days_of("2026-11-16", 0, 1, 2, 3, 4, 5, 6) + days_of("2026-11-23", 0, 1, 3), today=friday)
-    assert n["streak"] == {"current": 2, "best": 9}  # Wednesday was missed
+    n = numbers(opens=days_of("2026-11-16", 0, 1, 2, 3, 4, 5, 6) + days_of("2026-11-23", 0, 1, 3, 4), today=friday)
+    assert n["streak"] == {"current": 2, "best": 9}  # Wednesday was missed; Thursday and today make 2
 
 
-def test_a_past_week_with_no_opens_uses_its_workout_days():
+def test_a_past_week_with_workouts_and_no_opens_has_no_day_opened():
     weekend = [workout(day) for day in days_of("2026-11-16", 5, 6)]
     n = numbers(workouts=weekend, today=MONDAY)
-    assert n["past_weeks"][-1]["app_opens"] == [False, False, False, False, False, True, True]
-    assert n["streak"] == {"current": 3, "best": 3}  # Saturday, Sunday, today
+    last_week = n["past_weeks"][-1]
+    assert last_week["app_opens"] == [False] * 7
+    assert n["streak"] == {"current": 0, "best": 0}  # the workouts add no day to the streak
+    assert last_week["done_met_hours"] == pytest.approx(5.0)  # but they count as always: 2 x 2.5
+    assert last_week["active_days"] == [False, False, False, False, False, True, True]
 
 
-def test_one_recorded_open_and_the_workout_days_no_longer_stand_in():
+def test_a_past_week_with_some_opens_counts_exactly_those_days():
     weekend = [workout(day) for day in days_of("2026-11-16", 5, 6)]
-    n = numbers(workouts=weekend, opens=days_of("2026-11-16", 1), today=MONDAY)
-    assert n["past_weeks"][-1]["app_opens"] == [False, True, False, False, False, False, False]
+    opens = days_of("2026-11-16", 1, 2) + ["2026-11-23"]  # Tuesday, Wednesday, and today
+    n = numbers(workouts=weekend, opens=opens, today=MONDAY)
+    assert n["past_weeks"][-1]["app_opens"] == [False, True, True, False, False, False, False]
     assert n["past_weeks"][-1]["active_days"] == [False, False, False, False, False, True, True]
-    assert n["streak"] == {"current": 1, "best": 1}
+    assert n["streak"] == {"current": 1, "best": 2}  # Sunday had a workout but no open, so today starts a new run
 
 
-def test_this_week_never_uses_the_workout_days():
+def test_a_workout_this_week_does_not_open_its_day():
     n = numbers(workouts=[workout("2026-11-23")])  # a workout on Monday, synced later; the app wasn't opened
-    assert n["this_week"]["app_opens"] == [False, False, True, False, False, False, False]
-    assert n["streak"]["current"] == 1
+    assert n["this_week"]["app_opens"] == [False] * 7
+    assert n["streak"]["current"] == 0
 
 
 def test_whatever_is_dated_after_today_is_left_out():
-    n = numbers(workouts=[workout("2026-11-23"), workout("2026-11-27", met=6.0, minutes=60)], opens=["2026-11-27", "2026-11-28"])
+    n = numbers(workouts=[workout("2026-11-23"), workout("2026-11-27", met=6.0, minutes=60)], opens=["2026-11-25", "2026-11-27", "2026-11-28"])
     week = n["this_week"]
     assert week["done_met_hours"] == pytest.approx(2.5)
     assert week["active_days"] == [True, False, False, False, False, False, False]
     assert week["app_opens"] == [False, False, True, False, False, False, False]
     assert [row["day"] for row in week["workouts"]] == [0]
+    assert n["streak"] == {"current": 1, "best": 1}
 
 
 # --- The past weeks ----------------------------------------------------------------------------
@@ -347,7 +365,7 @@ def test_it_works_from_what_memory_gives_back(tmp_path, monkeypatch):
                 {"id": "w1", "date": "2026-11-17", "activity_name": "Bicycling", "met": 6.0, "duration_min": 75},
                 {"id": "w2", "date": "2026-11-23", "activity_name": "Bicycling", "met": 5.0, "duration_min": 30},
             ],
-            "app_opens": ["2026-11-22", "2026-11-23", "2026-11-24"],
+            "app_opens": ["2026-11-22", "2026-11-23", "2026-11-24", "2026-11-25"],
         },
     })
     mem = memory.read("sam", ["goals", "daily"])

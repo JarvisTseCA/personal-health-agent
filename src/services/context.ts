@@ -118,14 +118,16 @@ export function buildAgentContext(state: AppState): AgentContext {
   return fromBackend ? contextFromNumbers(state, fromBackend) : ownContext(state);
 }
 
+const NO_DAY_OPENED: boolean[] = Array(7).fill(false);
+
 /** The context with the numbers worked out here, by the app's own calculator. */
 export function ownContext(state: AppState): AgentContext {
   const goal = state.goal;
   const t = state.todayIndex;
   const week = totalsFor(state.sessions.filter((s) => s.dayIndex <= t));
   const targets = dailyTargets(goal, state.plan, week.doneByDay, t);
-  // Today counts as soon as the app is open.
-  const signIns = Array.from({ length: 7 }, (_, i) => i === t || (i < t && !!state.signIns?.[i]));
+  // The days on record as opened, up to today. Opening the app puts today on record (startDay in state/today.ts).
+  const signIns = Array.from({ length: 7 }, (_, i) => i <= t && !!state.signIns?.[i]);
 
   const past: PastWeek[] = state.history.map((w, i) => {
     const totals = totalsFor(w.sessions);
@@ -135,7 +137,8 @@ export function ownContext(state: AppState): AgentContext {
       plan: w.plan,
       goal: w.goal,
       totals,
-      signIns: w.signIns ?? totals.activeByDay,
+      // A week with no record of opens (brought in from Fitbit, an older save) has no day opened. Its workouts count as always.
+      signIns: w.signIns ?? NO_DAY_OPENED,
       trophy: trophyEarned(totals.done, w.goal),
     };
   });

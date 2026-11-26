@@ -86,12 +86,12 @@ describe("fromMemory: the round trip", () => {
     expect(state.declines.map((d) => [d.id, d.familyId, d.reason, d.day])).toEqual(s.declines.map((d) => [d.id, d.familyId, d.reason, d.day]));
   });
 
-  it("leaves signIns off a history week with no opens in Memory", () => {
+  it("gives a history week with no opens in Memory seven days not opened", () => {
     const s = onboarded("alex");
     const history: WeekRecord[] = s.history.map((w, i) => (i === s.history.length - 1 ? { ...w, signIns: undefined } : w));
     const { state } = through({ ...s, history }).back;
     const last = state.history[state.history.length - 1];
-    expect("signIns" in last).toBe(false);
+    expect(last.signIns).toEqual([false, false, false, false, false, false, false]);
     expect(state.history[0].signIns).toEqual(s.history[0].signIns);
   });
 });

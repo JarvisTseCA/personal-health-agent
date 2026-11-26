@@ -16,7 +16,7 @@ export interface WeekRecord {
   goal: number;
   plan: WeekPlan;
   sessions: Session[];
-  /** Days the user opened the app, Monday to Sunday. Missing on older saves: then days with activity count. */
+  /** Days the user opened the app, Monday to Sunday. Missing on a week from Fitbit or an older save: then no day of it counts as opened. */
   signIns?: boolean[];
 }
 
@@ -47,7 +47,7 @@ export interface DemoPersona {
   /** Oldest first */
   history: WeekRecord[];
   thisWeek: Session[];
-  /** Days this week the user opens the app (only days up to "today" are used; today always counts) */
+  /** Days this week the user opens the app (only days up to "today" are used; opening the app puts today on record) */
   signInsThisWeek: boolean[];
   declines: DemoDecline[];
   equipment: EquipmentProfile;

@@ -46,7 +46,7 @@ def memory_of(example):
                 "confirmed": w.get("confirmed", True),
                 "band": w.get("band"),
             })
-        # No record of opens (null) and no opens ([]) are the same thing in Memory: no dates for that week.
+        # A week the app holds no record for (null) and a week with no opens ([]): no dates for that week, either way.
         opens.extend((monday + timedelta(days=day)).isoformat() for day in week_opens or [])
 
     past = example["past_weeks"]
@@ -101,16 +101,6 @@ def differences(got, want, where=""):
 
 def test_there_are_examples_to_check():
     assert EXAMPLES
-
-
-def test_no_example_asks_for_what_memory_cannot_tell_apart():
-    # The app can hold "this week was never opened" ([]) next to workouts; Memory keeps opens as dates,
-    # so here that week looks the same as one with no record, and its workout days would count.
-    for example in EXAMPLES:
-        for week in example["past_weeks"]:
-            assert not (week["opens"] == [] and week["workouts"]), (
-                f"{example['name']}: a past week with workouts needs \"opens\": null or the days it was opened, not []"
-            )
 
 
 @pytest.mark.parametrize("example", EXAMPLES, ids=[e["name"] for e in EXAMPLES])

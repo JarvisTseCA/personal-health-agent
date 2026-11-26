@@ -11,9 +11,10 @@ FastAPI backend for the Personal Health Agent.
     GET    /api/state             load the saved app state
     PUT    /api/state             save it
     DELETE /api/state             forget it
-    GET    /api/memory            what Memory holds about a user, in its six groups (memory.py)
-    POST   /api/memory            add to it or update it: any part of the six groups
-    DELETE /api/memory/{kind}/{key}   take one entry out: a check-in, a suggestion or a workout
+    GET    /api/memory            what Memory holds about a user, in its seven groups (memory.py)
+    POST   /api/memory            add to it or update it: any part of the seven groups
+    DELETE /api/memory/{kind}/{key}   take one entry out: a check-in, a suggestion, a workout, a chat message,
+                                  or what the app keeps under one name in "other"
     DELETE /api/memory            forget the user
     GET    /api/numbers           every number on the app's screens, worked out from Memory for one day
                                   (memory_numbers.py). The three routes above that read or change Memory
@@ -483,7 +484,7 @@ def delete_state(user_id: str = "demo") -> Dict[str, bool]:
     return {"ok": True}
 
 
-# --- Memory: what the backend remembers about a user, in six groups (memory.py) ----------------
+# --- Memory: what the backend remembers about a user, in seven groups (memory.py) --------------
 # When the app finds the backend running, these are what it uses: it reads Memory when it opens,
 # tells it what changed after every step, and shows the numbers that come back. It no longer
 # saves its state in one piece through /api/state above; that is only read once, to bring an
@@ -517,7 +518,7 @@ def _numbers(user_id: str, day: date) -> Dict[str, Any]:
 def get_memory(
     user_id: str = "demo", group: Optional[List[str]] = Query(None), day: Optional[str] = Query(None, alias="date"),
 ) -> Dict[str, Any]:
-    """Read. All six groups, or only the ones asked for: ?group=preferences&group=daily.
+    """Read. All seven groups, or only the ones asked for: ?group=preferences&group=daily.
 
     Without ?date=: everything Memory holds, however far back it goes.
     With ?date=: what the app is given. Memory from this week and the 26 before it
@@ -537,9 +538,9 @@ def get_memory(
 def post_memory(
     part: Dict[str, Any] = Body(...), user_id: str = "demo", day: Optional[str] = Query(None, alias="date"),
 ) -> Dict[str, Any]:
-    """Add or update. Send any part of the six groups; what is left out stays as it is.
+    """Add or update. Send any part of the seven groups; what is left out stays as it is.
 
-    Entries under "daily" and "health" are added (or replace the one with the same key);
+    Entries under "daily", "health" and "chat" are added (or replace the one with the same key);
     "who", "preferences" and a week's goal and plan are updated; each name under "other" is
     replaced by what is sent. The shape is at the top of memory.py.
 
@@ -557,7 +558,8 @@ def post_memory(
 def delete_memory_entry(
     kind: str, key: str, user_id: str = "demo", day: Optional[str] = Query(None, alias="date"),
 ) -> Dict[str, Any]:
-    """Delete one entry: /api/memory/suggestions/<id>, /api/memory/workouts/<id> or /api/memory/check_ins/<date>.
+    """Delete one entry: /api/memory/suggestions/<id>, /api/memory/workouts/<id>, /api/memory/check_ins/<date>,
+    /api/memory/chat/<id>, or /api/memory/other/<name> for what the app keeps under that name.
 
     With ?date=, the reply also has the numbers as they are without it.
     """

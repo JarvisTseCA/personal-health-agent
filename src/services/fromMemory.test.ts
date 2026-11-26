@@ -136,6 +136,44 @@ describe("fromMemory: a new week", () => {
   });
 });
 
+describe("fromMemory: the Chat conversation", () => {
+  const at = Date.UTC(2026, 10, 25, 14, 3, 20);
+  const chat: AppState["chat"] = [
+    { id: "u1", role: "user", text: "Add feedback from my clinician", at },
+    { id: "a1", role: "agent", text: "Sure. What did your clinician say?", kind: "ask-clinician" },
+    { id: "u2", role: "user", text: "Is walking enough?", at: at + 60_000 },
+    { id: "a2", role: "agent", text: "Ask your clinician.", reply: "medical_advice" },
+    { id: "a3", role: "agent", text: "Want me to add it?", suggestions: ["Add strength training"], kind: "offer-strength" },
+  ];
+
+  it("comes back message by message as it was: the time, the quick replies, the answer it waits for, the kind of reply", () => {
+    const { back } = through({ ...onboarded("alex"), chat });
+    expect(back.state.chat).toEqual(chat);
+  });
+
+  it("is read from under \"other\" when Memory is from before Chat had a group of its own", () => {
+    const { back } = through({ ...onboarded("alex"), chat }, (m) => {
+      (m.other as OtherOfApp).chat = chat; // where the conversation used to be kept, whole
+      m.chat = [];
+    });
+    expect(back.state.chat).toEqual(chat);
+  });
+
+  it("is not doubled when the same messages are in its own group and still under \"other\"", () => {
+    const { back } = through({ ...onboarded("alex"), chat }, (m) => {
+      (m.other as OtherOfApp).chat = chat.slice(0, 3); // moved over, and not yet taken out of "other"
+    });
+    expect(back.state.chat).toEqual(chat);
+  });
+
+  it("keeps a message an older version of the app left under \"other\" after the move: it goes after the rest", () => {
+    const { back } = through({ ...onboarded("alex"), chat }, (m) => {
+      (m.other as OtherOfApp).chat = [{ id: "later", role: "user", text: "typed in the older version" }];
+    });
+    expect(back.state.chat.map((c) => c.id)).toEqual(["u1", "a1", "u2", "a2", "a3", "later"]);
+  });
+});
+
 describe("fromMemory: workouts the app has no record for", () => {
   const unknown = (patch: Partial<MemoryWorkout>) => (m: Memory) => { m.daily.workouts.push(blankWorkout(patch)); };
   const sessionX = (edit: (m: Memory) => void) => through(onboarded("alex"), edit).back.state.sessions.find((x) => x.id === "x1")!;

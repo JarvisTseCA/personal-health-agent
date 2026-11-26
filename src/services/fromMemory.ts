@@ -14,8 +14,9 @@
  *    daily                workouts → this week's sessions and the past weeks'; declines; accepted
  *                         table picks, by place; the days the app was opened
  *    health               VO2 max, a workout's heart rate
- *    other                the Today conversation, Chat, notes, the clinician's feedback, and
- *                         the rest of the app's own state (AppOwn in memoryTypes.ts)
+ *    chat                 the conversation in the Chat tab
+ *    other                the Today conversation, notes, the clinician's feedback, and the
+ *                         rest of the app's own state (AppOwn in memoryTypes.ts)
  */
 import type { WeekRecord } from "../data/mockFitbit";
 import { ACTIVITIES } from "../lib/activities";
@@ -26,11 +27,26 @@ import { VIGOROUS_MET, type FitbitBand, type Session } from "../lib/met";
 import type { WeekPlan } from "../lib/plan";
 import type { DeclineReason, Place } from "../lib/suggest";
 import { codeOfTableId, isTableId, registerTable, tableId, type TableActivity } from "../lib/tableActivities";
-import type { AppState, DeclineRecord } from "../state/types";
-import { addDays, addMonths, daysBetween, weekOf, type Memory, type MemoryWorkout, type Numbers, type OtherOfApp } from "./memoryTypes";
+import type { AppState, ChatMessage, DeclineRecord } from "../state/types";
+import {
+  addDays, addMonths, daysBetween, weekOf, type Memory, type MemoryChatMessage, type MemoryWorkout, type Numbers, type OtherOfApp,
+} from "./memoryTypes";
 
 const equipmentIdByName = new Map(EQUIPMENT.map((e) => [e.name, e.id]));
 const familyIdByName = new Map(ACTIVITIES.map((f) => [f.name, f.id]));
+
+/** A Chat message as the screen holds it (chatMessage in toMemory.ts is the other direction). */
+function chatMessageOf(m: MemoryChatMessage): ChatMessage {
+  return {
+    id: m.id,
+    role: m.role,
+    text: m.text,
+    ...(m.at ? { at: Date.parse(m.at) } : {}),
+    ...(m.app?.suggestions?.length ? { suggestions: m.app.suggestions } : {}),
+    ...(m.app?.kind ? { kind: m.app.kind } : {}),
+    ...(m.reply ? { reply: m.reply } : {}),
+  };
+}
 
 export interface FromMemory {
   state: AppState;
@@ -129,6 +145,13 @@ export function fromMemory(memory: Memory, numbers: Numbers, base: AppState): Fr
   const idsOf = (names: string[]) => names.map((name) => equipmentIdByName.get(name) ?? `${CUSTOM_PREFIX}${name}`);
   const setBy = [...memory.goals].reverse().find((g) => g.week_start <= monday && g.goal_set_by)?.goal_set_by;
 
+  // The conversation is in Memory's chat group. A Memory from before Chat had that group has it under
+  // "other" instead, and an older version of the app run on the same Memory since may have added to it
+  // there. Whatever is under "other" and not in the chat group yet goes after it, so nothing said is lost.
+  const said = (memory.chat ?? []).map(chatMessageOf);
+  const saidIds = new Set(said.map((m) => m.id));
+  const chat = [...said, ...(other.chat ?? []).filter((m) => !saidIds.has(m.id))];
+
   const state: AppState = {
     ...base,
     onboarded: own.onboarded,
@@ -162,7 +185,7 @@ export function fromMemory(memory: Memory, numbers: Numbers, base: AppState): Fr
     declines,
     notes: other.notes ?? [],
     today: sameWeek && other.today ? other.today : base.today,
-    chat: other.chat ?? [],
+    chat,
     syncCount: own.syncCount,
     fitbitWeek: own.fitbitWeek,
     removedFitbitIds: own.removedFitbitIds,

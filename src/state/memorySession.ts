@@ -23,7 +23,9 @@
  * and nothing is sent: Memory keeps neither.
  *
  * A chat reply arrives a few words at a time. Each piece is shown as it comes, and the reply is
- * saved once, by the step that finishes it.
+ * saved once, by the step that finishes it. The Chat conversation has a group of its own in
+ * Memory, one entry a message. A Memory from before that keeps it under "other": the first
+ * open moves it over, once.
  *
  * When the backend doesn't answer:
  *  - a step that was already shown stays on screen, and what it changed goes out with the next
@@ -78,6 +80,8 @@ export async function openMemorySession(o: Opening): Promise<{ state: AppState; 
   const monday = mondayOf(new Date());
   const memory = await readMemory(monday); // this week and the 26 before it; Memory keeps the rest
   const own = (memory.other as OtherOfApp).app;
+  /** The Chat conversation is still under "other", from before it had a group of its own in Memory. */
+  const chatUnderOther = (memory.other as OtherOfApp).chat !== undefined;
 
   let state: AppState | null = null;
   let numbers: Numbers | null = null;
@@ -112,7 +116,10 @@ export async function openMemorySession(o: Opening): Promise<{ state: AppState; 
   let current = state;
   /** What Memory holds, as far as the app knows. null: a step failed part-way, so it has to be read again. */
   let mem: Memory | null = toMemory(state, monday);
-  await saveMemory({ other: mem.other }); // the app's own part as it is now (a fresh greeting, this week's Monday)
+  // The app's own part as it is now (a fresh greeting, this week's Monday). A conversation still under
+  // "other" moves to Memory's chat group here: saved there first, then taken out of "other".
+  await saveMemory(chatUnderOther ? { chat: mem.chat, other: mem.other } : { other: mem.other });
+  if (chatUnderOther) await sendChanges({ save: null, remove: [{ kind: "other", key: "chat" }] });
 
   /** What Memory holds, read again from the backend when the app can't be sure any more. */
   const held = async (): Promise<Memory> => {

@@ -1,7 +1,7 @@
 """
 Memory: what the backend remembers about each user, kept in SQLite.
 
-It has six groups: the five in the team's design picture, and "other". Every
+It has seven groups: the five in the team's design picture, "chat" and "other". Every
 table is named memory_<group>..., so the groups are easy to find in the database:
 
     who           memory_who                      name; is a Fitbit connected
@@ -15,12 +15,15 @@ table is named memory_<group>..., so the groups are easy to find in the database
                   memory_daily_app_opens          the days the user opened the app
     health        memory_health_vo2_max           VO2 max, one reading per month
                   memory_health_heart_rates       average heart rate during a workout
+    chat          memory_chat_messages            the conversation in the Chat tab, one row a message
     other         memory_other                    what the app keeps here for itself, under names of its own
 
-The backend works with the first five. "other" it only looks after: the Today
-conversation, the chat, the user's notes, the clinician's feedback and anything
-else the app wants back the next time it opens. Whatever the app stores under a
-name comes back exactly as it was sent.
+The backend works with the first five. "chat" is the record of the Chat tab:
+every message the user sent and every reply, in the order they were said, with
+no limit on how many. "other" the backend only looks after: the Today
+conversation, the user's notes, the clinician's feedback and anything else the
+app wants back the next time it opens. Whatever the app stores under a name
+comes back exactly as it was sent.
 
 `save()` stores any part of a user's memory, and `read()` gives it back in the
 same shape:
@@ -51,8 +54,17 @@ same shape:
         "vo2_max": [{"month": "2026-11", "ml_kg_min": 38.2, "source": "fitbit"}],
         "heart_rates": [{"workout_id": "w1", "avg_bpm": 132}],
       },
+      "chat": [                                                   # oldest first
+        {"id": "c1", "role": "user", "text": "Is walking enough?", "at": "2026-11-23T14:03:20Z",
+         "reply": None, "app": None},
+        # "reply": what kind of reply the backend's Chat route gave: model (the model wrote it),
+        # or the fixed reply urgent, medical_advice or off_topic. None: the app wrote it itself.
+        # "app": what the app keeps with a message for itself (the quick replies under it);
+        # it comes back as it was sent.
+        {"id": "c2", "role": "agent", "text": "Brisk walking counts ...", "at": None,
+         "reply": "model", "app": {"suggestions": ["What's a MET?"]}},
+      ],
       "other": {                                                  # the names and what is under them are the app's
-        "chat": [{"id": "c1", "role": "user", "text": "Is walking enough?"}],
         "notes": [{"id": "n1", "text": "knee is sore", "where": "Today: mood"}],
       },
     }
@@ -63,12 +75,14 @@ What a save changes:
 - Each name under "other" is replaced by what is sent; the other names stay.
 - Everything else is added, or replaces the entry with the same key: a week by
   its week_start, a check-in by its date, a suggestion or a workout by its id,
-  a VO2 max reading by its month, a heart rate by its workout_id. A day in
-  "app_opens" is its own key, so a day sent again is still one day.
+  a VO2 max reading by its month, a heart rate by its workout_id, a chat
+  message by its id (a message sent again keeps its place in the conversation).
+  A day in "app_opens" is its own key, so a day sent again is still one day.
 - A save that has a mistake in it stores nothing.
 
-`delete()` takes one entry out of "daily" again: a check-in by its date, a
-suggestion or a workout by its id. `clear()` forgets a user altogether.
+`delete()` takes one entry out again: a check-in by its date; a suggestion, a
+workout or a chat message by its id; what the app keeps under "other" by its
+name. `clear()` forgets a user altogether.
 
 The /api/memory routes in main.py are the way in from outside. When the app
 finds the backend running it uses them for everything it remembers: it reads
@@ -86,10 +100,13 @@ from typing import Any, Dict, Iterable, Iterator, List, Optional
 
 from . import db
 
-GROUPS = ("who", "preferences", "goals", "daily", "health", "other")
+GROUPS = ("who", "preferences", "goals", "daily", "health", "chat", "other")
 DAYS = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")
 SLOTS = ("off", "0", "5", "10", "30", "45")  # minutes planned for a day; DaySlot in src/lib/plan.ts
 EQUIPMENT_PLACES = ("home", "gym")
+CHAT_ROLES = ("user", "agent")  # who said it; ChatMessage in src/state/types.ts
+# What kind of reply the backend's Chat route gave (X-Chat-Reply in main.py): the model wrote it, or one of the fixed replies.
+CHAT_REPLIES = ("model", "urgent", "medical_advice", "off_topic")
 
 SCHEMA = """
 -- who
@@ -190,10 +207,22 @@ CREATE TABLE IF NOT EXISTS memory_health_heart_rates (
     PRIMARY KEY (user_id, workout_id)
 );
 
+-- chat
+CREATE TABLE IF NOT EXISTS memory_chat_messages (
+    user_id TEXT NOT NULL,
+    id      TEXT NOT NULL,
+    role    TEXT NOT NULL CHECK (role IN ('user', 'agent')),
+    text    TEXT NOT NULL,
+    at      TEXT,                                      -- when it was sent, "2026-11-23T14:03:20Z"
+    reply   TEXT,                                      -- model | urgent | medical_advice | off_topic; empty: the app wrote it
+    app     TEXT,                                      -- what the app keeps with the message, as JSON
+    PRIMARY KEY (user_id, id)
+);
+
 -- other
 CREATE TABLE IF NOT EXISTS memory_other (
     user_id    TEXT NOT NULL,
-    name       TEXT NOT NULL,                          -- the app's name for it: chat, notes, ...
+    name       TEXT NOT NULL,                          -- the app's name for it: today, notes, ...
     content    TEXT NOT NULL,                          -- what the app sent, as JSON
     updated_at TEXT NOT NULL,
     PRIMARY KEY (user_id, name)
@@ -206,6 +235,7 @@ TABLES = (
     "memory_goals",
     "memory_daily_check_ins", "memory_daily_suggestions", "memory_daily_workouts", "memory_daily_app_opens",
     "memory_health_vo2_max", "memory_health_heart_rates",
+    "memory_chat_messages",
     "memory_other",
 )
 
@@ -215,6 +245,8 @@ DELETABLE = {
     "check_ins": ("memory_daily_check_ins", "date"),
     "suggestions": ("memory_daily_suggestions", "id"),
     "workouts": ("memory_daily_workouts", "id"),
+    "chat": ("memory_chat_messages", "id"),
+    "other": ("memory_other", "name"),
 }
 
 
@@ -239,7 +271,7 @@ def save(user_id: str, memory: Dict[str, Any]) -> None:
 
 
 def read(user_id: str, groups: Optional[Iterable[str]] = None) -> Dict[str, Any]:
-    """A user's memory: all six groups, or only the ones named. An unknown user gets the same shape, empty."""
+    """A user's memory: all seven groups, or only the ones named. An unknown user gets the same shape, empty."""
     wanted = GROUPS if groups is None else tuple(groups)
     unknown = sorted(set(wanted) - set(GROUPS))
     if unknown:
@@ -249,7 +281,8 @@ def read(user_id: str, groups: Optional[Iterable[str]] = None) -> Dict[str, Any]
 
 
 def delete(user_id: str, kind: str, key: str) -> bool:
-    """Take one entry out of "daily": a check-in by its date, a suggestion or a workout by its id.
+    """Take one entry out: a check-in by its date; a suggestion, a workout or a chat message by its id;
+    what the app keeps under "other" by its name.
 
     False when the user has no such entry. A workout's heart rate goes with it.
     """
@@ -408,12 +441,33 @@ def _save_health(conn: sqlite3.Connection, user_id: str, health: Any) -> None:
         })
 
 
+def _save_chat(conn: sqlite3.Connection, user_id: str, messages: Any) -> None:
+    for i, entry in enumerate(_list(messages, "chat")):
+        what = f"chat[{i}]"
+        e = _fields(entry, ("id", "role", "text", "at", "reply", "app"), ("role",), what)
+        if e["role"] not in CHAT_ROLES:
+            raise MemoryDataError(f"{what}.role is {e['role']!r}, expected {' or '.join(CHAT_ROLES)}")
+        if not isinstance(e.get("text"), str):
+            raise MemoryDataError(f"{what}.text should be the words of the message")
+        if e.get("reply") is not None and e["reply"] not in CHAT_REPLIES:
+            raise MemoryDataError(f"{what}.reply is {e['reply']!r}, expected one of: {', '.join(CHAT_REPLIES)}")
+        try:
+            app = None if e.get("app") is None else json.dumps(e["app"], ensure_ascii=False, allow_nan=False)
+        except (TypeError, ValueError):
+            raise MemoryDataError(f"{what}.app can't be kept: it has something in it that JSON can't hold") from None
+        # A message sent again replaces the one with its id and keeps its row, so its place in the conversation.
+        _upsert(conn, "memory_chat_messages", ("user_id", "id"), {
+            "user_id": user_id, "id": _id(e.get("id")), "role": e["role"], "text": e["text"],
+            "at": _time(e.get("at"), f"{what}.at"), "reply": e.get("reply"), "app": app,
+        })
+
+
 def _save_other(conn: sqlite3.Connection, user_id: str, other: Any) -> None:
     if not isinstance(other, dict):
-        raise MemoryDataError('other should be an object: the app\'s own names, each with what to keep, like {"chat": [...]}')
+        raise MemoryDataError('other should be an object: the app\'s own names, each with what to keep, like {"notes": [...]}')
     for name, content in other.items():
         if not isinstance(name, str) or not name.strip():
-            raise MemoryDataError(f"other: {name!r} can't be a name; a name is a word like chat or notes")
+            raise MemoryDataError(f"other: {name!r} can't be a name; a name is a word like today or notes")
         try:
             as_json = json.dumps(content, ensure_ascii=False, allow_nan=False)
         except (TypeError, ValueError):
@@ -425,7 +479,7 @@ def _save_other(conn: sqlite3.Connection, user_id: str, other: Any) -> None:
 
 _SAVE = {
     "who": _save_who, "preferences": _save_preferences, "goals": _save_goals,
-    "daily": _save_daily, "health": _save_health, "other": _save_other,
+    "daily": _save_daily, "health": _save_health, "chat": _save_chat, "other": _save_other,
 }
 
 
@@ -500,6 +554,14 @@ def _read_health(conn: sqlite3.Connection, user_id: str) -> Dict[str, Any]:
     return {"vo2_max": [dict(r) for r in vo2_max], "heart_rates": [dict(r) for r in heart_rates]}
 
 
+def _read_chat(conn: sqlite3.Connection, user_id: str) -> List[Dict[str, Any]]:
+    """The conversation, oldest first: the order the messages were first saved in."""
+    rows = conn.execute(
+        "SELECT id, role, text, at, reply, app FROM memory_chat_messages WHERE user_id = ? ORDER BY rowid", (user_id,)
+    ).fetchall()
+    return [{**dict(r), "app": None if r["app"] is None else json.loads(r["app"])} for r in rows]
+
+
 def _read_other(conn: sqlite3.Connection, user_id: str) -> Dict[str, Any]:
     rows = conn.execute("SELECT name, content FROM memory_other WHERE user_id = ? ORDER BY rowid", (user_id,)).fetchall()
     return {r["name"]: json.loads(r["content"]) for r in rows}
@@ -507,7 +569,7 @@ def _read_other(conn: sqlite3.Connection, user_id: str) -> Dict[str, Any]:
 
 _READ = {
     "who": _read_who, "preferences": _read_preferences, "goals": _read_goals,
-    "daily": _read_daily, "health": _read_health, "other": _read_other,
+    "daily": _read_daily, "health": _read_health, "chat": _read_chat, "other": _read_other,
 }
 
 
@@ -579,6 +641,17 @@ def _date(value: Any, what: str) -> str:
         return date.fromisoformat(value).isoformat()
     except (TypeError, ValueError):
         raise MemoryDataError(f"{what}: {value!r} is not a date like 2026-11-23") from None
+
+
+def _time(value: Any, what: str) -> Optional[str]:
+    """A moment as the app writes it, "2026-11-23T14:03:20.000Z", kept as it was sent; None stays None."""
+    if value in (None, ""):
+        return None
+    try:
+        datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except (AttributeError, TypeError, ValueError):
+        raise MemoryDataError(f"{what}: {value!r} is not a time like 2026-11-23T14:03:20Z") from None
+    return value
 
 
 def _monday(value: Any, what: str) -> str:

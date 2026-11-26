@@ -1,15 +1,16 @@
 /**
  * What travels between the app and the backend when the app runs with the backend:
  *
- *  - Memory: what the backend remembers about the user, in six groups (backend/app/memory.py).
+ *  - Memory: what the backend remembers about the user, in seven groups (backend/app/memory.py).
  *  - The numbers: everything on screen that is worked out, as the backend worked it out
  *    (backend/app/memory_numbers.py, backend/app/progress.py).
  *
- * Five of Memory's groups are facts the backend works with. The sixth, "other", is the app's
- * own: the backend keeps it and hands it back as it was. The app puts five things there:
+ * Five of Memory's groups are facts the backend works with. The sixth, "chat", is the
+ * conversation in the Chat tab, one entry a message, with no limit on how many. The seventh,
+ * "other", is the app's own: the backend keeps it and hands it back as it was. The app puts
+ * four things there:
  *
  *    today       the Today conversation
- *    chat        the Chat messages
  *    notes       what the user typed that the app couldn't turn into a choice
  *    clinician   the clinician's feedback, as typed in Chat
  *    app         the rest of what the app needs to open as it was (AppOwn below)
@@ -21,7 +22,7 @@ import type { TableActivity } from "../lib/tableActivities";
 import type { CategoryPrefs } from "../lib/categories";
 import type { DaySource } from "../lib/plan";
 import type { Access } from "../lib/suggest";
-import type { ChatMessage, ClinicianNotes, GoalSet, NoteRecord, SuggestSource, TodayState, UsualTime } from "../state/types";
+import type { ChatMessage, ChatReply, ClinicianNotes, GoalSet, NoteRecord, SuggestSource, TodayState, UsualTime } from "../state/types";
 
 // --- Memory ------------------------------------------------------------------------------------
 
@@ -68,6 +69,19 @@ export interface MemoryWorkout {
   start_time: string | null;
 }
 
+/** One message of the conversation in the Chat tab. */
+export interface MemoryChatMessage {
+  id: string;
+  role: "user" | "agent";
+  text: string;
+  /** When it was sent, "2026-11-25T14:03:20.000Z". null: not known */
+  at: string | null;
+  /** What kind of reply the backend's Chat route gave. null: the user's own message, or one the app wrote itself */
+  reply: ChatReply | null;
+  /** What the app keeps with the message for itself: the quick replies under it, and the answer it waits for */
+  app: { suggestions?: string[]; kind?: ChatMessage["kind"] } | null;
+}
+
 export interface Memory {
   who: { name: string | null; fitbit_connected: boolean | null };
   preferences: {
@@ -82,6 +96,8 @@ export interface Memory {
     vo2_max: Array<{ month: string; ml_kg_min: number; source?: string }>;
     heart_rates: Array<{ workout_id: string; avg_bpm: number }>;
   };
+  /** Oldest first */
+  chat: MemoryChatMessage[];
   other: Record<string, unknown>;
 }
 
@@ -92,6 +108,7 @@ export interface MemoryPart {
   goals?: MemoryGoalWeek[];
   daily?: Partial<Memory["daily"]>;
   health?: Partial<Memory["health"]>;
+  chat?: MemoryChatMessage[];
   other?: Record<string, unknown>;
 }
 
@@ -126,6 +143,7 @@ export interface AppOwn {
 /** What the app keeps under Memory's "other". */
 export interface OtherOfApp {
   today?: TodayState;
+  /** Only in a Memory from before Chat had a group of its own: the app moves it there the next time it opens */
   chat?: ChatMessage[];
   notes?: NoteRecord[];
   clinician?: ClinicianNotes;

@@ -13,7 +13,7 @@ import { UNPLANNED_BOUTS } from "../data/mockFitbit";
 import { getFamily, getVariant, PICKABLE } from "../lib/activities";
 import { HISTORY_WEEKS, weekBefore, type FitbitImport } from "../lib/fitbit";
 import { howTos } from "../lib/moves";
-import { countsTowardGoal, DAY_NAMES_LONG, fmt, fmtGoal, minutesFor, UNCONFIRMED_MET, withCredit, type Session } from "../lib/met";
+import { countsTowardGoal, DAY_NAMES_LONG, fmt, fmtGoal, minutesFor, UNCONFIRMED_MET, type Session } from "../lib/met";
 import { WEEKLY_UPPER_LIMIT } from "../lib/goal";
 import { ALL_FROM_PLAN, SLOT_LABEL, SLOT_MINUTES, type DaySlot } from "../lib/plan";
 import { afterDecline, DECLINE_LABEL, suggest, type DeclineReason, type Energy, type Place, type Suggestion } from "../lib/suggest";
@@ -21,14 +21,36 @@ import { matchActivity, parseEnergy, parseMinutes, parsePlace, parsePlanChanges,
 import { appDate, clampGoal } from "../lib/goalNote";
 import { SCRIPTED_REPLIES } from "../services/mockResponses";
 import type { BackendSuggestion } from "../services/backend";
-import { buildAgentContext, buildSuggestInput, equipmentAt } from "../services/context";
+import { buildAgentContext, buildSuggestInput, creditOf, equipmentAt } from "../services/context";
 import type { AppState, TodayEntry, TodayRewind, TodayState } from "./types";
 import { codeOfTableId, isTableId, registerTable, tableId } from "../lib/tableActivities";
 import { matchTable } from "../lib/tableMatch";
 import { suggestSourceOf } from "./suggestSource";
 
 let seq = 0;
-export const newId = (prefix: string) => `${prefix}-${Date.now().toString(36)}-${(seq++).toString(36)}`;
+/** Set while a step is run again from a mark, so it makes the ids it made the first time. */
+let replayed: number | null = null;
+export const newId = (prefix: string) => `${prefix}-${(replayed ?? Date.now()).toString(36)}-${(seq++).toString(36)}`;
+
+/**
+ * With the backend, a step runs twice: once to see what it changes (that is what the backend
+ * is told), and once more when the backend's new numbers are in. Both runs start from the
+ * same mark, so the workout the backend was told about and the one the app keeps have one id.
+ */
+export interface IdsMark {
+  seq: number;
+  stamp: number;
+}
+export const idsMark = (): IdsMark => ({ seq, stamp: Date.now() });
+export function withIds<T>(mark: IdsMark, run: () => T): T {
+  seq = mark.seq;
+  replayed = mark.stamp;
+  try {
+    return run();
+  } finally {
+    replayed = null;
+  }
+}
 
 const agent = (text: string): TodayEntry => ({ id: newId("a"), role: "agent", text });
 const user = (text: string): TodayEntry => ({ id: newId("u"), role: "user", text, at: Date.now() });
@@ -42,6 +64,11 @@ function setToday(state: AppState, patch: Partial<TodayState>): AppState {
 
 export const dayKeyOf = (s: Pick<AppState, "personaId" | "todayIndex">) => `${s.personaId}:${s.todayIndex}`;
 
+/** This week's sign-ins with today on record as opened. The streak counts only the days on record. */
+export function openedToday(state: Pick<AppState, "todayIndex" | "signIns">): boolean[] {
+  return Array.from({ length: 7 }, (_, i) => (i === state.todayIndex ? true : !!state.signIns?.[i]));
+}
+
 /**
  * A fresh check-in for the current demo day. Opening the app counts toward
  * the streak, so the coach greets the run when there is one. A new run after
@@ -49,8 +76,7 @@ export const dayKeyOf = (s: Pick<AppState, "personaId" | "todayIndex">) => `${s.
  */
 export function startDay(state: AppState): AppState {
   // Opening the app today is a sign-in.
-  const signIns = Array.from({ length: 7 }, (_, i) => (i === state.todayIndex ? true : !!state.signIns?.[i]));
-  const st: AppState = { ...state, signIns };
+  const st: AppState = { ...state, signIns: openedToday(state) };
   if (st.weekSetup) return startSetup(st);
   const ctx = buildAgentContext(st);
   const off = st.plan[st.todayIndex] === "off";
@@ -267,6 +293,25 @@ export function backendFailed(state: AppState, replaces: Suggestion): AppState {
   const c = state.today.current;
   if (!c?.pending || c.lead !== replaces) return state;
   return setToday(state, { current: { ...c, pending: false } });
+}
+
+/**
+ * With the backend, and no pick came back: the card says so and offers to try again. The
+ * in-app ranker's pick is not shown in its place, so the app's own choice never stands in
+ * for the backend's.
+ */
+export function suggestionFailed(state: AppState, replaces: Suggestion): AppState {
+  const c = state.today.current;
+  if (!c?.pending || c.lead !== replaces) return state;
+  return setToday(state, { current: { ...c, pending: false, failed: true } });
+}
+
+/** "Try again" on that card: wait for the backend once more. */
+export function retrySuggestion(state: AppState): AppState {
+  const c = state.today.current;
+  if (!c?.failed) return state;
+  // A fresh copy of the placeholder, so the store sees a pick it hasn't asked about yet.
+  return setToday(state, { current: { ...c, lead: { ...c.lead }, pending: true, failed: false } });
 }
 
 export function showBackups(state: AppState): AppState {
@@ -518,7 +563,7 @@ function afterCredit(before: AppState, after: AppState, s: Session): AppState {
   const had = buildAgentContext(before).trophy;
   const ctx = buildAgentContext(after);
   const { family, variant } = getVariant(s.variantId);
-  const credit = withCredit(s).credit;
+  const credit = creditOf(after, s);
   let st = after;
 
   st = push(st, agent(credit > 0

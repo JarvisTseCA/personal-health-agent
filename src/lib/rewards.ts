@@ -2,7 +2,8 @@
  * Rewards. The app only ever adds rewards; it never takes one away or
  * points out a miss.
  *
- *  Streak (the flame): days in a row the user opened the app. Missing a day
+ *  Streak (the flame): days in a row the user opened the app. Only the days
+ *         on record as opened count, today too. Missing a day
  *         quietly starts a new run. The app doesn't mention the old one,
  *         ask why, or show a "streak lost" message; Progress shows the best
  *         run so it still counts for something.
@@ -15,7 +16,7 @@
 const EPS = 1e-9;
 
 export interface Streak {
-  /** Days in a row, ending today (today counts as soon as the app is open) */
+  /** Days in a row on record as opened, ending today (opening the app puts today on record) */
   current: number;
   /** Longest run so far */
   best: number;

@@ -3,6 +3,9 @@
  *
  * All numbers come from src/lib (calculator), never from the agent. A real
  * LLM gets this serialized into its system prompt (see prompts.ts).
+ *
+ * When the app runs with the backend, the numbers are the backend's instead
+ * (numbers.ts), and the calculator here is not asked.
  */
 import { dislikedCategories, likedCategories } from "../lib/categories";
 import { getFamily } from "../lib/activities";
@@ -10,10 +13,11 @@ import { goalOffer, type GoalOffer } from "../lib/goal";
 import { equipmentName } from "../lib/equipment";
 import { guidanceOf, type ClinicianGuidance } from "../lib/clinicianNotes";
 import { streakOf, trophyEarned, type Streak } from "../lib/rewards";
-import { DAY_NAMES, DAY_NAMES_LONG, totalsFor, type WeekTotals } from "../lib/met";
+import { DAY_NAMES, DAY_NAMES_LONG, totalsFor, withCredit, type Session, type WeekTotals } from "../lib/met";
 import { dailyTargets, unplannedLeft, type WeekPlan } from "../lib/plan";
 import type { Place, SuggestInput } from "../lib/suggest";
 import type { AppState } from "../state/types";
+import { contextFromNumbers, numbersFor } from "./numbers";
 
 export interface PastWeek {
   label: string;
@@ -50,6 +54,8 @@ export interface AgentContext {
   todayTarget: number;
   todayDone: number;
   todayNeeded: number;
+  /** Today's target is reached, as the backend worked it out. Missing when the app works the numbers out itself. */
+  todayReached?: boolean;
   left: number;
   unplanned: number;
   /** Days this week with any activity, up to today */
@@ -96,17 +102,32 @@ export function vo2Of(values: number[]): Vo2 | null {
 }
 
 /** Today's target is reached: a day with a target (not off, not 0 min) whose MET-hours meet it. */
-export function reachedToday(ctx: Pick<AgentContext, "todayTarget" | "todayDone">): boolean {
-  return ctx.todayTarget > 0 && ctx.todayDone + 1e-9 >= ctx.todayTarget;
+export function reachedToday(ctx: Pick<AgentContext, "todayTarget" | "todayDone" | "todayReached">): boolean {
+  return ctx.todayReached ?? (ctx.todayTarget > 0 && ctx.todayDone + 1e-9 >= ctx.todayTarget);
+}
+
+/** MET-hours a workout adds toward the goal: the backend's figure when the app runs with it. */
+export function creditOf(state: AppState, s: Session): number {
+  const counted = numbersFor(state)?.this_week.workouts.find((w) => w.id === s.id);
+  return counted ? counted.met_hours : withCredit(s).credit;
 }
 
 export function buildAgentContext(state: AppState): AgentContext {
+  // With the backend, every number is the backend's; the app's own calculator isn't asked.
+  const fromBackend = numbersFor(state);
+  return fromBackend ? contextFromNumbers(state, fromBackend) : ownContext(state);
+}
+
+const NO_DAY_OPENED: boolean[] = Array(7).fill(false);
+
+/** The context with the numbers worked out here, by the app's own calculator. */
+export function ownContext(state: AppState): AgentContext {
   const goal = state.goal;
   const t = state.todayIndex;
   const week = totalsFor(state.sessions.filter((s) => s.dayIndex <= t));
   const targets = dailyTargets(goal, state.plan, week.doneByDay, t);
-  // Today counts as soon as the app is open.
-  const signIns = Array.from({ length: 7 }, (_, i) => i === t || (i < t && !!state.signIns?.[i]));
+  // The days on record as opened, up to today. Opening the app puts today on record (startDay in state/today.ts).
+  const signIns = Array.from({ length: 7 }, (_, i) => i <= t && !!state.signIns?.[i]);
 
   const past: PastWeek[] = state.history.map((w, i) => {
     const totals = totalsFor(w.sessions);
@@ -116,7 +137,8 @@ export function buildAgentContext(state: AppState): AgentContext {
       plan: w.plan,
       goal: w.goal,
       totals,
-      signIns: w.signIns ?? totals.activeByDay,
+      // A week with no record of opens (brought in from Fitbit, an older save) has no day opened. Its workouts count as always.
+      signIns: w.signIns ?? NO_DAY_OPENED,
       trophy: trophyEarned(totals.done, w.goal),
     };
   });

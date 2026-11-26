@@ -4,6 +4,12 @@
  * The backend is optional: if it isn't running (or on GitHub Pages), every
  * call here fails quietly and the app keeps using the in-app ranker and
  * localStorage, exactly like the demo build.
+ *
+ * Whether it is running is checked once, when the app opens (backendHealth),
+ * and that one answer decides how the app runs:
+ *  - no backend: the app remembers, works the numbers out and suggests itself;
+ *  - backend: Memory remembers, the backend works the numbers out and suggests,
+ *    and Today sends only the check-in (fetchMemorySuggestion below).
  */
 import { categoryOf, dislikedCategories, likedCategories } from "../lib/categories";
 import { getFamily, getVariant } from "../lib/activities";
@@ -229,6 +235,72 @@ export async function fetchTableSuggestion(state: AppState, waitMs: number): Pro
     };
   } catch (e) {
     console.warn(abort.signal.aborted ? `No table suggestion within ${waitMs / 1000} s; showing the in-app pick.` : "Backend unreachable; showing the in-app pick.", e);
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+// --- From Memory (POST /api/suggest/memory) --------------------------------------------------
+
+/**
+ * The request for POST /api/suggest/memory: today's check-in and which day it is. Nothing else
+ * about the user is sent: the backend reads their likes, goal, workouts and declines from
+ * Memory and works today's numbers out itself. It refuses a request that carries any of those.
+ */
+export function buildMemoryRequest(state: AppState, date: string) {
+  const c = state.today.checkIn;
+  const mood = c.mood ?? "surprise";
+  return {
+    user_id: USER_ID,
+    date,
+    check_in: {
+      minutes: c.minutes ?? 30, place: c.place ?? "indoors_private", energy: c.energy ?? "normal", mood,
+      mood_name: mood === "surprise" ? null : getFamily(mood).name,
+    },
+    // "I want more today": aim for 1.5× what is still needed.
+    want_more: state.today.boost,
+  };
+}
+
+interface MemoryPickReply extends TablePickReply {
+  /** What the pick would add toward the goal, worked out by the backend */
+  met_hours: number;
+}
+
+/** A pick from the memory route. Its MET-hours are the backend's; the calculator here is not asked. */
+function memorySuggestion(p: MemoryPickReply): Suggestion {
+  const id = tableId(p.activity_code);
+  return {
+    familyId: id, variantId: id, durationMin: p.duration_min, met: p.met_value,
+    credit: p.met_hours, rawMetHours: p.met_hours, reasons: p.reasons, score: p.probability,
+  };
+}
+
+/**
+ * Today's pick when the app runs with the backend: from the check-in alone. null when the
+ * backend can't be reached, finds nothing that fits (422), errors, or takes longer than `waitMs`.
+ */
+export async function fetchMemorySuggestion(state: AppState, date: string, waitMs: number): Promise<BackendSuggestion | null> {
+  const abort = new AbortController();
+  const timer = setTimeout(() => abort.abort(), waitMs);
+  try {
+    const res = await fetch(`${BASE}/suggest/memory`, {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(buildMemoryRequest(state, date)), signal: abort.signal,
+    });
+    if (!res.ok) {
+      console.warn("No suggestion from the backend.", res.status, await res.text());
+      return null;
+    }
+    const d = await res.json();
+    const picks: MemoryPickReply[] = [d.lead, ...d.backups];
+    return {
+      source: d.source, model: d.model, logId: d.log_id,
+      lead: memorySuggestion(d.lead), backups: d.backups.map(memorySuggestion),
+      jevRequest: d.jev_request, jevAnswers: d.jev_answers, rows: picks.map(tableRow),
+    };
+  } catch (e) {
+    console.warn(abort.signal.aborted ? `No suggestion from the backend within ${waitMs / 1000} s.` : "The backend can't be reached for a suggestion.", e);
     return null;
   } finally {
     clearTimeout(timer);

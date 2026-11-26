@@ -13,7 +13,7 @@ come from the activity table in the backend, not from the frontend
 """
 from typing import Dict, List, Literal, Optional
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class CheckIn(BaseModel):
@@ -173,6 +173,53 @@ class TableSuggestResponse(BaseModel):
     jev_request: dict
     jev_answers: Dict[str, dict]
     log_id: int
+
+
+class MemorySuggestRequest(BaseModel):
+    """POST /api/suggest/memory: today's check-in. Everything else about the user is read from Memory.
+
+    There is no place here for the weekly goal, what is done, or what is needed today. The
+    backend works those out itself (calculator.py), and a request that carries them anyway
+    is refused, so the app's own numbers can never get mixed in with the backend's.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    user_id: str = "demo"
+    check_in: CheckIn
+    # The user's "today", e.g. "2026-11-23". Left out: the date on the backend's own clock.
+    date: Optional[str] = None
+    # "I want more today": aim for 1.5× what is still needed.
+    want_more: bool = False
+
+
+class TodayNumbers(BaseModel):
+    """Today's numbers as the backend worked them out, in MET-hours. The app shows these as they are."""
+
+    day_name: str
+    weekly_goal_met_hours: float
+    done_this_week_met_hours: float
+    left_this_week_met_hours: float
+    target_met_hours: float  # today's share of the weekly goal
+    done_today_met_hours: float
+    needed_met_hours: float  # what is still missing from today's share
+
+
+class MemoryPick(TablePick):
+    """A pick from the activity table, plus what it would add toward the weekly goal.
+
+    On /api/suggest/table the app works that out itself. Here the backend does the math, so the app only shows it.
+    """
+
+    met_hours: float
+
+
+class MemorySuggestResponse(TableSuggestResponse):
+    """The table route's answer, plus the numbers it was based on and what each pick would add."""
+
+    lead: MemoryPick
+    backups: List[MemoryPick]
+    today: TodayNumbers
 
 
 class ChatMessage(BaseModel):

@@ -55,7 +55,7 @@ export function RewardCalendar({ weeks, month }: { weeks: WeekIn[]; month: { yea
       </div>
       <ol className="rcal-rows">
         {weeks.map((w) => {
-          const won = trophyEarned(w.done, w.goal);
+          const won = w.trophy ?? trophyEarned(w.done, w.goal);
           const label = `Week of ${w.label}: opened the app on ${w.signIns.filter(Boolean).length} days, ${fmt(w.done)} of ${fmtGoal(w.goal)} MET-hours${won ? ", trophy earned" : ""}`;
           return (
             <li key={w.start.getTime()} className={`rcal-row${won ? " has-trophy" : ""}`} aria-label={label}>

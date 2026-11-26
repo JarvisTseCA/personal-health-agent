@@ -4,11 +4,20 @@ FastAPI backend for the Personal Health Agent.
     POST   /api/suggest           check-in variables → Jev: which activity → Jev: how long → pick + 2 backups
     POST   /api/suggest/table     the same, with the options taken from the activity table:
                                   filter the table → Jev: which heading → which activity → how long
+    POST   /api/suggest/memory    the same again, from today's check-in alone: the rest is read from Memory
+                                  and today's numbers are worked out here (memory_suggest.py, calculator.py)
     POST   /api/chat              a Chat message → urgent keywords → Jev: three yes/no questions →
                                   a fixed reply, or the model that writes. Plain text, streamed
     GET    /api/state             load the saved app state
     PUT    /api/state             save it
     DELETE /api/state             forget it
+    GET    /api/memory            what Memory holds about a user, in its six groups (memory.py)
+    POST   /api/memory            add to it or update it: any part of the six groups
+    DELETE /api/memory/{kind}/{key}   take one entry out: a check-in, a suggestion or a workout
+    DELETE /api/memory            forget the user
+    GET    /api/numbers           every number on the app's screens, worked out from Memory for one day
+                                  (memory_numbers.py). The three routes above that read or change Memory
+                                  give the same numbers in their reply when the request has ?date=
     GET    /api/suggestions/log   recent prompts and Jev answers, for prompt tuning
     GET    /api/activities        the activity table, optionally by place and heading
     GET    /api/health            is the backend up, and is Jev live or mocked?
@@ -46,7 +55,10 @@ from fastapi import Body, FastAPI, HTTPException, Query, Request  # noqa: E402
 from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
 from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse, StreamingResponse  # noqa: E402
 
-from . import activities, chat_gate, chat_prompt, chat_replies, chat_rules, chat_writer, db  # noqa: E402
+from . import (  # noqa: E402
+    activities, calculator, chat_gate, chat_prompt, chat_replies, chat_rules, chat_writer, db, memory, memory_numbers,
+    memory_suggest,
+)
 from . import google_health as gh  # noqa: E402
 from .jev import (  # noqa: E402
     JevError, call_jev, has_api_key, jev_model, mock_activity, mock_durations,
@@ -58,7 +70,8 @@ from .prompt import (  # noqa: E402
     group_by_heading, table_activity_question,
 )
 from .schemas import (  # noqa: E402
-    ChatRequest, SuggestRequest, SuggestResponse, TableSuggestRequest, TableSuggestResponse,
+    ChatRequest, MemorySuggestRequest, MemorySuggestResponse, SuggestRequest, SuggestResponse,
+    TableSuggestRequest, TableSuggestResponse,
 )
 from .suggest import (  # noqa: E402
     HEADINGS_TO_ASK, RECENT_DAYS, AnswerError, assemble, assemble_table, pick_activities, pick_from_table, rank_headings,
@@ -322,6 +335,39 @@ def suggest_from_table(req: TableSuggestRequest) -> TableSuggestResponse:
     )
 
 
+@app.post("/api/suggest/memory", response_model=MemorySuggestResponse)
+def suggest_from_memory(req: MemorySuggestRequest) -> MemorySuggestResponse:
+    """A suggestion from today's check-in alone. Everything else about the user is read from Memory.
+
+    The check-in is stored in Memory. The goal, plan and workouts there give today's numbers
+    (calculator.py); the likes, picks and declines there fill in the rest (memory_suggest.py).
+    Then it is /api/suggest/table. The numbers come back with the suggestion, so an app that
+    uses this route shows them and doesn't work out its own. This is the route the app uses
+    for Today's pick whenever it runs with the backend.
+    """
+    today = _day(req.date)
+    c = req.check_in
+    memory.save(req.user_id, {"daily": {"check_ins": [
+        {"date": today.isoformat(), "minutes": c.minutes, "place": c.place, "energy": c.energy, "mood": c.mood},
+    ]}})
+    try:
+        table_req, numbers = memory_suggest.build_request(req.user_id, c, today, want_more=req.want_more)
+    except memory_suggest.NotEnoughMemory as e:
+        raise HTTPException(422, str(e)) from e
+
+    log.info("── POST /api/suggest/memory  user=%s  %s %s ──", req.user_id, numbers["day_name"], today.isoformat())
+    log.info("[0] From Memory: goal %.2f MET-h · done this week %.2f · today's target %.2f, still needed %.2f",
+             numbers["weekly_goal_met_hours"], numbers["done_this_week_met_hours"],
+             numbers["target_met_hours"], numbers["needed_met_hours"])
+    log.info("    👍 %s · left out: %s · picked here before: %s", ", ".join(table_req.liked_categories) or "none",
+             ", ".join([*table_req.exclude_headings, *table_req.exclude_codes]) or "nothing",
+             ", ".join(table_req.picked_codes) or "nothing yet")
+    result = suggest_from_table(table_req).model_dump()
+    for pick in [result["lead"], *result["backups"]]:  # what each one would add toward the goal
+        pick["met_hours"] = calculator.credit(pick["met_value"], pick["duration_min"])
+    return MemorySuggestResponse(**result, today=numbers)
+
+
 def _short(text: str, limit: int = 80) -> str:
     """A message on one terminal line."""
     text = " ".join(text.split())
@@ -435,6 +481,112 @@ def put_state(state: Dict[str, Any] = Body(...), user_id: str = "demo") -> Dict[
 def delete_state(user_id: str = "demo") -> Dict[str, bool]:
     db.clear_state(user_id)
     return {"ok": True}
+
+
+# --- Memory: what the backend remembers about a user, in six groups (memory.py) ----------------
+# When the app finds the backend running, these are what it uses: it reads Memory when it opens,
+# tells it what changed after every step, and shows the numbers that come back. It no longer
+# saves its state in one piece through /api/state above; that is only read once, to bring an
+# earlier save over into Memory.
+#
+# `date` on these routes is the user's today, "2026-11-25". A request that has it gets the
+# numbers for that day in its reply as well (see _numbers below), worked out after the change.
+
+
+def _day(value: Optional[str]) -> date:
+    """The user's today as they sent it; left out, the date on the backend's own clock."""
+    try:
+        return date.fromisoformat(value) if value else date.today()
+    except ValueError:
+        raise HTTPException(422, f"date {value!r} is not a date like 2026-11-23") from None
+
+
+def _numbers(user_id: str, day: date) -> Dict[str, Any]:
+    """{"numbers": ...}: every number on the app's screens for that day, from Memory (memory_numbers.py).
+
+    Before a weekly goal and plan are saved there is nothing to work out:
+    then "numbers" is null and "numbers_missing" says what Memory still needs.
+    """
+    try:
+        return {"numbers": memory_numbers.for_user(user_id, day)}
+    except memory_suggest.NotEnoughMemory as e:
+        return {"numbers": None, "numbers_missing": str(e)}
+
+
+@app.get("/api/memory")
+def get_memory(
+    user_id: str = "demo", group: Optional[List[str]] = Query(None), day: Optional[str] = Query(None, alias="date"),
+) -> Dict[str, Any]:
+    """Read. All six groups, or only the ones asked for: ?group=preferences&group=daily.
+
+    Without ?date=: everything Memory holds, however far back it goes.
+    With ?date=: what the app is given. Memory from this week and the 26 before it
+    (memory_numbers.recent), and the numbers too.
+    """
+    today = _day(day) if day else None  # a date that can't be read stops the request here
+    try:
+        mem = memory.read(user_id, group)
+    except memory.MemoryDataError as e:
+        raise HTTPException(422, str(e)) from e
+    if today is None:
+        return {"memory": mem}
+    return {"memory": memory_numbers.recent(mem, today), **_numbers(user_id, today)}
+
+
+@app.post("/api/memory")
+def post_memory(
+    part: Dict[str, Any] = Body(...), user_id: str = "demo", day: Optional[str] = Query(None, alias="date"),
+) -> Dict[str, Any]:
+    """Add or update. Send any part of the six groups; what is left out stays as it is.
+
+    Entries under "daily" and "health" are added (or replace the one with the same key);
+    "who", "preferences" and a week's goal and plan are updated; each name under "other" is
+    replaced by what is sent. The shape is at the top of memory.py.
+
+    With ?date=, the reply also has the numbers as they are after this save.
+    """
+    today = _day(day)  # a date that can't be read stops the request before anything is saved
+    try:
+        memory.save(user_id, part)
+    except memory.MemoryDataError as e:
+        raise HTTPException(422, str(e)) from e
+    return {"ok": True, **_numbers(user_id, today)} if day else {"ok": True}
+
+
+@app.delete("/api/memory/{kind}/{key}")
+def delete_memory_entry(
+    kind: str, key: str, user_id: str = "demo", day: Optional[str] = Query(None, alias="date"),
+) -> Dict[str, Any]:
+    """Delete one entry: /api/memory/suggestions/<id>, /api/memory/workouts/<id> or /api/memory/check_ins/<date>.
+
+    With ?date=, the reply also has the numbers as they are without it.
+    """
+    today = _day(day)
+    try:
+        found = memory.delete(user_id, kind, key)
+    except memory.MemoryDataError as e:
+        raise HTTPException(422, str(e)) from e
+    if not found:
+        raise HTTPException(404, f"This user has no {kind} entry '{key}'")
+    return {"ok": True, **_numbers(user_id, today)} if day else {"ok": True}
+
+
+@app.delete("/api/memory")
+def delete_memory(user_id: str = "demo") -> Dict[str, bool]:
+    """Forget everything Memory holds about this user."""
+    memory.clear(user_id)
+    return {"ok": True}
+
+
+@app.get("/api/numbers")
+def get_numbers(user_id: str = "demo", day: Optional[str] = Query(None, alias="date")) -> Dict[str, Any]:
+    """Every number on the app's screens for one day, worked out from Memory. Nothing is saved.
+
+    This week (done, each day's target, today's share), the streak, the trophies, the past
+    weeks and months, the goal offer, the Summary page and VO2 max: the shape is at the top
+    of memory_numbers.py. `date` is the user's today; left out, the backend's own date.
+    """
+    return _numbers(user_id, _day(day))
 
 
 @app.get("/api/suggestions/log")

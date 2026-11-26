@@ -48,6 +48,7 @@ function emptyMemory(): Memory {
     goals: [],
     daily: { check_ins: [], suggestions: [], workouts: [], app_opens: [] },
     health: { vo2_max: [], heart_rates: [] },
+    chat: [],
     other: {},
   };
 }
@@ -107,6 +108,7 @@ const backend = {
       m.health.vo2_max = upsert(m.health.vo2_max, h.vo2_max, (r) => r.month);
       m.health.heart_rates = upsert(m.health.heart_rates, h.heart_rates, (r) => r.workout_id);
     }
+    m.chat = upsert(m.chat, part.chat, (c) => c.id);
     if (part.other) for (const [name, value] of Object.entries(part.other)) m.other[name] = value;
   },
 
@@ -115,6 +117,8 @@ const backend = {
     if (kind === "workouts") d.workouts = d.workouts.filter((w) => w.id !== key);
     if (kind === "suggestions") d.suggestions = d.suggestions.filter((s) => s.id !== key);
     if (kind === "check_ins") d.check_ins = d.check_ins.filter((c) => c.date !== key);
+    if (kind === "chat") this.memory.chat = this.memory.chat.filter((c) => c.id !== key);
+    if (kind === "other") delete this.memory.other[key];
   },
 
   /** What the backend would work out for the Memory it holds now (see the comment at the top). */
@@ -197,7 +201,11 @@ function reduceOne(state: AppState, action: Action): AppState {
     case "accept": return Today.accept(state, action.suggestion);
     case "sync": return Today.sync(state);
     case "addMessage": return { ...state, chat: [...state.chat, action.message] };
-    case "updateMessage": return { ...state, chat: state.chat.map((m) => (m.id === action.id ? { ...m, text: action.text, suggestions: action.suggestions ?? m.suggestions } : m)) };
+    case "updateMessage": return { ...state, chat: state.chat.map((m) => (m.id === action.id ? { ...m, text: action.text, suggestions: action.suggestions ?? m.suggestions, ...(action.reply ? { reply: action.reply } : {}) } : m)) };
+    case "editChat": {
+      const i = state.chat.findIndex((m) => m.id === action.id);
+      return i < 0 ? state : { ...state, chat: state.chat.slice(0, i) };
+    }
     case "toast": return { ...state, toast: action.text };
     case "overlay": return { ...state, overlay: action.overlay };
     case "moveEnjoyed": {
@@ -259,7 +267,7 @@ async function acceptThePick(o: Opened) {
 
 const creditLine = (s: AppState) => s.today.entries.find((e) => e.role === "agent" && /^\+[\d.]+ MET-hours from /.test(e.text));
 const sessionsOf = (s: AppState) => s.sessions.map((x) => x.id);
-const memoryChat = () => ((backend.memory.other as OtherOfApp).chat ?? []).map((m) => m.text);
+const memoryChat = () => backend.memory.chat.map((m) => m.text);
 const message = (text: string): ChatMessage => ({ id: `m-${text}`, role: "user", text });
 
 beforeEach(() => {
@@ -311,7 +319,8 @@ describe("running the app with the backend (memorySession)", () => {
     const replaced = backend.calls.find((c): c is Extract<Call, { name: "replaceMemory" }> => c.name === "replaceMemory");
     expect(replaced).toBeDefined();
     const other = replaced!.memory.other as OtherOfApp;
-    expect(other.chat?.map((m) => m.text)).toEqual(["Hello from before Memory"]);
+    expect(replaced!.memory.chat.map((m) => m.text)).toEqual(["Hello from before Memory"]);
+    expect(other.chat).toBeUndefined(); // the conversation has a group of its own
     expect(other.app?.onboarded).toBe(true);
     expect(o.state.onboarded).toBe(true);
     expect(o.state.chat.map((m) => m.text)).toEqual(["Hello from before Memory"]);
@@ -405,8 +414,7 @@ describe("running the app with the backend (memorySession)", () => {
     const sends = backend.calls.filter((c): c is Extract<Call, { name: "sendChanges" }> => c.name === "sendChanges");
     expect(sends).toHaveLength(1);
     expect(sends[0].date).toBeUndefined();
-    expect(Object.keys(sends[0].changes.save?.other ?? {})).toEqual(["chat"]);
-    expect(Object.keys(sends[0].changes.save ?? {})).toEqual(["other"]);
+    expect(sends[0].changes.save).toEqual({ chat: [{ id: "m-Hi coach", role: "user", text: "Hi coach", at: null, reply: null, app: null }] });
     expect(sends[0].changes.remove).toEqual([]);
     expect(backend.calls.some((c) => c.name !== "sendChanges")).toBe(false);
     expect(memoryChat()).toContain("Hi coach");
@@ -543,6 +551,63 @@ describe("running the app with the backend (memorySession)", () => {
     expect(sends()).toHaveLength(2); // the user's message, then the whole reply
     expect(memoryChat()).toEqual(["Is walking enough?", "Walking counts when it's brisk."]);
     expect(backend.calls.some((c) => c.name !== "sendChanges")).toBe(false);
+  });
+
+  it("a reply from the backend is saved with what kind of reply it was", async () => {
+    const o = await open(onboarded());
+
+    // The Chat screen with the backend's agent: the kind arrives with the reply and is told by the step that finishes it.
+    await o.step({ type: "addMessage", message: message("My knee hurts when I run") });
+    await o.step({ type: "addMessage", message: { id: "reply", role: "agent", text: "" }, unfinished: true });
+    await o.step({ type: "updateMessage", id: "reply", text: "I can't give medical advice.", reply: "medical_advice" });
+
+    expect(backend.memory.chat.map((m) => [m.role, m.reply])).toEqual([["user", null], ["agent", "medical_advice"]]);
+
+    // It is still there at the next open.
+    showNumbers(null, null);
+    const second = await open(onboarded());
+    expect(second.state.chat.at(-1)).toEqual({ id: "reply", role: "agent", text: "I can't give medical advice.", reply: "medical_advice" });
+  });
+
+  it("editing an earlier chat message takes it, and what came after it, out of Memory", async () => {
+    const o = await open(onboarded());
+    for (const text of ["Is walking enough?", "And cycling?", "And swimming?"]) await o.step({ type: "addMessage", message: message(text) });
+    expect(memoryChat()).toEqual(["Is walking enough?", "And cycling?", "And swimming?"]);
+    backend.calls = [];
+
+    await o.step({ type: "editChat", id: "m-And cycling?" }); // what the Chat screen does first when an edited message is saved
+    await o.step({ type: "addMessage", message: message("And rowing?") });
+
+    expect(memoryChat()).toEqual(["Is walking enough?", "And rowing?"]);
+    expect(o.last().chat.map((m) => m.text)).toEqual(["Is walking enough?", "And rowing?"]);
+    const sends = backend.calls.filter((c): c is Extract<Call, { name: "sendChanges" }> => c.name === "sendChanges");
+    expect(sends[0].changes).toEqual({ save: null, remove: [{ kind: "chat", key: "m-And cycling?" }, { kind: "chat", key: "m-And swimming?" }] });
+  });
+
+  it("a conversation Memory still keeps under \"other\" moves to the chat group at the next open, once", async () => {
+    // Memory as an earlier version of the app left it: the app's own part, with the conversation inside it.
+    const first = await open(onboarded());
+    await first.step({ type: "addMessage", message: message("From before") });
+    (backend.memory.other as OtherOfApp).chat = [{ id: "m-From before", role: "user", text: "From before" }];
+    backend.memory.chat = [];
+
+    showNumbers(null, null);
+    backend.calls = [];
+    const second = await open(onboarded());
+
+    expect(second.state.chat.map((m) => m.text)).toEqual(["From before"]);
+    expect(memoryChat()).toEqual(["From before"]);
+    expect("chat" in backend.memory.other).toBe(false);
+    const moved = backend.calls.filter((c): c is Extract<Call, { name: "sendChanges" }> => c.name === "sendChanges");
+    expect(moved.map((c) => c.changes)).toEqual([{ save: null, remove: [{ kind: "other", key: "chat" }] }]);
+
+    // The open after that finds nothing left to move.
+    showNumbers(null, null);
+    backend.calls = [];
+    const third = await open(onboarded());
+    expect(third.state.chat.map((m) => m.text)).toEqual(["From before"]);
+    expect(backend.calls.some((c) => c.name === "sendChanges")).toBe(false);
+    expect(backend.calls.some((c) => c.name === "saveMemory" && !!c.part.chat)).toBe(false);
   });
 
   it("closing the toast after a step that didn't go through sends nothing, and the toast stays closed", async () => {

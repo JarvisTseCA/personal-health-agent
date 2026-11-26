@@ -16,7 +16,7 @@ import { showNumbers } from "../services/numbers";
 import { openMemorySession, type MemorySession } from "./memorySession";
 import * as Today from "./today";
 import type { EquipmentProfile } from "../data/mockFitbit";
-import type { AppState, ChatMessage, ClinicianNotes, Overlay, SuggestSource, UserProfile } from "./types";
+import type { AppState, ChatMessage, ChatReply, ClinicianNotes, Overlay, SuggestSource, UserProfile } from "./types";
 import { appDate, clampGoal } from "../lib/goalNote";
 
 export { newId } from "./today";
@@ -141,7 +141,8 @@ export type Action =
   // `unfinished`: the agent is still writing this message. It is shown as it grows; with the
   // backend it is saved once, by the update that finishes it (memorySession.ts).
   | { type: "addMessage"; message: ChatMessage; unfinished?: boolean }
-  | { type: "updateMessage"; id: string; text: string; suggestions?: string[]; unfinished?: boolean }
+  // `reply`: for a reply from the backend, what kind it was (ChatReply); kept with the message.
+  | { type: "updateMessage"; id: string; text: string; suggestions?: string[]; reply?: ChatReply; unfinished?: boolean }
   | { type: "backendSuggestion"; replaces: Suggestion; result: BackendSuggestion }
   | { type: "backendFailed"; replaces: Suggestion }
   | { type: "suggestionFailed"; replaces: Suggestion }
@@ -290,7 +291,9 @@ function reduce(state: AppState, action: Action): AppState {
     case "updateMessage":
       return {
         ...state,
-        chat: state.chat.map((m) => (m.id === action.id ? { ...m, text: action.text, suggestions: action.suggestions ?? m.suggestions } : m)),
+        chat: state.chat.map((m) => (m.id === action.id
+          ? { ...m, text: action.text, suggestions: action.suggestions ?? m.suggestions, ...(action.reply ? { reply: action.reply } : {}) }
+          : m)),
       };
     case "backendSuggestion":
       return Today.applyBackendSuggestion(state, action.replaces, action.result);
@@ -312,6 +315,8 @@ interface Store {
   state: AppState;
   dispatch: React.Dispatch<Action>;
   ctx: AgentContext;
+  /** Set when the app runs with the backend (the one switch, decided when it opens); null without it */
+  session: MemorySession | null;
 }
 
 const StoreContext = createContext<Store | null>(null);
@@ -420,7 +425,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   }, [state, dispatch]);
 
   const ctx = useMemo(() => buildAgentContext(state), [state]);
-  const value = useMemo(() => ({ state, dispatch, ctx }), [state, ctx]);
+  // `memory.current` is set just before the state read from Memory is shown, so it is in step with `state`.
+  const value = useMemo(() => ({ state, dispatch, ctx, session: memory.current }), [state, dispatch, ctx]);
   return <StoreContext.Provider value={value}>{children}</StoreContext.Provider>;
 }
 

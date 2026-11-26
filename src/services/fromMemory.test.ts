@@ -14,7 +14,7 @@ import { addDays, type Memory, type MemoryWorkout, type OtherOfApp } from "./mem
 import { numbersLike } from "./numbers.testkit";
 import { toMemory } from "./toMemory";
 
-const MONDAY = "2026-11-23";
+const SUNDAY = "2026-11-22";
 
 function onboarded(id: string): AppState {
   const s = initialState(id);
@@ -23,9 +23,9 @@ function onboarded(id: string): AppState {
 
 /** Memory and the numbers for a state, and the state read back from them. */
 function through(s: AppState, edit: (m: Memory) => void = () => undefined, base: AppState = initialState()) {
-  const m = toMemory(s, MONDAY);
+  const m = toMemory(s, SUNDAY);
   edit(m);
-  const back = fromMemory(m, numbersLike(s, MONDAY), base)!;
+  const back = fromMemory(m, numbersLike(s, SUNDAY), base)!;
   return { m, back };
 }
 
@@ -47,9 +47,9 @@ const blankWorkout = (patch: Partial<MemoryWorkout>): MemoryWorkout => (
 
 describe("fromMemory: a new user", () => {
   it("gives null when Memory holds nothing under other.app", () => {
-    const m = toMemory(onboarded("alex"), MONDAY);
+    const m = toMemory(onboarded("alex"), SUNDAY);
     delete (m.other as OtherOfApp).app;
-    expect(fromMemory(m, numbersLike(onboarded("alex"), MONDAY), initialState())).toBeNull();
+    expect(fromMemory(m, numbersLike(onboarded("alex"), SUNDAY), initialState())).toBeNull();
   });
 });
 
@@ -59,7 +59,7 @@ describe("fromMemory: the round trip", () => {
       const s = onboarded(persona.id);
       const { m, back } = through(s);
       expect(back.newWeek).toBe(false);
-      expect(ordered(toMemory(back.state, MONDAY))).toEqual(ordered(m));
+      expect(ordered(toMemory(back.state, SUNDAY))).toEqual(ordered(m));
     });
   }
 
@@ -99,17 +99,17 @@ describe("fromMemory: the round trip", () => {
 describe("fromMemory: a history as long as the backend's", () => {
   it("builds exactly as many weeks as numbers.past_weeks lists, in the same order", () => {
     const s = onboarded("alex");
-    const base = numbersLike(s, MONDAY);
+    const base = numbersLike(s, SUNDAY);
     // 26 past weeks (the most the backend lists), each with a goal of its own: 5.00, 5.01, ...
     const past_weeks = Array.from({ length: 26 }, (_, i) => ({
       ...base.past_weeks[i % base.past_weeks.length],
-      week_start: addDays(MONDAY, -7 * (26 - i)),
+      week_start: addDays(SUNDAY, -7 * (26 - i)),
       goal_met_hours: 5 + i / 100,
       plan: base.past_weeks[i % base.past_weeks.length].plan,
     }));
     const numbers = { ...base, past_weeks, streak: { current: 3, best: 200 }, trophies: 40 };
 
-    const back = fromMemory(toMemory(s, MONDAY), numbers, initialState())!;
+    const back = fromMemory(toMemory(s, SUNDAY), numbers, initialState())!;
 
     expect(back.state.history).toHaveLength(26);
     expect(back.state.history.map((w) => w.goal)).toEqual(past_weeks.map((w) => w.goal_met_hours));

@@ -18,7 +18,7 @@ in the app). When one side changes a rule, change the other and the examples too
 `numbers()` works everything out from two of Memory's groups, "goals" and "daily", as
 memory.read() gives them, and one date: today.
 
-Days. The app counts 0 = Monday … 6 = Sunday inside "this week" and "n weeks ago"; in its
+Days. The app counts 0 = Sunday … 6 = Saturday inside "this week" and "n weeks ago"; in its
 demo, today is one of those seven. Memory holds real dates. Here everything follows from
 `today`: the week it is in is this week, the weeks before it are the past weeks, and
 whatever is dated after `today` is left out, the way the app leaves out the days after today.
@@ -131,24 +131,24 @@ def numbers(goals: List[Dict[str, Any]], daily: Dict[str, Any], today: date) -> 
 
     NotEnoughMemory (memory_suggest.py) when no weekly goal or plan is saved yet.
     """
-    monday = calculator.monday_of(today)
-    index = today.weekday()
+    sunday = calculator.sunday_of(today)
+    index = calculator.day_index(today)
 
     workouts = [w for w in daily.get("workouts") or [] if date.fromisoformat(w["date"]) <= today]
     opens = {day for day in map(date.fromisoformat, daily.get("app_opens") or []) if day <= today}  # the record, today included
 
     by_week: Dict[date, List[Dict[str, Any]]] = {}
     for workout in workouts:
-        by_week.setdefault(calculator.monday_of(date.fromisoformat(workout["date"])), []).append(workout)
+        by_week.setdefault(calculator.sunday_of(date.fromisoformat(workout["date"])), []).append(workout)
 
     now = week_for(goals, today)  # NotEnoughMemory when nothing is saved yet
-    this_week = _week(monday, now["goal_met_hours"], now["plan"], by_week.get(monday, []), opens)
+    this_week = _week(sunday, now["goal_met_hours"], now["plan"], by_week.get(sunday, []), opens)
 
     # Past weeks: from the earliest week Memory knows anything about, to last week.
-    known = [date.fromisoformat(week["week_start"]) for week in goals] + list(by_week) + [calculator.monday_of(day) for day in opens]
+    known = [date.fromisoformat(week["week_start"]) for week in goals] + list(by_week) + [calculator.sunday_of(day) for day in opens]
     past: List[Dict[str, Any]] = []
     start = min(known)
-    while start < monday:
+    while start < sunday:
         goal, plan = _goal_and_plan(goals, start)
         past.append(_week(start, goal, plan, by_week.get(start, []), opens))
         start += timedelta(days=7)
@@ -157,25 +157,25 @@ def numbers(goals: List[Dict[str, Any]], daily: Dict[str, Any], today: date) -> 
     recent = past[-RECENT_WEEKS:]  # the detail the app is given; the totals count every week
     return {
         "today": today.isoformat(),
-        "today_index": index,  # 0 = Monday
+        "today_index": index,  # 0 = Sunday
         "streak": streak_of(opened),  # over every week on record
         "trophy": this_week["trophy"],  # this week's goal is reached
         "trophies": sum(week["trophy"] for week in past) + int(this_week["trophy"]),  # all so far, this week's included
         "this_week": this_week,  # up to and including today
         "past_weeks": recent,  # oldest first; the last one is last week; RECENT_WEEKS at most
-        "months": _months(recent, monday),  # newest first
+        "months": _months(recent, sunday),  # newest first
         "goal_offer": goal_offer(now["goal_met_hours"], [week["done_met_hours"] for week in past]),
         "summary": _summary(past, this_week, index),
     }
 
 
-def _week(monday: date, goal: float, plan: List[str], workouts: List[Dict[str, Any]], opens: Set[date]) -> Dict[str, Any]:
+def _week(sunday: date, goal: float, plan: List[str], workouts: List[Dict[str, Any]], opens: Set[date]) -> Dict[str, Any]:
     """One week's numbers. `workouts` are that week's (for this week: up to today), `opens` every day on record as opened."""
     done = [0.0] * 7
     active = [False] * 7
     rows: List[Dict[str, Any]] = []
     for workout in sorted(workouts, key=lambda w: w["date"]):  # by day; a day's workouts stay in Memory's order
-        day = (date.fromisoformat(workout["date"]) - monday).days
+        day = (date.fromisoformat(workout["date"]) - sunday).days
         met = calculator.counted_met(workout)
         earned = calculator.credit(met, workout["duration_min"])
         done[day] += earned
@@ -189,12 +189,12 @@ def _week(monday: date, goal: float, plan: List[str], workouts: List[Dict[str, A
             "intensity": intensity_of(met),
         })
 
-    opened = [monday + timedelta(days=d) in opens for d in range(7)]
+    opened = [sunday + timedelta(days=d) in opens for d in range(7)]
 
     total = calculator.total(done)
     by_activity = _minutes_by_activity(rows)
     return {
-        "week_start": monday.isoformat(),
+        "week_start": sunday.isoformat(),
         "goal_met_hours": goal,
         "plan": plan,
         "done_met_hours": total,
@@ -208,9 +208,9 @@ def _week(monday: date, goal: float, plan: List[str], workouts: List[Dict[str, A
     }
 
 
-def _goal_and_plan(goals: List[Dict[str, Any]], monday: date) -> Tuple[float, List[str]]:
+def _goal_and_plan(goals: List[Dict[str, Any]], sunday: date) -> Tuple[float, List[str]]:
     """The goal and plan a past week ran on: the latest saved up to it, or the first saved after it."""
-    start = monday.isoformat()
+    start = sunday.isoformat()
     goal = plan = None
     for week in goals:  # oldest first
         if week["week_start"] <= start:
@@ -235,7 +235,7 @@ def _minutes_by_activity(rows: Iterable[Dict[str, Any]]) -> List[Dict[str, Any]]
     return sorted(found.values(), key=lambda entry: -entry["minutes"])  # ties stay in the order first seen
 
 
-def _months(past: List[Dict[str, Any]], this_monday: date) -> List[Dict[str, Any]]:
+def _months(past: List[Dict[str, Any]], this_sunday: date) -> List[Dict[str, Any]]:
     """Past weeks by month, newest first (groupWeeks in src/lib/periods.ts).
 
     A week belongs to the month its Thursday falls in, so no week is split.
@@ -257,13 +257,13 @@ def _months(past: List[Dict[str, Any]], this_monday: date) -> List[Dict[str, Any
         opened.setdefault(key, []).extend(week["app_opens"])
     for key, month in months.items():
         month["best_streak"] = streak_of(opened[key])["best"]  # the longest run inside this month's weeks
-        month["partial"] = key == _month_of(this_monday)  # this week is in it too, so it isn't over yet
+        month["partial"] = key == _month_of(this_sunday)  # this week is in it too, so it isn't over yet
     return [months[key] for key in sorted(months, reverse=True)]
 
 
-def _month_of(monday: date) -> str:
-    thursday = monday + timedelta(days=3)
-    return f"{thursday.year:04d}-{thursday.month:02d}"
+def _month_of(sunday: date) -> str:
+    middle = sunday + timedelta(days=3)  # Wednesday
+    return f"{middle.year:04d}-{middle.month:02d}"
 
 
 def _summary(past: List[Dict[str, Any]], this_week: Dict[str, Any], today_index: int) -> Dict[str, Any]:

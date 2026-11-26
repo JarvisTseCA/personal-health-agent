@@ -45,7 +45,7 @@ def test_a_check_in_answer_becomes_the_fields_the_buttons_give():
 def test_values_that_aren_t_allowed_are_dropped_not_guessed():
     raw = json.dumps({"intent": "maybe", "minutes": 900, "place": "the gym", "energy": "high", "reason": "busy",
                       "goal": 0, "day_off": "yes", "plan": {"thursday": "off", "fri": "20", "funday": "30"}})
-    assert check_read(raw) == {"intent": "answer", "plan": {3: "off"}}
+    assert check_read(raw) == {"intent": "answer", "plan": {4: "off"}}
 
 
 def test_a_question_is_marked_as_one():

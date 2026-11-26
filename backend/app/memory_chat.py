@@ -31,7 +31,7 @@ from typing import Any, Dict, List, Optional, Sequence
 from . import memory, memory_numbers
 from .memory_suggest import NotEnoughMemory
 
-DAYS = ("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
+DAYS = ("Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat")
 PAST_WEEKS = 4      # how many past weeks the model is told about
 VO2_READINGS = 6    # how many monthly VO2 max readings, ending with the latest
 

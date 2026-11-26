@@ -8,18 +8,18 @@ from app import main, memory
 SAM = {
     "who": {"name": "Sam", "fitbit_connected": False},
     "preferences": {"categories": {"Bicycling": "like"}, "equipment": {"home": ["Yoga mat"], "gym": None}, "no_vigorous": False},
-    "goals": [{"week_start": "2026-11-23", "goal_met_hours": 7.5, "goal_set_by": "default", "plan": ["10"] * 7}],
+    "goals": [{"week_start": "2026-11-22", "goal_met_hours": 7.5, "goal_set_by": "default", "plan": ["10"] * 7}],
     "daily": {
-        "check_ins": [{"date": "2026-11-23", "minutes": 30, "place": "outside", "energy": "normal", "mood": "surprise"}],
+        "check_ins": [{"date": "2026-11-22", "minutes": 30, "place": "outside", "energy": "normal", "mood": "surprise"}],
         "suggestions": [
-            {"id": "d1", "date": "2026-11-23", "place": "outside", "activity_code": "01015",
+            {"id": "d1", "date": "2026-11-22", "place": "outside", "activity_code": "01015",
              "activity_name": "Bicycling, general", "outcome": "declined", "reason": "weather", "note": None},
         ],
         "workouts": [
-            {"id": "w1", "date": "2026-11-23", "activity_code": "17190", "activity_name": "Walking, brisk",
+            {"id": "w1", "date": "2026-11-22", "activity_code": "17190", "activity_name": "Walking, brisk",
              "met": 4.3, "duration_min": 30, "source": "manual", "confirmed": True, "band": None, "start_time": None},
         ],
-        "app_opens": ["2026-11-23"],
+        "app_opens": ["2026-11-22"],
     },
     "health": {"vo2_max": [{"month": "2026-11", "ml_kg_min": 41.0, "source": "fitbit"}], "heart_rates": []},
     "chat": [
@@ -76,7 +76,7 @@ def test_a_preference_is_updated_and_a_workout_is_added(client):
     client.post("/api/memory?user_id=sam", json=SAM)
     client.post("/api/memory?user_id=sam", json={
         "preferences": {"categories": {"Bicycling": "dislike"}},  # changed their mind: still one entry
-        "daily": {"workouts": [{"id": "w2", "date": "2026-11-24", "activity_name": "Yoga", "met": 3.0, "duration_min": 20}]},
+        "daily": {"workouts": [{"id": "w2", "date": "2026-11-23", "activity_name": "Yoga", "met": 3.0, "duration_min": 20}]},
     })
     got = stored(client)
     assert got["preferences"]["categories"] == {"Bicycling": "dislike"}
@@ -88,12 +88,12 @@ def test_an_opened_day_and_what_the_app_keeps_go_in_and_come_back(client):
     client.post("/api/memory?user_id=sam", json=SAM)  # opened on the 23rd, one note
     today = {"step": "time", "entries": [{"id": "t1", "role": "agent", "text": "How much time today?"}]}
     res = client.post("/api/memory?user_id=sam", json={
-        "daily": {"app_opens": ["2026-11-24", "2026-11-23"]},  # the next day; the 23rd is there already
+        "daily": {"app_opens": ["2026-11-23", "2026-11-22"]},  # the next day; the 23rd is there already
         "other": {"today": today},
     })
     assert res.json() == {"ok": True}
     got = stored(client)
-    assert got["daily"]["app_opens"] == ["2026-11-23", "2026-11-24"]
+    assert got["daily"]["app_opens"] == ["2026-11-22", "2026-11-23"]
     assert got["other"] == {"notes": SAM["other"]["notes"], "today": today}
     assert stored(client, group="other") == {"other": got["other"]}
 
@@ -114,7 +114,7 @@ def test_the_app_is_given_the_whole_conversation(client):
     client.post("/api/memory?user_id=sam", json=SAM)
     old = [{"id": f"old{i}", "role": "user", "text": f"from last year {i}", "at": "2025-06-01T09:00:00.000Z"} for i in range(40)]
     client.post("/api/memory?user_id=sam", json={"chat": old})
-    given = stored(client, date="2026-11-25")
+    given = stored(client, date="2026-11-24")
     assert len(given["chat"]) == 42
     assert [m["id"] for m in given["chat"][:2]] == ["c1", "c2"]
 
@@ -134,7 +134,7 @@ def test_a_conversation_kept_under_other_can_move_to_the_chat_group(client):
 
 
 def test_a_day_that_is_not_a_date_is_a_422(client):
-    res = client.post("/api/memory?user_id=sam", json={"daily": {"app_opens": ["2026-11-23", "today"]}})
+    res = client.post("/api/memory?user_id=sam", json={"daily": {"app_opens": ["2026-11-22", "today"]}})
     assert res.status_code == 422
     assert "daily.app_opens[1]: 'today' is not a date" in res.json()["detail"]
     assert stored(client)["daily"]["app_opens"] == []
@@ -143,7 +143,7 @@ def test_a_day_that_is_not_a_date_is_a_422(client):
 def test_a_mistake_is_a_422_that_names_it_and_stores_nothing(client):
     res = client.post("/api/memory?user_id=sam", json={
         "who": {"name": "Sam"},
-        "goals": [{"week_start": "2026-11-23", "plan": ["30"] * 6}],
+        "goals": [{"week_start": "2026-11-22", "plan": ["30"] * 6}],
     })
     assert res.status_code == 422
     assert "goals[0].plan should be 7 days" in res.json()["detail"]
@@ -171,7 +171,7 @@ def test_one_entry_is_deleted_and_asking_again_is_a_404(client):
 
 def test_a_check_in_is_deleted_by_its_date(client):
     client.post("/api/memory?user_id=sam", json=SAM)
-    assert client.delete("/api/memory/check_ins/2026-11-23?user_id=sam").status_code == 200
+    assert client.delete("/api/memory/check_ins/2026-11-22?user_id=sam").status_code == 200
     assert stored(client)["daily"]["check_ins"] == []
 
 

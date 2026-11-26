@@ -27,12 +27,12 @@ import type { ChatMessage, ChatReply, ClinicianNotes, GoalSet, NoteRecord, Sugge
 // --- Memory ------------------------------------------------------------------------------------
 
 export interface MemoryGoalWeek {
-  /** The week's Monday */
+  /** The week's Sunday */
   week_start: string;
   goal_met_hours: number | null;
   /** default, recap (the agent's offer, accepted) or user (typed in Settings, onboarding or Today's first conversation) */
   goal_set_by: "default" | "recap" | "user" | null;
-  /** Monday to Sunday: off | 0 | 5 | 10 | 30 | 45 */
+  /** Sunday to Saturday: off | 0 | 5 | 10 | 30 | 45 */
   plan: string[] | null;
 }
 
@@ -117,9 +117,9 @@ export interface AppOwn {
   version: 1;
   onboarded: boolean;
   personaId: string;
-  /** Today in the demo week, 0 = Monday. With a real Fitbit it is the real day. */
+  /** Today in the demo week, 0 = Sunday. With a real Fitbit it is the real day. */
   todayIndex: number;
-  /** The Monday of the week this was saved in. A different Monday at the next open means a new week has started. */
+  /** The Sunday of the week this was saved in. A different Sunday at the next open means a new week has started. */
   week: string;
   profile: { enjoyed: string[]; access: Record<string, Access>; usualTime: UsualTime; fitbitLive?: boolean };
   planSource: DaySource[];
@@ -156,7 +156,7 @@ export interface OtherOfApp {
 
 export interface NumbersWorkout {
   id: string | null;
-  /** 0 = Monday … 6 = Sunday */
+  /** 0 = Sunday … 6 = Saturday */
   day: number;
   activity_code: string | null;
   activity_name: string;
@@ -190,7 +190,7 @@ export interface NumbersWeek {
 
 export interface NumbersThisWeek extends NumbersWeek {
   left_met_hours: number;
-  /** Each day's target, Monday first */
+  /** Each day's target, Sunday first */
   targets: number[];
   unplanned_met_hours: number;
 }
@@ -260,15 +260,15 @@ export function daysBetween(from: string, to: string): number {
   return Math.round((utc(to) - utc(from)) / DAY_MS);
 }
 
-/** The Monday of the week `now` is in, on the user's own calendar. */
-export function mondayOf(now: Date): string {
+/** The Sunday of the week `now` is in, on the user's own calendar. */
+export function sundayOf(now: Date): string {
   const today = `${now.getFullYear()}-${two(now.getMonth() + 1)}-${two(now.getDate())}`;
-  return addDays(today, -((now.getDay() + 6) % 7));
+  return addDays(today, -now.getDay());
 }
 
-/** The Monday of the week a date is in. */
+/** The Sunday of the week a date is in. */
 export function weekOf(iso: string): string {
-  return addDays(iso, -((new Date(utc(iso)).getUTCDay() + 6) % 7));
+  return addDays(iso, -new Date(utc(iso)).getUTCDay());
 }
 
 /** "2026-11" moved by `months`: addMonths("2026-11", -2) → "2026-09" */

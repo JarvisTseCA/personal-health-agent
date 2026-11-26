@@ -66,8 +66,8 @@ export function fromMemory(memory: Memory, numbers: Numbers, base: AppState): Fr
   const own = other.app;
   if (!own || own.version !== 1) return null;
 
-  const monday = numbers.this_week.week_start;
-  const sameWeek = own.week === monday;
+  const sunday = numbers.this_week.week_start;
+  const sameWeek = own.week === sunday;
 
   // Rows of the activity table the app knows, plus a plain one for any table activity Memory names that it doesn't.
   const tableActivities: Record<string, TableActivity> = { ...(own.tableActivities ?? {}) };
@@ -76,7 +76,7 @@ export function fromMemory(memory: Memory, numbers: Numbers, base: AppState): Fr
   };
 
   const heartRate = new Map(memory.health.heart_rates.map((r) => [r.workout_id, r.avg_bpm]));
-  const sessionOf = (w: MemoryWorkout, weekMonday: string): Session => {
+  const sessionOf = (w: MemoryWorkout, weekSunday: string): Session => {
     const mine = own.workouts[w.id];
     let variantId = mine?.variantId ?? (w.activity_code ? tableId(w.activity_code) : undefined);
     // Neither one of the app's activities nor from the table: kept under its name, as a typed-in activity is.
@@ -85,7 +85,7 @@ export function fromMemory(memory: Memory, numbers: Numbers, base: AppState): Fr
     if (isTableId(variantId)) knowRow(codeOfTableId(variantId), w.activity_name, w.met);
     const customName = mine?.customName ?? (foreign ? w.activity_name : undefined);
     return {
-      id: w.id, variantId, durationMin: w.duration_min, dayIndex: daysBetween(weekMonday, w.date), source: w.source, confirmed: w.confirmed,
+      id: w.id, variantId, durationMin: w.duration_min, dayIndex: daysBetween(weekSunday, w.date), source: w.source, confirmed: w.confirmed,
       ...(w.band ? { band: w.band as FitbitBand } : {}),
       ...(w.start_time ? { startTime: w.start_time } : {}),
       ...(heartRate.has(w.id) ? { avgHeartRate: heartRate.get(w.id) } : {}),
@@ -95,10 +95,10 @@ export function fromMemory(memory: Memory, numbers: Numbers, base: AppState): Fr
 
   const byWeek = new Map<string, MemoryWorkout[]>();
   for (const w of memory.daily.workouts) byWeek.set(weekOf(w.date), [...(byWeek.get(weekOf(w.date)) ?? []), w]);
-  const sessionsOf = (weekMonday: string) => (byWeek.get(weekMonday) ?? []).map((w) => sessionOf(w, weekMonday));
+  const sessionsOf = (weekSunday: string) => (byWeek.get(weekSunday) ?? []).map((w) => sessionOf(w, weekSunday));
 
   const opened = new Set(memory.daily.app_opens);
-  const opensOf = (weekMonday: string) => Array.from({ length: 7 }, (_, d) => opened.has(addDays(weekMonday, d)));
+  const opensOf = (weekSunday: string) => Array.from({ length: 7 }, (_, d) => opened.has(addDays(weekSunday, d)));
 
   const history: WeekRecord[] = numbers.past_weeks.map((w) => ({
     goal: w.goal_met_hours, plan: w.plan as WeekPlan, sessions: sessionsOf(w.week_start),
@@ -121,7 +121,7 @@ export function fromMemory(memory: Memory, numbers: Numbers, base: AppState): Fr
     }
     if (!familyId) continue; // an activity the app has no name for
     declines.push({
-      id: s.id, familyId, reason: (s.reason ?? "other") as DeclineReason, day: daysBetween(monday, s.date),
+      id: s.id, familyId, reason: (s.reason ?? "other") as DeclineReason, day: daysBetween(sunday, s.date),
       ...(s.note ? { note: s.note } : {}),
       ...(s.place ? { place: s.place as Place } : {}),
     });
@@ -143,7 +143,7 @@ export function fromMemory(memory: Memory, numbers: Numbers, base: AppState): Fr
 
   const equipment = memory.preferences.equipment;
   const idsOf = (names: string[]) => names.map((name) => equipmentIdByName.get(name) ?? `${CUSTOM_PREFIX}${name}`);
-  const setBy = [...memory.goals].reverse().find((g) => g.week_start <= monday && g.goal_set_by)?.goal_set_by;
+  const setBy = [...memory.goals].reverse().find((g) => g.week_start <= sunday && g.goal_set_by)?.goal_set_by;
 
   // The conversation is in Memory's chat group. A Memory from before Chat had that group has it under
   // "other" instead, and an older version of the app run on the same Memory since may have added to it
@@ -180,9 +180,9 @@ export function fromMemory(memory: Memory, numbers: Numbers, base: AppState): Fr
     weekPlanned: sameWeek ? own.weekPlanned : undefined,
     plan: numbers.this_week.plan as WeekPlan,
     planSource: own.planSource,
-    sessions: sessionsOf(monday),
+    sessions: sessionsOf(sunday),
     history,
-    signIns: opensOf(monday),
+    signIns: opensOf(sunday),
     vo2,
     declines,
     notes: other.notes ?? [],

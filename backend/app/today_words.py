@@ -8,7 +8,7 @@ Jev still ranks the activities, and code still counts MET-hours; ChatGPT never d
                                        it to /api/chat, through the same checks as the Chat tab).
 2. why_line     POST /api/today/why    The pick and the facts the code already has → one sentence
                                        that starts "Based on". No numbers in it.
-3. recap        POST /api/today/recap  Last week's numbers → two sentences for Monday's check-in.
+3. recap        POST /api/today/recap  Last week's numbers → two sentences at the week's first log-in.
                                        Every number in them must be one of the numbers given.
 
 Every answer is checked here before it goes back; one that fails the check is refused (422), and
@@ -31,7 +31,7 @@ PLACES = ("indoors_private", "indoors_with_others", "outside")
 ENERGIES = ("challenge", "normal", "low")
 REASONS = ("no-time", "tired", "not-mood", "recent", "no-access", "weather", "hurts", "other")
 SLOTS = ("off", "0", "5", "10", "30", "45")
-DAYS = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")
+DAYS = ("sun", "mon", "tue", "wed", "thu", "fri", "sat")
 
 READ_SYSTEM = """You read one typed answer in a fitness app's daily check-in and turn it into fields.
 Answer with one JSON object and nothing else. Leave out every key the message doesn't state; never guess.
@@ -141,7 +141,7 @@ def why_line(activity: str, facts: List[str]) -> str:
     return check_why(chat_writer.complete(WHY_SYSTEM, why_prompt(activity, facts)))
 
 
-# --- 3. Monday's recap of last week ---------------------------------------------------------
+# --- 3. The recap of last week, at the week's first log-in ---------------------------------------------------------
 
 RECAP_SYSTEM = """You write a two-sentence recap of the user's last week, shown at the start of a new week in a fitness app.
 First sentence: what they did, using the numbers given. Second sentence: one encouraging, specific line for the week ahead.

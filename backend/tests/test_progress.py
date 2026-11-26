@@ -14,10 +14,10 @@ from app import memory, progress
 from app.memory_suggest import NotEnoughMemory
 from app.progress import brisk_minutes, goal_offer, streak_of, trophy_earned
 
-MONDAY = date(2026, 11, 23)
-WEDNESDAY = date(2026, 11, 25)  # its week starts on MONDAY; last week started 2026-11-16
+MONDAY = date(2026, 11, 22)
+WEDNESDAY = date(2026, 11, 24)  # its week starts on MONDAY; last week started 2026-11-15
 PLAN = ["30", "off", "30", "off", "off", "45", "off"]
-THIS_WEEK = [{"week_start": "2026-11-23", "goal_met_hours": 7.5, "goal_set_by": "default", "plan": PLAN}]
+THIS_WEEK = [{"week_start": "2026-11-22", "goal_met_hours": 7.5, "goal_set_by": "default", "plan": PLAN}]
 
 
 def workout(day, met=5.0, minutes=30, name="Bicycling, stationary", code=None, **more):
@@ -33,7 +33,7 @@ def numbers(workouts=(), opens=(), goals=None, today=WEDNESDAY):
 
 
 def days_of(week_start, *which):
-    """Dates in the week that starts on `week_start`: days_of("2026-11-16", 5, 6) is that Saturday and Sunday."""
+    """Dates in the week that starts on `week_start`: days_of("2026-11-15", 5, 6) is that Saturday and Sunday."""
     return [(date.fromisoformat(week_start) + timedelta(days=d)).isoformat() for d in which]
 
 
@@ -101,37 +101,37 @@ def test_today_is_not_opened_until_it_is_on_record():
     n = numbers()
     assert n["streak"] == {"current": 0, "best": 0}
     assert n["this_week"]["app_opens"] == [False] * 7
-    assert (n["today"], n["today_index"]) == ("2026-11-25", 2)
+    assert (n["today"], n["today_index"]) == ("2026-11-24", 2)
 
 
 def test_today_counts_as_opened_once_it_is_on_record():
-    n = numbers(opens=["2026-11-25"])
+    n = numbers(opens=["2026-11-24"])
     assert n["streak"] == {"current": 1, "best": 1}
     assert n["this_week"]["app_opens"] == [False, False, True, False, False, False, False]
 
 
 def test_a_day_not_on_record_today_ends_the_run_at_0_and_the_best_run_stays():
     # The same days as the next test, without today: Thursday to Tuesday is 6 days, and today is not on record.
-    n = numbers(opens=days_of("2026-11-16", 0, 3, 4, 5, 6) + days_of("2026-11-23", 0, 1))
+    n = numbers(opens=days_of("2026-11-15", 0, 3, 4, 5, 6) + days_of("2026-11-22", 0, 1))
     assert n["streak"] == {"current": 0, "best": 6}
     assert n["this_week"]["app_opens"][n["today_index"]] is False
 
 
 def test_the_streak_runs_across_weeks():
     # Last week: Monday, then Thursday to Sunday. This week: Monday, Tuesday and today.
-    n = numbers(opens=days_of("2026-11-16", 0, 3, 4, 5, 6) + days_of("2026-11-23", 0, 1, 2))
+    n = numbers(opens=days_of("2026-11-15", 0, 3, 4, 5, 6) + days_of("2026-11-22", 0, 1, 2))
     assert n["streak"] == {"current": 7, "best": 7}
     assert n["past_weeks"][-1]["app_opens"] == [True, False, False, True, True, True, True]
 
 
 def test_a_missed_day_starts_a_new_run_and_the_best_run_stays():
-    friday = date(2026, 11, 27)
-    n = numbers(opens=days_of("2026-11-16", 0, 1, 2, 3, 4, 5, 6) + days_of("2026-11-23", 0, 1, 3, 4), today=friday)
+    friday = date(2026, 11, 26)
+    n = numbers(opens=days_of("2026-11-15", 0, 1, 2, 3, 4, 5, 6) + days_of("2026-11-22", 0, 1, 3, 4), today=friday)
     assert n["streak"] == {"current": 2, "best": 9}  # Wednesday was missed; Thursday and today make 2
 
 
 def test_a_past_week_with_workouts_and_no_opens_has_no_day_opened():
-    weekend = [workout(day) for day in days_of("2026-11-16", 5, 6)]
+    weekend = [workout(day) for day in days_of("2026-11-15", 5, 6)]
     n = numbers(workouts=weekend, today=MONDAY)
     last_week = n["past_weeks"][-1]
     assert last_week["app_opens"] == [False] * 7
@@ -141,8 +141,8 @@ def test_a_past_week_with_workouts_and_no_opens_has_no_day_opened():
 
 
 def test_a_past_week_with_some_opens_counts_exactly_those_days():
-    weekend = [workout(day) for day in days_of("2026-11-16", 5, 6)]
-    opens = days_of("2026-11-16", 1, 2) + ["2026-11-23"]  # Tuesday, Wednesday, and today
+    weekend = [workout(day) for day in days_of("2026-11-15", 5, 6)]
+    opens = days_of("2026-11-15", 1, 2) + ["2026-11-22"]  # Tuesday, Wednesday, and today
     n = numbers(workouts=weekend, opens=opens, today=MONDAY)
     assert n["past_weeks"][-1]["app_opens"] == [False, True, True, False, False, False, False]
     assert n["past_weeks"][-1]["active_days"] == [False, False, False, False, False, True, True]
@@ -150,13 +150,13 @@ def test_a_past_week_with_some_opens_counts_exactly_those_days():
 
 
 def test_a_workout_this_week_does_not_open_its_day():
-    n = numbers(workouts=[workout("2026-11-23")])  # a workout on Monday, synced later; the app wasn't opened
+    n = numbers(workouts=[workout("2026-11-22")])  # a workout on Monday, synced later; the app wasn't opened
     assert n["this_week"]["app_opens"] == [False] * 7
     assert n["streak"]["current"] == 0
 
 
 def test_whatever_is_dated_after_today_is_left_out():
-    n = numbers(workouts=[workout("2026-11-23"), workout("2026-11-27", met=6.0, minutes=60)], opens=["2026-11-25", "2026-11-27", "2026-11-28"])
+    n = numbers(workouts=[workout("2026-11-22"), workout("2026-11-26", met=6.0, minutes=60)], opens=["2026-11-24", "2026-11-26", "2026-11-27"])
     week = n["this_week"]
     assert week["done_met_hours"] == pytest.approx(2.5)
     assert week["active_days"] == [True, False, False, False, False, False, False]
@@ -170,11 +170,11 @@ def test_whatever_is_dated_after_today_is_left_out():
 
 def test_past_weeks_run_from_the_earliest_week_memory_knows_to_last_week():
     # A goal saved three weeks ago and nothing since: three empty weeks, not none.
-    goals = [{"week_start": "2026-11-02", "goal_met_hours": 7.5, "goal_set_by": "default", "plan": PLAN}]
+    goals = [{"week_start": "2026-11-01", "goal_met_hours": 7.5, "goal_set_by": "default", "plan": PLAN}]
     n = numbers(goals=goals)
-    assert [week["week_start"] for week in n["past_weeks"]] == ["2026-11-02", "2026-11-09", "2026-11-16"]
+    assert [week["week_start"] for week in n["past_weeks"]] == ["2026-11-01", "2026-11-08", "2026-11-15"]
     assert [week["done_met_hours"] for week in n["past_weeks"]] == [0, 0, 0]
-    assert n["this_week"]["week_start"] == "2026-11-23"
+    assert n["this_week"]["week_start"] == "2026-11-22"
     assert n["goal_offer"]["kind"] == "lower"  # under half the goal three weeks in a row
 
 
@@ -188,18 +188,18 @@ def test_a_new_user_has_no_past_weeks():
 
 def test_a_week_before_the_first_goal_saved_runs_on_that_first_goal():
     # A workout from four weeks back (brought in from Fitbit); the only goal saved is this week's.
-    n = numbers(workouts=[workout("2026-10-28", met=5.0, minutes=90)])
-    assert [week["week_start"] for week in n["past_weeks"]] == ["2026-10-26", "2026-11-02", "2026-11-09", "2026-11-16"]
+    n = numbers(workouts=[workout("2026-10-27", met=5.0, minutes=90)])
+    assert [week["week_start"] for week in n["past_weeks"]] == ["2026-10-25", "2026-11-01", "2026-11-08", "2026-11-15"]
     first = n["past_weeks"][0]
     assert (first["goal_met_hours"], first["plan"], first["trophy"]) == (7.5, PLAN, True)
 
 
 def test_each_week_keeps_the_goal_it_had():
     goals = [
-        {"week_start": "2026-11-02", "goal_met_hours": 5.0, "goal_set_by": "default", "plan": PLAN},
-        {"week_start": "2026-11-16", "goal_met_hours": 10.0, "goal_set_by": "recap", "plan": None},  # the goal changed, the plan didn't
+        {"week_start": "2026-11-01", "goal_met_hours": 5.0, "goal_set_by": "default", "plan": PLAN},
+        {"week_start": "2026-11-15", "goal_met_hours": 10.0, "goal_set_by": "recap", "plan": None},  # the goal changed, the plan didn't
     ]
-    done = [workout("2026-11-03", minutes=60), workout("2026-11-10", met=6.0, minutes=60), workout("2026-11-17", met=6.0, minutes=60)]
+    done = [workout("2026-11-02", minutes=60), workout("2026-11-09", met=6.0, minutes=60), workout("2026-11-16", met=6.0, minutes=60)]
     n = numbers(workouts=done, goals=goals)
     assert [week["goal_met_hours"] for week in n["past_weeks"]] == [5.0, 5.0, 10.0]
     assert [week["plan"] for week in n["past_weeks"]] == [PLAN, PLAN, PLAN]
@@ -210,9 +210,9 @@ def test_each_week_keeps_the_goal_it_had():
 
 def test_a_week_counts_its_workouts_the_way_the_calculator_does():
     week = numbers(workouts=[
-        workout("2026-11-23", met=2.0, minutes=30, name="Stretching"),  # light: active, but nothing toward the goal
-        workout("2026-11-24", met=6.8, minutes=30, source="fitbit", confirmed=False, band="very"),  # counts at 6.0
-        workout("2026-11-25", met=4.0, minutes=45, name="Walking, treadmill", code="17358"),
+        workout("2026-11-22", met=2.0, minutes=30, name="Stretching"),  # light: active, but nothing toward the goal
+        workout("2026-11-23", met=6.8, minutes=30, source="fitbit", confirmed=False, band="very"),  # counts at 6.0
+        workout("2026-11-24", met=4.0, minutes=45, name="Walking, treadmill", code="17358"),
     ])["this_week"]
     assert week["done_by_day"] == pytest.approx([0, 3.0, 3.0, 0, 0, 0, 0])
     assert week["done_met_hours"] == pytest.approx(6.0)
@@ -225,7 +225,7 @@ def test_a_week_counts_its_workouts_the_way_the_calculator_does():
 
 
 def test_this_weeks_trophy_counts_as_soon_as_the_goal_is_reached():
-    n = numbers(workouts=[workout("2026-11-17", met=6.0, minutes=75), workout("2026-11-23", met=6.0, minutes=75)])
+    n = numbers(workouts=[workout("2026-11-16", met=6.0, minutes=75), workout("2026-11-22", met=6.0, minutes=75)])
     assert n["past_weeks"][-1]["trophy"] is True  # 7.5 of 7.5
     assert (n["trophy"], n["trophies"]) == (True, 2)
 
@@ -233,36 +233,38 @@ def test_this_weeks_trophy_counts_as_soon_as_the_goal_is_reached():
 # --- The months (src/lib/periods.test.ts) ------------------------------------------------------
 
 
-def test_a_week_belongs_to_the_month_its_thursday_falls_in():
-    assert progress._month_of(date(2026, 8, 31)) == "2026-09"  # Aug 31 → September
-    assert progress._month_of(date(2026, 9, 28)) == "2026-10"  # Sep 28 → October
-    assert progress._month_of(date(2026, 10, 26)) == "2026-10"
-    assert progress._month_of(date(2025, 12, 29)) == "2026-01"  # its Thursday is Jan 1
+def test_a_week_belongs_to_the_month_its_wednesday_falls_in():
+    assert progress._month_of(date(2026, 8, 30)) == "2026-09"  # its Wednesday is Sep 2
+    assert progress._month_of(date(2026, 9, 27)) == "2026-09"  # its Wednesday is Sep 30
+    assert progress._month_of(date(2026, 10, 25)) == "2026-10"
+    assert progress._month_of(date(2025, 12, 28)) == "2025-12"  # its Wednesday is Dec 31
+    assert progress._month_of(date(2026, 1, 4)) == "2026-01"
 
 
 def test_months_add_up_met_hours_goals_trophies_active_days_and_streaks_newest_first():
-    # As in the app's test: three October weeks doing 8, 5 and 9; the app opened every day but Sunday.
-    goals = [{"week_start": "2026-09-28", "goal_met_hours": 7.5, "goal_set_by": "default", "plan": PLAN}]
+    # Three October weeks doing 8, 5 and 9; the app opened every day but Saturday.
+    goals = [{"week_start": "2026-09-27", "goal_met_hours": 7.5, "goal_set_by": "default", "plan": PLAN}]
     done = (
-        [workout(day, met=4.0, minutes=30) for day in days_of("2026-10-05", 0, 1, 2, 3)]  # 4 days × 2.0 = 8
-        + [workout(day, met=5.0, minutes=30) for day in days_of("2026-10-12", 0, 1)]  # 2 days × 2.5 = 5
-        + [workout(day, met=3.6, minutes=30) for day in days_of("2026-10-19", 0, 1, 2, 3, 4)]  # 5 days × 1.8 = 9
+        [workout(day, met=4.0, minutes=30) for day in days_of("2026-10-04", 0, 1, 2, 3)]  # 4 days × 2.0 = 8
+        + [workout(day, met=5.0, minutes=30) for day in days_of("2026-10-11", 0, 1)]  # 2 days × 2.5 = 5
+        + [workout(day, met=3.6, minutes=30) for day in days_of("2026-10-18", 0, 1, 2, 3, 4)]  # 5 days × 1.8 = 9
     )
-    opens = [day for week in ("2026-10-05", "2026-10-12", "2026-10-19") for day in days_of(week, 0, 1, 2, 3, 4, 5)]
-    months = numbers(workouts=done, opens=opens, goals=goals, today=date(2026, 10, 26))["months"]
+    opens = [day for week in ("2026-10-04", "2026-10-11", "2026-10-18") for day in days_of(week, 0, 1, 2, 3, 4, 5)]
+    months = numbers(workouts=done, opens=opens, goals=goals, today=date(2026, 10, 25))["months"]
 
-    assert [(m["month"], len(m["week_starts"])) for m in months] == [("2026-10", 4)]  # Sep 28 counts in October too
+    # The week of Sep 27 counts in September: its Wednesday is Sep 30.
+    assert [(m["month"], len(m["week_starts"])) for m in months] == [("2026-10", 3), ("2026-09", 1)]
     october = months[0]
-    assert october["week_starts"] == ["2026-09-28", "2026-10-05", "2026-10-12", "2026-10-19"]
+    assert october["week_starts"] == ["2026-10-04", "2026-10-11", "2026-10-18"]
     assert october["done_met_hours"] == pytest.approx(22)
-    assert october["goal_met_hours"] == pytest.approx(30)  # four weeks at 7.5
+    assert october["goal_met_hours"] == pytest.approx(22.5)  # three weeks at 7.5
     assert (october["trophies"], october["active_days"], october["app_open_days"]) == (2, 11, 18)
     assert october["best_streak"] == 6
-    assert october["partial"] is True  # this week, Oct 26, is an October week as well
+    assert october["partial"] is True  # this week, Oct 25, is an October week as well
 
 
 def test_months_come_newest_first_and_a_finished_month_is_not_partial():
-    goals = [{"week_start": "2026-10-05", "goal_met_hours": 7.5, "goal_set_by": "default", "plan": PLAN}]
+    goals = [{"week_start": "2026-10-04", "goal_met_hours": 7.5, "goal_set_by": "default", "plan": PLAN}]
     months = numbers(goals=goals)["months"]  # today is Wednesday Nov 25
     assert [(m["month"], len(m["week_starts"]), m["partial"]) for m in months] == [("2026-11", 3, True), ("2026-10", 4, False)]
 
@@ -272,15 +274,15 @@ def test_months_come_newest_first_and_a_finished_month_is_not_partial():
 BIKE = dict(name="Bicycling, stationary", code="01216")
 WALK = dict(name="Walking, treadmill", code="17358")
 SIX_WEEKS = [
-    workout("2026-10-12", met=3.0, minutes=60, name="Walking"),  # week of Oct 12: 3.0
-    workout("2026-10-19", met=5.0, minutes=90, name="Bicycling"),  # Oct 19: 7.5, a trophy
-    workout("2026-10-28", met=4.0, minutes=60, **WALK),  # Oct 26: 4.0
-    workout("2026-11-03", met=6.0, minutes=60, **BIKE),  # Nov 2: 6.0 …
-    workout("2026-11-05", met=2.0, minutes=30, name="Stretching"),  # … plus a light half hour
-    workout("2026-11-09", met=6.0, minutes=80, **BIKE),  # Nov 9: 8.0, a trophy
-    workout("2026-11-21", met=4.0, minutes=30, **WALK),  # Nov 16: 2.0 …
-    workout("2026-11-22", met=4.0, minutes=45, **WALK),  # … + 3.0 = 5.0
-    workout("2026-11-23", met=5.0, minutes=30, name="Bicycling"),  # this week: 2.5
+    workout("2026-10-11", met=3.0, minutes=60, name="Walking"),  # week of Oct 12: 3.0
+    workout("2026-10-18", met=5.0, minutes=90, name="Bicycling"),  # Oct 19: 7.5, a trophy
+    workout("2026-10-27", met=4.0, minutes=60, **WALK),  # Oct 26: 4.0
+    workout("2026-11-02", met=6.0, minutes=60, **BIKE),  # Nov 2: 6.0 …
+    workout("2026-11-04", met=2.0, minutes=30, name="Stretching"),  # … plus a light half hour
+    workout("2026-11-08", met=6.0, minutes=80, **BIKE),  # Nov 9: 8.0, a trophy
+    workout("2026-11-20", met=4.0, minutes=30, **WALK),  # Nov 16: 2.0 …
+    workout("2026-11-21", met=4.0, minutes=45, **WALK),  # … + 3.0 = 5.0
+    workout("2026-11-22", met=5.0, minutes=30, name="Bicycling"),  # this week: 2.5
 ]
 
 
@@ -295,14 +297,14 @@ def test_summary_averages_the_last_4_full_weeks():
     assert s["goal_weeks"] == 1  # only the 8.0 week reached 7.5
     assert s["avg_active_days"] == pytest.approx(1.5)  # 1, 2, 1, 2
     assert [(c["week_start"], c["days"].count(True)) for c in s["calendar"]] == [
-        ("2026-10-26", 1), ("2026-11-02", 2), ("2026-11-09", 1), ("2026-11-16", 2),
+        ("2026-10-25", 1), ("2026-11-01", 2), ("2026-11-08", 1), ("2026-11-15", 2),
     ]
     assert (n["trophies"], n["goal_offer"]["kind"]) == (2, "keep")
 
 
 def test_summary_chart_is_the_last_6_weeks_ending_with_this_one():
     chart = numbers(workouts=SIX_WEEKS)["summary"]["chart"]
-    assert [c["week_start"] for c in chart] == ["2026-10-19", "2026-10-26", "2026-11-02", "2026-11-09", "2026-11-16", "2026-11-23"]
+    assert [c["week_start"] for c in chart] == ["2026-10-18", "2026-10-25", "2026-11-01", "2026-11-08", "2026-11-15", "2026-11-22"]
     assert [c["met_hours"] for c in chart] == pytest.approx([7.5, 4.0, 6.0, 8.0, 5.0, 2.5])
     assert [c["brisk_min"] for c in chart] == [150, 80, 120, 160, 100, 50]
     assert [c["reached"] for c in chart] == [True, False, False, True, False, False]
@@ -324,9 +326,9 @@ def test_summary_minutes_a_week_by_effort_and_by_activity():
 def test_summary_groups_minutes_by_the_activitys_name():
     # Two kinds of walking with different table codes, saved under one name: one activity, as in the app.
     walks = [
-        workout("2026-11-16", met=3.5, minutes=60, name="Walking", code="17190"),
-        workout("2026-11-17", met=4.3, minutes=60, name="Walking", code="17200"),
-        workout("2026-11-18", met=6.0, minutes=100, name="Cycling", code="01010"),
+        workout("2026-11-15", met=3.5, minutes=60, name="Walking", code="17190"),
+        workout("2026-11-16", met=4.3, minutes=60, name="Walking", code="17200"),
+        workout("2026-11-17", met=6.0, minutes=100, name="Cycling", code="01010"),
     ]
     assert numbers(workouts=walks)["summary"]["mix"] == [
         {"activity_code": "17190", "activity_name": "Walking", "min_per_week": 120},
@@ -338,8 +340,8 @@ def test_weeks_add_up_the_way_the_app_adds_them():
     # 6.8 + 1.025 + 2.175 + 1.675 is 11.675 added in order, and 233.5 brisk minutes rounds up to 234.
     # Python 3.12's sum() makes it 11.674999999999999 and 233.
     week = [
-        workout("2026-11-16", met=6.8, minutes=60), workout("2026-11-17", met=4.1, minutes=15),
-        workout("2026-11-18", met=8.7, minutes=15), workout("2026-11-19", met=6.7, minutes=15),
+        workout("2026-11-15", met=6.8, minutes=60), workout("2026-11-16", met=4.1, minutes=15),
+        workout("2026-11-17", met=8.7, minutes=15), workout("2026-11-18", met=6.7, minutes=15),
     ]
     n = numbers(workouts=week)
     assert n["past_weeks"][0]["done_met_hours"] == 11.675
@@ -362,16 +364,16 @@ def test_it_works_from_what_memory_gives_back(tmp_path, monkeypatch):
         "goals": THIS_WEEK,
         "daily": {
             "workouts": [
-                {"id": "w1", "date": "2026-11-17", "activity_name": "Bicycling", "met": 6.0, "duration_min": 75},
-                {"id": "w2", "date": "2026-11-23", "activity_name": "Bicycling", "met": 5.0, "duration_min": 30},
+                {"id": "w1", "date": "2026-11-16", "activity_name": "Bicycling", "met": 6.0, "duration_min": 75},
+                {"id": "w2", "date": "2026-11-22", "activity_name": "Bicycling", "met": 5.0, "duration_min": 30},
             ],
-            "app_opens": ["2026-11-22", "2026-11-23", "2026-11-24", "2026-11-25"],
+            "app_opens": ["2026-11-21", "2026-11-22", "2026-11-23", "2026-11-24"],
         },
     })
     mem = memory.read("sam", ["goals", "daily"])
     n = progress.numbers(mem["goals"], mem["daily"], WEDNESDAY)
     assert n["streak"] == {"current": 4, "best": 4}  # Sunday, Monday, Tuesday, today
-    assert [week["week_start"] for week in n["past_weeks"]] == ["2026-11-16"]
+    assert [week["week_start"] for week in n["past_weeks"]] == ["2026-11-15"]
     assert n["past_weeks"][0]["done_met_hours"] == pytest.approx(7.5)
     assert n["this_week"]["done_met_hours"] == pytest.approx(2.5)
     assert (n["trophy"], n["trophies"]) == (False, 1)
@@ -386,9 +388,9 @@ def test_no_goal_saved_yet_says_so(tmp_path, monkeypatch):
 
 
 # --- More than RECENT_WEEKS past weeks ---------------------------------------------------------
-# With today on Wednesday 2026-11-25, last week starts 2026-11-16. The 26 most recent past weeks
-# start on 2026-05-25 (26 Mondays back from 2026-11-23) and run to 2026-11-16. Thirty past weeks
-# start on 2026-04-27, so the four oldest (04-27, 05-04, 05-11, 05-18) are outside the 26.
+# With today on Wednesday 2026-11-24, last week starts 2026-11-15. The 26 most recent past weeks
+# start on 2026-05-24 (26 Mondays back from 2026-11-22) and run to 2026-11-15. Thirty past weeks
+# start on 2026-04-26, so the four oldest (04-27, 05-04, 05-11, 05-18) are outside the 26.
 
 
 def weeks_back(n):
@@ -415,20 +417,20 @@ def test_past_weeks_are_the_last_recent_weeks_oldest_first():
     goals, workouts, opens = long_history(30)
     weeks = [week["week_start"] for week in numbers(goals=goals, workouts=workouts, opens=opens)["past_weeks"]]
     assert len(weeks) == progress.RECENT_WEEKS == 26
-    assert (weeks[0], weeks[-1]) == ("2026-05-25", "2026-11-16")
+    assert (weeks[0], weeks[-1]) == ("2026-05-24", "2026-11-15")
     assert weeks == [weeks_back(n) for n in range(26, 0, -1)]  # one Monday after the other, no gaps
 
 
 @pytest.mark.parametrize("past, kept, first", [
-    (progress.RECENT_WEEKS - 1, 25, "2026-06-01"),  # 25 past weeks: all of them
-    (progress.RECENT_WEEKS, 26, "2026-05-25"),  # exactly 26: nothing cut
-    (progress.RECENT_WEEKS + 1, 26, "2026-05-25"),  # 27: the oldest one (05-18) is cut
+    (progress.RECENT_WEEKS - 1, 25, "2026-05-31"),  # 25 past weeks: all of them
+    (progress.RECENT_WEEKS, 26, "2026-05-24"),  # exactly 26: nothing cut
+    (progress.RECENT_WEEKS + 1, 26, "2026-05-24"),  # 27: the oldest one (05-18) is cut
 ])
 def test_nothing_is_cut_up_to_recent_weeks_and_the_oldest_goes_after_that(past, kept, first):
     goals = [{"week_start": weeks_back(past), "goal_met_hours": 7.5, "goal_set_by": "default", "plan": PLAN}]
     weeks = numbers(goals=goals)["past_weeks"]
     assert len(weeks) == kept
-    assert (weeks[0]["week_start"], weeks[-1]["week_start"]) == (first, "2026-11-16")
+    assert (weeks[0]["week_start"], weeks[-1]["week_start"]) == (first, "2026-11-15")
 
 
 def test_trophies_count_weeks_older_than_the_recent_ones():
@@ -453,7 +455,7 @@ def test_months_are_made_from_the_recent_weeks_only():
     assert sorted(in_months) == [week["week_start"] for week in n["past_weeks"]]  # the same 26 weeks
     # A week belongs to the month of its Thursday: 05-25 is a May week, and April is not there at all.
     assert [month["month"] for month in n["months"]] == [f"2026-{m:02d}" for m in (11, 10, 9, 8, 7, 6, 5)]
-    assert n["months"][-1]["week_starts"] == ["2026-05-25"]
+    assert n["months"][-1]["week_starts"] == ["2026-05-24"]
     assert sum(month["trophies"] for month in n["months"]) == 0  # the trophy weeks are older than these
 
 

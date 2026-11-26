@@ -31,8 +31,8 @@ describe("first time in Today: goal, then plan", () => {
     let s = reducer(afterOnboarding(), { type: "freeText", text: "let's do 6" });
     expect(s.goal).toBe(6);
     s = reducer(s, { type: "freeText", text: "Thursday off, Saturday 45 min" });
-    expect(s.plan[3]).toBe("off");
-    expect(s.plan[5]).toBe("45");
+    expect(s.plan[4]).toBe("off");
+    expect(s.plan[6]).toBe("45");
     expect(s.today.step).toBe("setup-plan");
   });
 

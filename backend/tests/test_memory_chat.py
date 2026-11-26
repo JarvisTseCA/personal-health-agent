@@ -20,7 +20,7 @@ FITNESS = "How am I doing this week?"
 URGENT = "I felt pressure in my chest during my ride yesterday"
 MEDICAL = "My knee hurts when I run"
 
-WEDNESDAY = date(2026, 11, 25)  # its week starts Monday 2026-11-23
+WEDNESDAY = date(2026, 11, 24)  # its week starts Monday 2026-11-22
 GYM = "indoors_with_others"
 
 # What Memory holds about Sam on Wednesday: a 7.5 goal, a ride on Monday, six past weeks, and a conversation.
@@ -32,28 +32,28 @@ SAM = {
         "no_vigorous": True,
     },
     "goals": [
-        {"week_start": "2026-10-12", "goal_met_hours": 6.0, "goal_set_by": "default", "plan": ["30", "off", "30", "off", "off", "45", "off"]},
-        {"week_start": "2026-11-23", "goal_met_hours": 7.5, "goal_set_by": "user", "plan": ["30", "off", "30", "off", "off", "45", "off"]},
+        {"week_start": "2026-10-11", "goal_met_hours": 6.0, "goal_set_by": "default", "plan": ["30", "off", "30", "off", "off", "45", "off"]},
+        {"week_start": "2026-11-22", "goal_met_hours": 7.5, "goal_set_by": "user", "plan": ["30", "off", "30", "off", "off", "45", "off"]},
     ],
     "daily": {
         "check_ins": [
-            {"date": "2026-11-24", "minutes": 10, "place": "outside", "energy": "low", "mood": "surprise"},
-            {"date": "2026-11-25", "minutes": 45, "place": GYM, "energy": "normal", "mood": "surprise"},
+            {"date": "2026-11-23", "minutes": 10, "place": "outside", "energy": "low", "mood": "surprise"},
+            {"date": "2026-11-24", "minutes": 45, "place": GYM, "energy": "normal", "mood": "surprise"},
         ],
         "workouts": [
             # One in each of six past weeks (the oldest ran on the 6.0 goal), then Monday's ride.
             *[
                 {"id": f"w-past{i}", "date": day, "activity_code": "17358", "activity_name": "Walking, treadmill", "met": 4.8, "duration_min": 60}
-                for i, day in enumerate(["2026-10-14", "2026-10-21", "2026-10-28", "2026-11-04", "2026-11-11", "2026-11-18"])
+                for i, day in enumerate(["2026-10-13", "2026-10-20", "2026-10-27", "2026-11-03", "2026-11-10", "2026-11-17"])
             ],
-            {"id": "w-mon", "date": "2026-11-23", "activity_code": "01216", "activity_name": "Bicycling, stationary", "met": 5.0, "duration_min": 30},
+            {"id": "w-mon", "date": "2026-11-22", "activity_code": "01216", "activity_name": "Bicycling, stationary", "met": 5.0, "duration_min": 30},
         ],
         "suggestions": [
-            {"id": "a-mon", "date": "2026-11-23", "place": GYM, "activity_code": "01216", "activity_name": "Bicycling, stationary", "outcome": "accepted"},
-            {"id": "d-wed", "date": "2026-11-25", "place": GYM, "activity_code": "12028", "activity_name": "Running, 4 mph", "outcome": "declined", "reason": "tired"},
-            {"id": "a-wed", "date": "2026-11-25", "place": GYM, "activity_code": "17358", "activity_name": "Walking, treadmill", "outcome": "accepted"},
+            {"id": "a-mon", "date": "2026-11-22", "place": GYM, "activity_code": "01216", "activity_name": "Bicycling, stationary", "outcome": "accepted"},
+            {"id": "d-wed", "date": "2026-11-24", "place": GYM, "activity_code": "12028", "activity_name": "Running, 4 mph", "outcome": "declined", "reason": "tired"},
+            {"id": "a-wed", "date": "2026-11-24", "place": GYM, "activity_code": "17358", "activity_name": "Walking, treadmill", "outcome": "accepted"},
         ],
-        "app_opens": ["2026-11-23", "2026-11-24", "2026-11-25"],
+        "app_opens": ["2026-11-22", "2026-11-23", "2026-11-24"],
     },
     "health": {"vo2_max": [{"month": f"2026-{m:02d}", "ml_kg_min": 36.0 + m / 10} for m in range(3, 12)]},  # March to November
     "chat": [{"id": "c1", "role": "user", "text": "Is walking enough?"}],
@@ -65,7 +65,7 @@ NOTES = [{"text": "Keep to moderate exercise for now and add two strength days a
 def body(*texts, **extra):
     """A request as the app sends it: the texts alternate user, assistant, user, …"""
     roles = ["user", "assistant"]
-    return {"user_id": "sam", "date": "2026-11-25", "messages": [{"role": roles[i % 2], "content": t} for i, t in enumerate(texts)], **extra}
+    return {"user_id": "sam", "date": "2026-11-24", "messages": [{"role": roles[i % 2], "content": t} for i, t in enumerate(texts)], **extra}
 
 
 @pytest.fixture(autouse=True)
@@ -129,7 +129,7 @@ def test_the_numbers_are_the_ones_the_screens_show():
     numbers = memory_numbers.for_user("sam", WEDNESDAY)
     day, week = numbers["day"], numbers["this_week"]
 
-    assert (data["today"]["date"], data["today"]["day"]) == ("2026-11-25", "Wednesday")
+    assert (data["today"]["date"], data["today"]["day"]) == ("2026-11-24", "Tuesday")
     assert data["today"]["target_met_hours"] == day["target_met_hours"] == 2.0
     assert data["today"]["done_met_hours"] == day["done_met_hours"] == 0.0
     assert data["today"]["still_needed_met_hours"] == day["needed_met_hours"] == 2.0
@@ -144,10 +144,10 @@ def test_the_numbers_are_the_ones_the_screens_show():
 
 def test_this_week_is_laid_out_day_by_day_with_its_workouts():
     week = memory_chat.user_data("sam", WEDNESDAY)["this_week"]
-    assert [d["day"] for d in week["days"]] == ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
-    assert week["days"][0] == {"day": "Mon", "planned": "30 min", "target_met_hours": 2.1, "done_met_hours": 2.5}  # 2.142… on its way in
+    assert [d["day"] for d in week["days"]] == ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
+    assert week["days"][0] == {"day": "Sun", "planned": "30 min", "target_met_hours": 2.1, "done_met_hours": 2.5}  # 2.142… on its way in
     assert week["days"][1]["planned"] == "off"
-    assert week["workouts"] == [{"day": "Mon", "activity": "Bicycling, stationary", "minutes": 30, "met_hours": 2.5}]
+    assert week["workouts"] == [{"day": "Sun", "activity": "Bicycling, stationary", "minutes": 30, "met_hours": 2.5}]
 
 
 def test_today_has_its_own_check_in_and_what_the_user_turned_down_today():
@@ -161,14 +161,14 @@ def test_accepted_picks_are_not_told_as_todays():
     today = memory_chat.user_data("sam", WEDNESDAY)["today"]
     assert "Walking, treadmill" not in json.dumps(today)  # accepted, dated Wednesday in Memory
     assert "suggestions" not in today
-    assert memory_chat.user_data("sam", date(2026, 11, 23))["today"]["declined_today"] == []  # Monday: one accepted, none declined
+    assert memory_chat.user_data("sam", date(2026, 11, 22))["today"]["declined_today"] == []  # Monday: one accepted, none declined
 
 
 def test_met_hours_are_given_to_one_decimal_as_the_screens_write_them():
     """19 minutes at 3 MET is 0.95 MET-hours; the screen says 1.0 and what is left as 6.6 (fmt in src/lib/met.ts)."""
     memory.save("pat", {
-        "goals": [{"week_start": "2026-11-23", "goal_met_hours": 7.5, "plan": ["30"] * 7}],
-        "daily": {"workouts": [{"id": "w1", "date": "2026-11-23", "activity_name": "Walking", "met": 3.0, "duration_min": 19}]},
+        "goals": [{"week_start": "2026-11-22", "goal_met_hours": 7.5, "plan": ["30"] * 7}],
+        "daily": {"workouts": [{"id": "w1", "date": "2026-11-22", "activity_name": "Walking", "met": 3.0, "duration_min": 19}]},
     })
     week = memory_chat.user_data("pat", WEDNESDAY)["this_week"]
     assert (week["done_met_hours"], week["left_met_hours"], week["goal_met_hours"]) == (1.0, 6.6, 7.5)
@@ -176,7 +176,7 @@ def test_met_hours_are_given_to_one_decimal_as_the_screens_write_them():
 
 
 def test_a_whole_goal_is_written_without_a_decimal_as_on_the_screens():
-    memory.save("pat", {"goals": [{"week_start": "2026-11-23", "goal_met_hours": 10.0, "plan": ["30"] * 7}]})
+    memory.save("pat", {"goals": [{"week_start": "2026-11-22", "goal_met_hours": 10.0, "plan": ["30"] * 7}]})
     data = memory_chat.user_data("pat", WEDNESDAY)
     assert json.dumps(data["this_week"]["goal_met_hours"]) == "10"
     assert memory_chat.summary(data) == "no name · 0.0 of 10 MET-hours this week"
@@ -184,13 +184,13 @@ def test_a_whole_goal_is_written_without_a_decimal_as_on_the_screens():
 
 
 def test_a_day_without_a_check_in_says_so():
-    assert memory_chat.user_data("sam", date(2026, 11, 26))["today"]["check_in"] is None
+    assert memory_chat.user_data("sam", date(2026, 11, 25))["today"]["check_in"] is None
 
 
 def test_only_the_last_few_weeks_and_readings_are_told():
     data = memory_chat.user_data("sam", WEDNESDAY)
-    assert [w["week_start"] for w in data["past_weeks"]] == ["2026-10-26", "2026-11-02", "2026-11-09", "2026-11-16"]
-    assert data["past_weeks"][-1] == {"week_start": "2026-11-16", "goal_met_hours": 6.0, "done_met_hours": 4.8, "trophy_earned": False}
+    assert [w["week_start"] for w in data["past_weeks"]] == ["2026-10-25", "2026-11-01", "2026-11-08", "2026-11-15"]
+    assert data["past_weeks"][-1] == {"week_start": "2026-11-15", "goal_met_hours": 6.0, "done_met_hours": 4.8, "trophy_earned": False}
     assert data["vo2_max"]["monthly"] == ["2026-06 36.6", "2026-07 36.7", "2026-08 36.8", "2026-09 36.9", "2026-10 37.0", "2026-11 37.1"]
     assert data["vo2_max"]["change_since_first_reading"] == 0.8
 
@@ -208,7 +208,7 @@ def test_a_user_with_no_goal_yet_is_told_about_without_numbers():
     memory.save("new", {"who": {"name": "Robin"}})
     data = memory_chat.user_data("new", WEDNESDAY)
     assert data["user"]["name"] == "Robin"
-    assert data["today"] == {"date": "2026-11-25", "day": "Wednesday"}
+    assert data["today"] == {"date": "2026-11-24", "day": "Tuesday"}
     assert data["progress"].startswith("not known yet")
     assert "this_week" not in data
 
@@ -247,9 +247,9 @@ def test_the_model_gets_the_brief_then_the_users_data_from_memory(client, writte
 
 
 def test_the_date_sent_is_the_users_today(client, written):
-    client.post("/api/chat/memory", json=body(FITNESS, date="2026-11-23"))  # Monday, before the ride is over
+    client.post("/api/chat/memory", json=body(FITNESS, date="2026-11-22"))  # Monday, before the ride is over
     today = data_in(written["system"])["today"]
-    assert (today["date"], today["day"]) == ("2026-11-23", "Monday")
+    assert (today["date"], today["day"]) == ("2026-11-22", "Sunday")
 
 
 def test_clinician_notes_sent_along_reach_the_model(client, written):

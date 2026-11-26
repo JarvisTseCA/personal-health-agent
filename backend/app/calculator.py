@@ -24,7 +24,7 @@ from typing import Any, Dict, Iterable, List, Sequence
 MODERATE_MET = 3.0  # below this an activity is light and doesn't count toward the goal
 UNCONFIRMED_MET = {"fairly": 3.0, "very": 6.0}  # Fitbit's bands, each counted at its lowest MET
 SLOT_MINUTES = {"off": 0, "0": 0, "5": 5, "10": 10, "30": 30, "45": 45}  # a day in the plan → minutes
-DAY_NAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+DAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
 
 
 def met_hours(met: float, minutes: float) -> float:
@@ -43,8 +43,13 @@ def counted_met(workout: Dict[str, Any]) -> float:
     return workout["met"]
 
 
-def monday_of(day: date) -> date:
-    return day - timedelta(days=day.weekday())
+def day_index(day: date) -> int:
+    """0 = Sunday … 6 = Saturday: the week starts on Sunday."""
+    return (day.weekday() + 1) % 7
+
+
+def sunday_of(day: date) -> date:
+    return day - timedelta(days=day_index(day))
 
 
 def total(values: Iterable[float]) -> float:
@@ -61,21 +66,21 @@ def total(values: Iterable[float]) -> float:
 
 
 def done_by_day(workouts: Iterable[Dict[str, Any]], today: date) -> List[float]:
-    """MET-hours earned on each day of today's week, Monday first. Other weeks and days after today don't count."""
-    monday = monday_of(today)
+    """MET-hours earned on each day of today's week, Sunday first. Other weeks and days after today don't count."""
+    sunday = sunday_of(today)
     done = [0.0] * 7
     for workout in workouts:
         day = date.fromisoformat(workout["date"])
-        if monday <= day <= today:
-            done[(day - monday).days] += credit(counted_met(workout), workout["duration_min"])
+        if sunday <= day <= today:
+            done[(day - sunday).days] += credit(counted_met(workout), workout["duration_min"])
     return done
 
 
 def daily_targets(goal: float, plan: Sequence[str], done: Sequence[float], today_index: int) -> List[float]:
-    """Each day's target in MET-hours, Monday first (dailyTargets in src/lib/plan.ts).
+    """Each day's target in MET-hours, Sunday first (dailyTargets in src/lib/plan.ts).
 
     `plan` is the 7 days as Memory stores them (off | 0 | 5 | 10 | 30 | 45), `done` the
-    MET-hours earned on each day, `today_index` 0 for Monday.
+    MET-hours earned on each day, `today_index` 0 for Sunday.
     """
     minutes = [SLOT_MINUTES[slot] for slot in plan]
     targets = [0.0] * 7
@@ -109,7 +114,7 @@ def today_numbers(goal: float, plan: Sequence[str], workouts: Iterable[Dict[str,
     The names are the ones the suggest routes already use for the same numbers.
     """
     done = done_by_day(workouts, today)
-    index = today.weekday()
+    index = day_index(today)
     target = daily_targets(goal, plan, done, index)[index]
     done_this_week = total(done)
     return {

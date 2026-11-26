@@ -30,7 +30,7 @@ TABLE = [
     'Walking,17358,4.8,"Walking, treadmill, 3.5 to 3.9 mph (5.6 to 6.3 km/h), 0% grade",0,1,1,0,0,1,0,1',
 ]
 
-WEDNESDAY = date(2026, 11, 25)  # its week starts Monday 2026-11-23; last week started 2026-11-16
+WEDNESDAY = date(2026, 11, 24)  # its week starts Monday 2026-11-22; last week started 2026-11-15
 GYM = "indoors_with_others"
 CHECK_IN = {"minutes": 45, "place": GYM, "energy": "normal", "mood": "surprise"}
 
@@ -41,20 +41,20 @@ SAM = {
         "equipment": {"home": ["Yoga mat"], "gym": None},
         "no_vigorous": False,
     },
-    "goals": [{"week_start": "2026-11-23", "goal_met_hours": 7.5, "goal_set_by": "default",
+    "goals": [{"week_start": "2026-11-22", "goal_met_hours": 7.5, "goal_set_by": "default",
                "plan": ["30", "off", "30", "off", "off", "45", "off"]}],
     "daily": {
         "workouts": [
-            {"id": "w-thu", "date": "2026-11-19", "activity_code": "17358", "activity_name": "Walking, treadmill", "met": 4.8, "duration_min": 30},
-            {"id": "w-mon", "date": "2026-11-23", "activity_code": "01216", "activity_name": "Bicycling, stationary", "met": 5.0, "duration_min": 30},
+            {"id": "w-thu", "date": "2026-11-18", "activity_code": "17358", "activity_name": "Walking, treadmill", "met": 4.8, "duration_min": 30},
+            {"id": "w-mon", "date": "2026-11-22", "activity_code": "01216", "activity_name": "Bicycling, stationary", "met": 5.0, "duration_min": 30},
         ],
         "suggestions": [
             # Accepted at the gym on Monday; accepted outside last Friday.
-            {"id": "a-gym", "date": "2026-11-23", "place": GYM, "activity_code": "01216", "activity_name": "Bicycling, stationary", "outcome": "accepted"},
-            {"id": "a-out", "date": "2026-11-20", "place": "outside", "activity_code": "12028", "activity_name": "Running", "outcome": "accepted"},
+            {"id": "a-gym", "date": "2026-11-22", "place": GYM, "activity_code": "01216", "activity_name": "Bicycling, stationary", "outcome": "accepted"},
+            {"id": "a-out", "date": "2026-11-19", "place": "outside", "activity_code": "12028", "activity_name": "Running", "outcome": "accepted"},
             # "Can't access it" last week: once at the gym, once outside.
-            {"id": "d-gym", "date": "2026-11-18", "place": GYM, "activity_code": "01220", "activity_name": "Bicycling, stationary, 90-100 watts", "outcome": "declined", "reason": "no-access"},
-            {"id": "d-out", "date": "2026-11-18", "place": "outside", "activity_code": "17352", "activity_name": "Walking, treadmill, slow", "outcome": "declined", "reason": "no-access"},
+            {"id": "d-gym", "date": "2026-11-17", "place": GYM, "activity_code": "01220", "activity_name": "Bicycling, stationary, 90-100 watts", "outcome": "declined", "reason": "no-access"},
+            {"id": "d-out", "date": "2026-11-17", "place": "outside", "activity_code": "17352", "activity_name": "Walking, treadmill, slow", "outcome": "declined", "reason": "no-access"},
         ],
     },
 }
@@ -85,7 +85,7 @@ def decline_today(reason, code, place=GYM, id=None):
 
 
 def suggest(client, user="sam", **more):
-    return client.post("/api/suggest/memory", json={"user_id": user, "check_in": CHECK_IN, "date": "2026-11-25", **more})
+    return client.post("/api/suggest/memory", json={"user_id": user, "check_in": CHECK_IN, "date": "2026-11-24", **more})
 
 
 def codes(data):
@@ -98,13 +98,13 @@ def codes(data):
 def test_todays_numbers_come_from_the_goal_the_plan_and_the_workouts_in_memory(client):
     request, numbers = build_request("sam", CheckIn(**CHECK_IN), WEDNESDAY)
     # 2.5 done on Monday (5.0 MET × 30 min). 5.0 left; Wednesday has 30 of the 75 minutes still planned.
-    assert numbers["day_name"] == "Wednesday"
+    assert numbers["day_name"] == "Tuesday"
     assert numbers["done_this_week_met_hours"] == pytest.approx(2.5)
     assert numbers["target_met_hours"] == pytest.approx(2.0)
     assert (request.weekly_goal_met_hours, request.done_this_week_met_hours, request.left_this_week_met_hours) == (7.5, 2.5, 5.0)
     assert request.needed_met_hours == pytest.approx(2.0)
     assert request.target_met_hours == pytest.approx(2.0)
-    assert request.day_name == "Wednesday"
+    assert request.day_name == "Tuesday"
 
 
 def test_preferences_become_likes_left_out_categories_limits_and_equipment(client):
@@ -127,7 +127,7 @@ def test_picked_before_is_what_was_accepted_at_this_place(client):
 
 def test_recently_done_is_this_week_and_last_week(client):
     memory.save("sam", {"daily": {"workouts": [
-        {"id": "w-old", "date": "2026-11-15", "activity_name": "Hiking", "met": 6.0, "duration_min": 60},  # the Sunday before last week
+        {"id": "w-old", "date": "2026-11-14", "activity_name": "Hiking", "met": 6.0, "duration_min": 60},  # the Sunday before last week
     ]}})
     assert [(r.code, r.name, r.days_ago) for r in built().recent] == [
         ("17358", "Walking, treadmill", 6), ("01216", "Bicycling, stationary", 2),
@@ -167,7 +167,7 @@ def test_weather_today_means_indoors_only_today(client):
     decline_today("weather", "12028")
     assert built().indoor_only is True
     assert built().constraint_notes == ["Indoors only"]
-    assert built(day=date(2026, 11, 26)).indoor_only is False  # tomorrow is a new day
+    assert built(day=date(2026, 11, 25)).indoor_only is False  # tomorrow is a new day
 
 
 def test_too_tired_means_lighter_than_what_was_declined(client):
@@ -195,7 +195,7 @@ def test_not_in_the_mood_leaves_out_only_that_activity_and_only_today(client):
     decline_today("not-mood", "12028")
     assert built().exclude_codes == ["12028", "01220"]
     assert built().exclude_headings == ["Dancing"]
-    assert built(day=date(2026, 11, 26)).exclude_codes == ["01220"]
+    assert built(day=date(2026, 11, 25)).exclude_codes == ["01220"]
 
 
 def test_a_decline_today_at_another_place_still_counts_today_but_isnt_named_here(client):
@@ -207,18 +207,18 @@ def test_a_decline_today_at_another_place_still_counts_today_but_isnt_named_here
 
 # --- The week's goal and plan ------------------------------------------------------------------
 
-LAST_WEEK = {"week_start": "2026-11-16", "goal_met_hours": 9.0, "goal_set_by": "recap", "plan": ["10"] * 7}
-THIS_WEEK = {"week_start": "2026-11-23", "goal_met_hours": 7.5, "goal_set_by": "default", "plan": ["30"] * 7}
+LAST_WEEK = {"week_start": "2026-11-15", "goal_met_hours": 9.0, "goal_set_by": "recap", "plan": ["10"] * 7}
+THIS_WEEK = {"week_start": "2026-11-22", "goal_met_hours": 7.5, "goal_set_by": "default", "plan": ["30"] * 7}
 
 
 def test_a_week_nothing_was_saved_for_carries_on_from_the_week_before():
     assert week_for([LAST_WEEK], WEDNESDAY) == {"goal_met_hours": 9.0, "plan": ["10"] * 7}
     assert week_for([LAST_WEEK, THIS_WEEK], WEDNESDAY) == {"goal_met_hours": 7.5, "plan": ["30"] * 7}
-    assert week_for([LAST_WEEK, THIS_WEEK], date(2026, 11, 22)) == {"goal_met_hours": 9.0, "plan": ["10"] * 7}  # last Sunday
+    assert week_for([LAST_WEEK, THIS_WEEK], date(2026, 11, 21)) == {"goal_met_hours": 9.0, "plan": ["10"] * 7}  # last Sunday
 
 
 def test_a_week_with_a_new_goal_only_keeps_the_earlier_plan():
-    only_goal = {"week_start": "2026-11-23", "goal_met_hours": 6.0, "goal_set_by": "recap", "plan": None}
+    only_goal = {"week_start": "2026-11-22", "goal_met_hours": 6.0, "goal_set_by": "recap", "plan": None}
     assert week_for([LAST_WEEK, only_goal], WEDNESDAY) == {"goal_met_hours": 6.0, "plan": ["10"] * 7}
 
 
@@ -226,9 +226,9 @@ def test_no_goal_or_plan_yet_is_said_plainly():
     with pytest.raises(NotEnoughMemory, match="no weekly goal and no weekly plan"):
         week_for([], WEDNESDAY)
     with pytest.raises(NotEnoughMemory, match="no weekly plan for this user"):
-        week_for([{"week_start": "2026-11-23", "goal_met_hours": 7.5, "goal_set_by": None, "plan": None}], WEDNESDAY)
+        week_for([{"week_start": "2026-11-22", "goal_met_hours": 7.5, "goal_set_by": None, "plan": None}], WEDNESDAY)
     with pytest.raises(NotEnoughMemory):
-        week_for([{**THIS_WEEK, "week_start": "2026-11-30"}], WEDNESDAY)  # only a later week is saved
+        week_for([{**THIS_WEEK, "week_start": "2026-11-29"}], WEDNESDAY)  # only a later week is saved
 
 
 def test_equipment_that_isnt_listed_isnt_known():
@@ -249,7 +249,7 @@ def test_a_check_in_is_all_it_takes(client):
     assert data["source"] == "mock"
     assert len(codes(data)) == 4  # up to five picks; only four activities fit
     assert data["today"] == {
-        "day_name": "Wednesday", "weekly_goal_met_hours": 7.5, "done_this_week_met_hours": 2.5,
+        "day_name": "Tuesday", "weekly_goal_met_hours": 7.5, "done_this_week_met_hours": 2.5,
         "left_this_week_met_hours": 5.0, "target_met_hours": pytest.approx(2.0), "done_today_met_hours": 0,
         "needed_met_hours": pytest.approx(2.0),
     }
@@ -282,7 +282,7 @@ def test_each_pick_says_what_it_would_add_toward_the_goal(client):
 
 def test_the_check_in_is_stored_in_memory(client):
     suggest(client)
-    assert memory.read("sam", ["daily"])["daily"]["check_ins"] == [{"date": "2026-11-25", **CHECK_IN}]
+    assert memory.read("sam", ["daily"])["daily"]["check_ins"] == [{"date": "2026-11-24", **CHECK_IN}]
 
 
 def test_the_request_that_was_built_is_in_the_suggestion_log(client):
@@ -296,7 +296,7 @@ def test_the_request_that_was_built_is_in_the_suggestion_log(client):
 def test_declining_the_pick_then_asking_again_gives_something_else(client):
     first = suggest(client).json()["lead"]
     client.post("/api/memory?user_id=sam", json={"daily": {"suggestions": [{
-        "date": "2026-11-25", "place": GYM, "activity_code": first["activity_code"],
+        "date": "2026-11-24", "place": GYM, "activity_code": first["activity_code"],
         "activity_name": first["activity_description"], "outcome": "declined", "reason": "not-mood",
     }]}})
     again = suggest(client).json()
@@ -305,7 +305,7 @@ def test_declining_the_pick_then_asking_again_gives_something_else(client):
 
 def test_a_workout_today_lowers_what_is_still_needed(client):
     client.post("/api/memory?user_id=sam", json={"daily": {"workouts": [
-        {"date": "2026-11-25", "activity_code": "17358", "activity_name": "Walking, treadmill", "met": 4.8, "duration_min": 15},  # 1.2
+        {"date": "2026-11-24", "activity_code": "17358", "activity_name": "Walking, treadmill", "met": 4.8, "duration_min": 15},  # 1.2
     ]}})
     today = suggest(client).json()["today"]
     assert today["target_met_hours"] == pytest.approx(2.0)
@@ -328,7 +328,7 @@ def test_a_user_with_no_goal_in_memory_gets_a_422_that_says_so(client):
 def test_a_date_that_isnt_one_is_a_422(client):
     res = suggest(client, date="today")
     assert res.status_code == 422
-    assert "is not a date like 2026-11-23" in res.json()["detail"]
+    assert "is not a date like 2026-11-22" in res.json()["detail"]
 
 
 def test_without_a_date_it_is_the_backends_own_day(client):

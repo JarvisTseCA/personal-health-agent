@@ -7,9 +7,9 @@
 import { fmtGoal } from "./met";
 import type { AppState, GoalSet } from "../state/types";
 
-/** The calendar date of a day of the app's week (Monday = 0), as "YYYY-MM-DD" in local time. */
+/** The calendar date of a day of the app's week (Sunday = 0), as "YYYY-MM-DD" in local time. */
 export function appDate(todayIndex: number, now = new Date()): string {
-  const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() - ((now.getDay() + 6) % 7) + todayIndex);
+  const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() - now.getDay() + todayIndex);
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 

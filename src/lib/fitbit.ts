@@ -41,9 +41,9 @@ export interface FitbitData {
 
 /** What a sync hands the reducer: already converted, so the reducer needs no clock. */
 export interface FitbitImport {
-  /** 0 = Monday … 6 = Sunday, from the user's real calendar */
+  /** 0 = Sunday … 6 = Saturday, from the user's real calendar */
   todayIndex: number;
-  /** This week's Monday, "2026-11-16" */
+  /** This week's Sunday, "2026-11-16" */
   week: string;
   /** This week's workouts; earlier days are confirmed, today's are not yet */
   thisWeek: Session[];
@@ -136,15 +136,15 @@ function dayNumber(date: string): number {
   return Date.UTC(y, m - 1, d) / 86_400_000;
 }
 
-/** Day 0 was a Thursday; this makes Monday 0 and Sunday 6. */
-const weekdayOf = (day: number) => (day + 3) % 7;
+/** Day 0 was a Thursday; this makes Sunday 0 and Saturday 6. */
+const weekdayOf = (day: number) => (day + 4) % 7;
 
 /** Day number → "2026-11-16". */
 function dayDate(day: number): string {
   return new Date(day * 86_400_000).toISOString().slice(0, 10);
 }
 
-/** The Monday `n` weeks before the week starting on Monday `week`. */
+/** The Sunday `n` weeks before the week starting on Sunday `week`. */
 export function weekBefore(week: string, n: number): string {
   return dayDate(dayNumber(week) - 7 * n);
 }
@@ -157,7 +157,7 @@ function isoDate(d: Date): string {
 export function syncSince(now: Date): string {
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   const weeks = new Date(today);
-  weeks.setDate(today.getDate() - ((today.getDay() + 6) % 7) - 7 * HISTORY_WEEKS);
+  weeks.setDate(today.getDate() - today.getDay() - 7 * HISTORY_WEEKS);
   const months = new Date(today.getFullYear(), today.getMonth() - (VO2_MONTHS - 1), 1);
   return isoDate(weeks < months ? weeks : months);
 }
@@ -190,20 +190,20 @@ export function monthlyVo2(readings: Vo2Reading[], now: Date, months = VO2_MONTH
 export function importFitbit(data: FitbitData, now: Date): FitbitImport {
   const today = dayNumber(isoDate(now));
   const todayIndex = weekdayOf(today);
-  const monday = today - todayIndex;
+  const sunday = today - todayIndex;
   const weeks: Session[][] = Array.from({ length: HISTORY_WEEKS }, () => []);
   const thisWeek: Session[] = [];
   for (const w of [...data.workouts].sort((a, b) => a.start.localeCompare(b.start))) {
     const day = dayNumber(w.start);
     if (day > today) continue;
-    if (day >= monday) {
-      thisWeek.push(sessionOf(w, day - monday, day < today));
+    if (day >= sunday) {
+      thisWeek.push(sessionOf(w, day - sunday, day < today));
       continue;
     }
-    const weeksAgo = Math.ceil((monday - day) / 7);
+    const weeksAgo = Math.ceil((sunday - day) / 7);
     if (weeksAgo <= HISTORY_WEEKS) weeks[HISTORY_WEEKS - weeksAgo].push(sessionOf(w, weekdayOf(day), true));
   }
   // Leading empty weeks are before the user had a Fitbit, not weeks they missed.
   const first = weeks.findIndex((w) => w.length > 0);
-  return { todayIndex, week: dayDate(monday), thisWeek, history: first < 0 ? [] : weeks.slice(first), vo2: monthlyVo2(data.vo2, now) };
+  return { todayIndex, week: dayDate(sunday), thisWeek, history: first < 0 ? [] : weeks.slice(first), vo2: monthlyVo2(data.vo2, now) };
 }

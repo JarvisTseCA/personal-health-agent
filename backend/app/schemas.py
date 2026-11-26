@@ -285,6 +285,6 @@ class TodayWhyRequest(BaseModel):
 
 
 class TodayRecapRequest(BaseModel):
-    """Last week's numbers, for Monday's two-sentence recap (POST /api/today/recap)."""
+    """Last week's numbers, for the two-sentence recap at the week's first log-in (POST /api/today/recap)."""
 
     facts: Dict[str, Union[float, int, str, bool]]

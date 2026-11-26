@@ -63,7 +63,7 @@ export interface Session {
   id: string;
   variantId: string;
   durationMin: number;
-  /** 0 = Monday … 6 = Sunday, within its week */
+  /** 0 = Sunday … 6 = Saturday, within its week */
   dayIndex: number;
   source: "fitbit" | "manual";
   /** Fitbit bouts start unconfirmed and count conservatively until the user confirms */
@@ -73,7 +73,7 @@ export interface Session {
   avgHeartRate?: number;
   /** What the user called it, when they typed an activity that isn't in the list */
   customName?: string;
-  /** Monday of the real week it was logged in, "2026-11-16"; set on hand-logged workouts once a real Fitbit syncs */
+  /** Sunday of the real week it was logged in, "2026-11-16"; set on hand-logged workouts once a real Fitbit syncs */
   week?: string;
 }
 
@@ -124,5 +124,5 @@ export function formatDuration(min: number): string {
   return r === 0 ? `${h} hr` : `${h} hr ${r} min`;
 }
 
-export const DAY_NAMES = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] as const;
-export const DAY_NAMES_LONG = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"] as const;
+export const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
+export const DAY_NAMES_LONG = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"] as const;

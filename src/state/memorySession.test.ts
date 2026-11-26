@@ -31,7 +31,7 @@ import type { AppState, ChatMessage } from "./types";
 // (`backend.doctor`) to prove the screen shows the backend's numbers and not its own.
 // =================================================================================================
 
-const MONDAY = "2026-11-23";
+const SUNDAY = "2026-11-22";
 const TODAY = "2026-11-25"; // the demo's Wednesday, todayIndex 2
 
 type Call =
@@ -133,21 +133,21 @@ const backend = {
 
 function workedOut(memory: Memory, date: string): Numbers | null {
   const rows = [...memory.goals].sort((a, b) => a.week_start.localeCompare(b.week_start));
-  const now = rows.find((r) => r.week_start === MONDAY);
+  const now = rows.find((r) => r.week_start === SUNDAY);
   if (!now || !(memory.other as OtherOfApp).app) return null;
-  const template = numbersLike(initialState(), MONDAY);
+  const template = numbersLike(initialState(), SUNDAY);
   const weeks: Numbers = {
     ...template,
     today: date,
-    this_week: { ...template.this_week, week_start: MONDAY, goal_met_hours: now.goal_met_hours ?? 0, plan: now.plan ?? [] },
+    this_week: { ...template.this_week, week_start: SUNDAY, goal_met_hours: now.goal_met_hours ?? 0, plan: now.plan ?? [] },
     past_weeks: rows
-      .filter((r) => r.week_start < MONDAY)
+      .filter((r) => r.week_start < SUNDAY)
       .map((r) => ({ ...template.this_week, week_start: r.week_start, goal_met_hours: r.goal_met_hours ?? 0, plan: r.plan ?? [] })),
   };
   const rebuilt = fromMemory(memory, weeks, initialState());
   if (!rebuilt) return null;
-  if (addDays(MONDAY, rebuilt.state.todayIndex) !== date) throw new Error(`numbers asked for ${date}, but Memory's today is day ${rebuilt.state.todayIndex}`);
-  return numbersLike(rebuilt.state, MONDAY);
+  if (addDays(SUNDAY, rebuilt.state.todayIndex) !== date) throw new Error(`numbers asked for ${date}, but Memory's today is day ${rebuilt.state.todayIndex}`);
+  return numbersLike(rebuilt.state, SUNDAY);
 }
 
 vi.mock("../services/memoryClient", () => ({
@@ -272,7 +272,7 @@ const message = (text: string): ChatMessage => ({ id: `m-${text}`, role: "user",
 
 beforeEach(() => {
   vi.useFakeTimers({ toFake: ["Date"] });
-  vi.setSystemTime(new Date(2026, 10, 25, 12)); // a Wednesday; this week's Monday is 2026-11-23
+  vi.setSystemTime(new Date(2026, 10, 25, 12)); // a Wednesday; this week's Sunday is 2026-11-22
   showNumbers(null, null);
   backend.reset();
 });
@@ -296,7 +296,7 @@ describe("running the app with the backend (memorySession)", () => {
     const seeded = replaced[0].memory;
     expect(replaced[0].date).toBe(TODAY);
     expect(seeded.goals).toHaveLength(initialState().history.length + 1);
-    expect(seeded.goals.at(-1)?.week_start).toBe(MONDAY);
+    expect(seeded.goals.at(-1)?.week_start).toBe(SUNDAY);
     expect((seeded.other as OtherOfApp).app?.personaId).toBe("alex");
 
     expect(o.state.suggestSource).toBe("table");
@@ -309,7 +309,7 @@ describe("running the app with the backend (memorySession)", () => {
     await open(onboarded());
     const reads = backend.calls.filter((c): c is Extract<Call, { name: "readMemory" }> => c.name === "readMemory");
     expect(reads.length).toBeGreaterThan(0);
-    expect(reads.map((r) => r.date)).toEqual(reads.map(() => MONDAY));
+    expect(reads.map((r) => r.date)).toEqual(reads.map(() => SUNDAY));
   });
 
   it("first open with an earlier save puts that save into Memory, chat included", async () => {
@@ -497,12 +497,12 @@ describe("running the app with the backend (memorySession)", () => {
     // Memory was read again before the step sent anything.
     expect(backend.calls.slice(0, 2).map((c) => c.name)).toEqual(["readNumbers", "readMemory"]);
     // ... and it asked for this week's Monday, so the reply is the recent part.
-    expect(backend.calls[1]).toEqual({ name: "readMemory", date: MONDAY });
+    expect(backend.calls[1]).toEqual({ name: "readMemory", date: SUNDAY });
     const after = o.last();
     const added = after.sessions.filter((s) => !sessionsOf(before).includes(s.id));
     expect(added).toHaveLength(1);
     expect(added[0].id).not.toBe(stray[0]);
-    const thisWeek = backend.memory.daily.workouts.filter((w) => w.date >= MONDAY).map((w) => w.id);
+    const thisWeek = backend.memory.daily.workouts.filter((w) => w.date >= SUNDAY).map((w) => w.id);
     expect([...thisWeek].sort()).toEqual([...sessionsOf(after)].sort());
     expect(thisWeek).not.toContain(stray[0]);
 

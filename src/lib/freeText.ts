@@ -99,15 +99,15 @@ export function parseYesNo(text: string): boolean | null {
 }
 
 const DAYS: Array<[RegExp, number[]]> = [
-  [/\bweekdays?\b/, [0, 1, 2, 3, 4]],
-  [/\bweekends?\b/, [5, 6]],
-  [/\bmon(day)?s?\b/, [0]],
-  [/\btue(s|sday)?s?\b/, [1]],
-  [/\bwed(nesday)?s?\b/, [2]],
-  [/\bthu(r|rs|rsday)?s?\b/, [3]],
-  [/\bfri(day)?s?\b/, [4]],
-  [/\bsat(urday)?s?\b/, [5]],
-  [/\bsun(day)?s?\b/, [6]],
+  [/\bweekdays?\b/, [1, 2, 3, 4, 5]],
+  [/\bweekends?\b/, [0, 6]],
+  [/\bsun(day)?s?\b/, [0]],
+  [/\bmon(day)?s?\b/, [1]],
+  [/\btue(s|sday)?s?\b/, [2]],
+  [/\bwed(nesday)?s?\b/, [3]],
+  [/\bthu(r|rs|rsday)?s?\b/, [4]],
+  [/\bfri(day)?s?\b/, [5]],
+  [/\bsat(urday)?s?\b/, [6]],
 ];
 
 /** A number of minutes → the nearest option at or below it (45+ for anything 45 and up). */

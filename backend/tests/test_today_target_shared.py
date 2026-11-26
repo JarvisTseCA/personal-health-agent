@@ -20,7 +20,7 @@ from app.calculator import today_numbers
 EXAMPLES_FILE = Path(__file__).resolve().parents[2] / "shared_examples" / "today_target.json"
 EXAMPLES = json.loads(EXAMPLES_FILE.read_text(encoding="utf-8"))["examples"]
 
-MONDAY = date(2026, 11, 23)  # any Monday will do: the examples give days as 0 = Monday … 6 = Sunday
+MONDAY = date(2026, 11, 22)  # any Monday will do: the examples give days as 0 = Monday … 6 = Sunday
 
 
 def workouts_of(example):

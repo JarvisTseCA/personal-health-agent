@@ -173,7 +173,7 @@ TYPE_NAMES = {"mind_body": "mind-body", "water": "water activities", "winter": "
 
 
 def week_types(req: "TableSuggestRequest", types: Dict[str, str]) -> Dict[str, int]:
-    """How many of this week's workouts (Monday on) were of each kind. `types`: code → type."""
+    """How many of this week's workouts (Sunday on) were of each kind. `types`: code → type."""
     from .calculator import DAY_NAMES
     weekday = DAY_NAMES.index(req.day_name) if req.day_name in DAY_NAMES else 6
     counts: Dict[str, int] = {}

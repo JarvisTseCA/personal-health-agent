@@ -57,7 +57,7 @@ from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse,
 
 from . import (  # noqa: E402
     activities, calculator, chat_gate, chat_prompt, chat_replies, chat_rules, chat_writer, db, memory, memory_numbers,
-    memory_suggest,
+    memory_suggest, today_words,
 )
 from . import google_health as gh  # noqa: E402
 from .jev import (  # noqa: E402
@@ -71,7 +71,7 @@ from .prompt import (  # noqa: E402
 )
 from .schemas import (  # noqa: E402
     ChatRequest, MemorySuggestRequest, MemorySuggestResponse, SuggestRequest, SuggestResponse,
-    TableSuggestRequest, TableSuggestResponse,
+    TableSuggestRequest, TableSuggestResponse, TodayReadRequest, TodayRecapRequest, TodayWhyRequest,
 )
 from .suggest import (  # noqa: E402
     HEADINGS_TO_ASK, AnswerError, assemble, assemble_table, pick_activities, pick_from_table, rank_headings,
@@ -460,6 +460,44 @@ def chat(req: ChatRequest):
         pieces(), media_type="text/plain; charset=utf-8",
         headers={CHAT_STOPPED_BY: "none", CHAT_REPLY: "model"},
     )
+
+
+# --- ChatGPT on the Today tab (today_words.py) ---------------------------------------------
+# Each route answers 503 without OPENAI_API_KEY, 502 when the model can't be reached, and 422 when
+# its answer fails the check. In every one of those cases the app keeps its own words.
+
+def _today_words(job: str, run):  # type: ignore[no-untyped-def]
+    if not chat_writer.has_api_key():
+        raise HTTPException(503, "No chat model: OPENAI_API_KEY isn't set in backend/.env")
+    t = time.perf_counter()
+    try:
+        out = run()
+    except chat_writer.WriterError as e:
+        log.warning("── Today %s: ✗ %s", job, e)
+        raise HTTPException(502, str(e)) from e
+    except today_words.TodayWordsError as e:
+        log.warning("── Today %s: ✗ refused ChatGPT's answer: %s", job, e)
+        raise HTTPException(422, str(e)) from e
+    log.info("── Today %s (%s) %.1fs: %s", job, chat_writer.name(), time.perf_counter() - t, _short(json.dumps(out, ensure_ascii=False)))
+    return out
+
+
+@app.post("/api/today/read")
+def today_read(req: TodayReadRequest) -> Dict[str, Any]:
+    """A typed answer → the fields the buttons would give, and whether it's a question."""
+    return _today_words("read", lambda: today_words.read_answer(req.step, req.question, req.text))
+
+
+@app.post("/api/today/why")
+def today_why(req: TodayWhyRequest) -> Dict[str, Any]:
+    """The "Based on …" line under today's pick, from facts the code already has."""
+    return _today_words("why", lambda: {"line": today_words.why_line(req.activity, req.facts)})
+
+
+@app.post("/api/today/recap")
+def today_recap(req: TodayRecapRequest) -> Dict[str, Any]:
+    """Monday's two sentences about last week, from its numbers."""
+    return _today_words("recap", lambda: {"text": today_words.recap(req.facts)})
 
 
 @app.get("/api/state")

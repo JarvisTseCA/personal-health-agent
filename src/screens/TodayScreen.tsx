@@ -15,7 +15,7 @@ import { movesFor } from "../lib/moves";
 import { countsTowardGoal, fmt, fmtGoal, intensityOf } from "../lib/met";
 import { DECLINE_LABEL, type DeclineReason, type Suggestion } from "../lib/suggest";
 import { equipmentAt } from "../services/context";
-import { useFitbitSync, useStore } from "../state/store";
+import { useFitbitSync, useStore, useTypedAnswer } from "../state/store";
 import { CHANGE_TIME_LABEL, CONFIRM_CHOICES, ENERGY_OPTIONS, hasHowTo, keepTimeLabel, MAX_PASSES, PLACE_OPTIONS, REMIND_OPTIONS, SETUP_GOAL_OPTIONS, SETUP_PLAN_DONE } from "../state/today";
 import { TimeOptions } from "../components/TimeOptions";
 import { SLOT_LABEL, SLOT_MINUTES } from "../lib/plan";
@@ -174,6 +174,7 @@ function SuggestionCard({ s, lead }: { s: Suggestion; lead: boolean }) {
 export function TodayScreen({ go, openPrefs }: { go: (s: Screen) => void; openPrefs: () => void }) {
   const { state, ctx, dispatch } = useStore();
   const sync = useFitbitSync();
+  const typed = useTypedAnswer();
   const demo = state.profile.fitbitLive ? "" : " (demo)";
   const t = state.today;
   const end = useRef<HTMLDivElement>(null);
@@ -279,6 +280,13 @@ export function TodayScreen({ go, openPrefs }: { go: (s: Screen) => void; openPr
           ),
         )}
 
+        {typed.pending && (
+          <>
+            <div className="msg user">{typed.pending}</div>
+            <div className="msg agent"><span className="typing" aria-label="The agent is reading your answer"><i /><i /><i /></span></div>
+          </>
+        )}
+
         {editing && (
           <div className="edit-banner" role="status">
             <span><b>Editing your answer.</b> Pick again or change it below.</span>
@@ -333,6 +341,7 @@ export function TodayScreen({ go, openPrefs }: { go: (s: Screen) => void; openPr
         {t.step === "suggested" && t.current && !t.current.pending && !t.current.failed && (
           <div className="live">
             <SuggestionCard s={t.current.lead} lead />
+            {t.current.why && <p className="why-line small muted">{t.current.why}</p>}
             <div className="btn-stack">
               <button className="btn btn-primary" onClick={() => dispatch({ type: "accept", suggestion: t.current!.lead })}>Let's start</button>
               <button className="btn btn-quiet" onClick={() => dispatch({ type: "remindLater" })}>Remind me later</button>
@@ -436,13 +445,13 @@ export function TodayScreen({ go, openPrefs }: { go: (s: Screen) => void; openPr
             </Bubbles>
           </div>
         )}
-        {OTHER_PLACEHOLDER[t.step] && (t.step !== "confirm" || pending) && (
+        {OTHER_PLACEHOLDER[t.step] && (t.step !== "confirm" || pending) && !typed.pending && (
           <OtherInput
             key={`${t.step}-${editing ? editing.count : ""}`}
             placeholder={OTHER_PLACEHOLDER[t.step]}
             label="Type your own answer"
             initial={editing?.text}
-            onSubmit={(text) => dispatch({ type: "freeText", text })}
+            onSubmit={(text) => void typed.submit(text)}
           />
         )}
         <div ref={end} />

@@ -28,6 +28,8 @@ export interface BackendHealth {
   ok: boolean;
   jev: "live" | "mock";
   model: string;
+  /** "placeholder" without OPENAI_API_KEY, else the model that writes, e.g. "ChatGPT gpt-6-luna" */
+  chat_writer?: string;
 }
 
 let health: Promise<BackendHealth | null> | null = null;

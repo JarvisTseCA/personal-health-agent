@@ -15,6 +15,8 @@ to the app as it arrives. Two more settings, both optional, in backend/.env:
 Without a key, `write` gives back a placeholder that says so, in pieces, so
 the whole route still runs offline and in the tests.
 
+`complete` asks for a whole reply at once, for the short jobs on the Today tab (today_words.py).
+
 Another provider would be one more function like `_write_openai`, chosen in `write`.
 """
 import json
@@ -29,6 +31,8 @@ OPENAI_URL = "https://api.openai.com/v1"
 DEFAULT_MODEL = "gpt-6-luna"
 # The first piece can take a while on a busy model; a dead connection should not hang the Chat tab.
 TIMEOUT = httpx.Timeout(60.0, connect=10.0)
+# The Today tab waits for these, so they are short; the app falls back to its own words after this.
+SHORT_TIMEOUT = httpx.Timeout(8.0, connect=4.0)
 
 PLACEHOLDER = (
     "This is a placeholder: no chat model is connected yet. "
@@ -109,3 +113,31 @@ def _write_openai(system: str, messages: List[Dict[str, str]]) -> Iterator[str]:
                         yield piece
     except httpx.HTTPError as e:
         raise WriterError(f"Could not reach the chat model: {_no_key(str(e))}") from e
+
+
+def complete(system: str, user: str, as_json: bool = False) -> str:
+    """One whole reply to one message, for the Today tab's short jobs. Needs the key (has_api_key).
+
+    With `as_json` the model is asked for a JSON object; the text that comes back is still
+    checked by the caller, since a gateway may not honour the request.
+    """
+    if not has_api_key():
+        raise WriterError("No OPENAI_API_KEY in backend/.env")
+    url = (os.environ.get("OPENAI_BASE_URL") or "").strip().rstrip("/") or OPENAI_URL
+    body: Dict[str, object] = {
+        "model": chat_model(),
+        "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}],
+    }
+    if as_json:
+        body["response_format"] = {"type": "json_object"}
+    headers = {"Authorization": f"Bearer {os.environ['OPENAI_API_KEY']}"}
+    try:
+        res = httpx.post(f"{url}/chat/completions", json=body, headers=headers, timeout=SHORT_TIMEOUT)
+    except httpx.HTTPError as e:
+        raise WriterError(f"Could not reach the chat model: {_no_key(str(e))}") from e
+    if res.status_code != 200:
+        raise WriterError(f"The chat model returned {res.status_code}: {_error_text(res)}")
+    try:
+        return str(res.json()["choices"][0]["message"]["content"] or "").strip()
+    except (ValueError, KeyError, IndexError, TypeError) as e:
+        raise WriterError("The chat model's answer had no text") from e

@@ -861,3 +861,6 @@ input[type="range"] { width: 100%; accent-color: var(--ink); height: 32px; }
 .skip-why .bubbles { justify-content: flex-start; margin-top: 6px; }
 .chip.chip-small { font-size: var(--t-xs, 13px); padding: 6px 10px; }
 .tab-badge { position: absolute; top: -8px; right: -16px; font-size: 24px; font-weight: 800; line-height: 1; color: var(--good); font-variant-emoji: text; }
+
+/* ChatGPT's "Based on …" line under today's pick */
+.why-line { margin: 8px 4px 0; font-style: italic; }

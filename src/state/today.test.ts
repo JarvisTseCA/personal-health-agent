@@ -6,7 +6,7 @@ import * as T from "./today";
 import { applyClinicianTurn } from "../services/clinicianChat";
 import { isHidden } from "./screens";
 import type { AppState } from "./types";
-import { getVariant, settingOf } from "../lib/activities";
+import { getVariant, PICKABLE, settingOf } from "../lib/activities";
 import { migratePlace, type Place } from "../lib/suggest";
 
 function onboarded(persona = "alex"): AppState {
@@ -252,17 +252,92 @@ describe("today flow", () => {
     expect(s.today.entries.some((e) => /mood for/.test(e.text))).toBe(false);
   });
 
-  it("'Give me another option' swaps the pick without asking why, and cycles back", () => {
+  it("'Give me another option' swaps the pick without asking why, then brings a fresh set", () => {
     let s = checkIn(onboarded());
-    const first = s.today.current!.lead;
-    const n = s.today.current!.backups.length;
+    const first = [s.today.current!.lead, ...s.today.current!.backups].map((x) => x.familyId);
     const declinesBefore = s.declines.length;
     s = T.anotherOption(s);
     expect(s.today.step).toBe("suggested");
-    expect(s.today.current!.lead).not.toBe(first);
+    expect(s.today.current!.lead.familyId).toBe(first[1]);
+    expect(s.today.current!.skipped!.familyId).toBe(first[0]); // the user may say why, optionally
     expect(s.declines.length).toBe(declinesBefore);
-    for (let i = 0; i < n; i++) s = T.anotherOption(s);
-    expect(s.today.current!.lead).toBe(first);
+    s = T.anotherOption(T.anotherOption(s)); // past both backups
+    expect(s.today.entries.at(-1)!.text).toBe("Here are some different ones.");
+    const next = [s.today.current!.lead, ...s.today.current!.backups].map((x) => x.familyId);
+    expect(next.some((f) => first.includes(f))).toBe(false);
+    expect(s.declines.length).toBe(declinesBefore);
+  });
+
+  it("the optional reason after 'another option' counts as a decline of the option passed over", () => {
+    let s = T.anotherOption(checkIn(onboarded()));
+    const passed = s.today.current!.skipped!;
+    s = T.skipReason(s, "weather");
+    expect(s.declines.at(-1)).toMatchObject({ familyId: passed.familyId, reason: "weather" });
+    expect(s.today.constraint?.indoorOnly).toBe(true);
+    expect(s.today.current!.skipped).toBeUndefined();
+  });
+
+  it("'another option' ends after at most ten options and asks for the user's own exercise", () => {
+    let s = checkIn(onboarded());
+    let presses = 0;
+    while (s.today.step === "suggested" && presses < 20) { s = T.anotherOption(s); presses++; }
+    expect(presses).toBeLessThanOrEqual(T.MAX_PASSES + 1);
+    expect(s.today.step).toBe("own");
+    expect(s.today.entries.at(-1)!.text).toMatch(/What would you like to do instead\?/);
+  });
+
+  it("the tenth option's button asks for the user's own exercise instead of an eleventh option", () => {
+    let s = checkIn(onboarded());
+    s = { ...s, today: { ...s.today, passed: T.MAX_PASSES } };
+    s = T.anotherOption(s);
+    expect(s.today.entries.at(-2)!.text).toBe("None of these work");
+    expect(s.today.entries.at(-1)!.text).toBe(`That's 10 options. ${T.OWN_QUESTION}`);
+    expect(s.today.step).toBe("own");
+  });
+
+  it("when nothing on the list fits, it asks for the user's own exercise instead of repeating desk moves", () => {
+    let s = checkIn(onboarded());
+    s = { ...s, today: { ...s.today, exclude: PICKABLE.map((f) => f.id) } };
+    s = T.chooseReason(s, "not-mood");
+    expect(s.today.step).toBe("own");
+    expect(s.today.entries.at(-1)!.text).toBe(`Nothing on my list fits right now. ${T.OWN_QUESTION}`);
+  });
+
+  it("a typed exercise is found in the activity table and logged at its MET", () => {
+    let s = T.askOwn(checkIn(onboarded()), "Nothing on my list fits right now.");
+    const before = buildAgentContext(s).week.done;
+    s = T.freeText(s, "played badminton for 40 min");
+    expect(s.today.step).toBe("own-confirm");
+    expect(s.today.entries.at(-1)!.text).toBe("That's 40 min of badminton, social singles and doubles (5.5 MET), 3.7 MET-hours. Have you done it already, or is it your plan for today?");
+    s = T.ownAnswer(s, "did");
+    const logged = s.sessions.at(-1)!;
+    expect(logged).toMatchObject({ variantId: "table-15030", durationMin: 40, source: "manual", confirmed: true });
+    expect(buildAgentContext(s).week.done).toBeCloseTo(before + (5.5 * 40) / 60);
+    expect(s.profile.pickedCodes?.indoors_private).toContain("15030");
+    expect(s.today.entries.some((e) => e.text.startsWith("Logged: 40 min of badminton"))).toBe(true);
+  });
+
+  it("without minutes it asks how long; another match can be chosen; 'It's my plan' makes it today's plan", () => {
+    let s = T.askOwn(checkIn(onboarded()), "Nothing on my list fits right now.");
+    s = T.freeText(s, "basketball");
+    expect(s.today.step).toBe("own-minutes");
+    expect(s.today.entries.at(-1)!.text).toMatch(/^In the activity table that's "Basketball" \(7\.5 MET\)\. How many minutes\?$/);
+    s = T.freeText(s, "45");
+    expect(s.today.step).toBe("own-confirm");
+    const other = s.today.own!.codes[1];
+    s = T.ownAnswer(s, { code: other });
+    expect(s.today.own!.codes[0]).toBe(other);
+    s = T.ownAnswer(s, "plan");
+    expect(s.today.step).toBe("accepted");
+    expect(s.today.accepted).toMatchObject({ variantId: `table-${other}`, durationMin: 45 });
+  });
+
+  it("an exercise the table doesn't have is noted and asked again", () => {
+    let s = T.askOwn(checkIn(onboarded()), "Nothing on my list fits right now.");
+    s = T.freeText(s, "gardening");
+    expect(s.today.step).toBe("own");
+    expect(s.today.entries.at(-1)!.text).toMatch(/^I couldn't find that in the activity table/);
+    expect(s.notes.at(-1)!.text).toContain("gardening");
   });
 
   it("'Remind me later' asks when, sets the reminder, and brings the pick back", () => {

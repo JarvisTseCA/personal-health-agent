@@ -118,6 +118,8 @@ export function toMemory(state: AppState, monday: string): Memory {
     removedFitbitIds: state.removedFitbitIds,
     suggestSource: state.suggestSource,
     tableActivities: state.tableActivities,
+    goalSet: state.goalSet,
+    weekSetup: state.weekSetup,
     workouts: Object.fromEntries(
       sessions
         .filter((s) => !isTableId(s.variantId) || s.customName)

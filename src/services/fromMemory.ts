@@ -150,6 +150,9 @@ export function fromMemory(memory: Memory, numbers: Numbers, base: AppState): Fr
     clinician: other.clinician ?? base.clinician,
     goal: numbers.this_week.goal_met_hours,
     goalSource: setBy ?? "default",
+    // Who set this week's goal, when and why: kept for the week it was set in.
+    goalSet: sameWeek ? own.goalSet : undefined,
+    weekSetup: sameWeek ? own.weekSetup : undefined,
     plan: numbers.this_week.plan as WeekPlan,
     planSource: own.planSource,
     sessions: sessionsOf(monday),

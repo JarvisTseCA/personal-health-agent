@@ -17,6 +17,7 @@ import { openMemorySession, type MemorySession } from "./memorySession";
 import * as Today from "./today";
 import type { EquipmentProfile } from "../data/mockFitbit";
 import type { AppState, ChatMessage, ClinicianNotes, Overlay, SuggestSource, UserProfile } from "./types";
+import { appDate, clampGoal } from "../lib/goalNote";
 
 export { newId } from "./today";
 
@@ -40,7 +41,7 @@ function migrateClinician(c: unknown): ClinicianNotes {
   return { entries: [{ id: "cn-migrated", text: old.name?.trim() ? `${old.name.trim()} said: ${text}` : text, at: old.updated ?? new Date().toISOString() }] };
 }
 
-function personaState(personaId: string): Pick<AppState, "personaId" | "sessions" | "history" | "declines" | "notes" | "plan" | "planSource" | "goal" | "signIns" | "vo2"> {
+function personaState(personaId: string): Pick<AppState, "personaId" | "sessions" | "history" | "declines" | "notes" | "plan" | "planSource" | "goal" | "goalSource" | "goalSet" | "signIns" | "vo2"> {
   const p = PERSONAS.find((x) => x.id === personaId) ?? PERSONAS[0];
   return {
     personaId: p.id,
@@ -51,6 +52,9 @@ function personaState(personaId: string): Pick<AppState, "personaId" | "sessions
     plan: p.plan,
     planSource: ALL_FROM_PLAN,
     goal: p.goal,
+    // Demo: a goal the agent raised on Monday of this week, with its reason, shown beside the goal.
+    goalSource: p.goalRaise ? "recap" : "default",
+    goalSet: p.goalRaise ? { by: "agent", on: appDate(0), from: p.goalRaise.from, reason: p.goalRaise.reason } : undefined,
     signIns: p.signInsThisWeek,
     vo2: p.vo2,
   };
@@ -62,7 +66,6 @@ export function initialState(personaId = "alex"): AppState {
     onboarded: false,
     profile: DEFAULT_PROFILE,
     clinician: DEFAULT_CLINICIAN,
-    goalSource: "default",
     ...personaState(personaId),
     todayIndex: 2, // Wednesday: a stable mid-week for demos
     today: { dayKey: "", step: "time", checkIn: {}, entries: [], exclude: [], boost: false, nudged: false },
@@ -84,7 +87,9 @@ export function personaProfile(state: AppState): UserProfile {
 
 export type Action =
   | { type: "hydrate"; state: AppState }
-  | { type: "completeOnboarding"; profile: UserProfile; plan: WeekPlan }
+  | { type: "completeOnboarding"; profile: UserProfile; plan: WeekPlan; setUpWeek?: boolean }
+  | { type: "setupGoal"; label: string; to: number }
+  | { type: "setupPlanDone"; label: string }
   | { type: "updateProfile"; patch: Partial<UserProfile> }
   | { type: "setCategoryPref"; category: string; pref: CategoryPref | undefined }
   | { type: "setAccess"; familyId: string; access: Access }
@@ -108,6 +113,8 @@ export type Action =
   | { type: "editAnswer"; entryId: string }
   | { type: "editChat"; id: string }
   | { type: "another" }
+  | { type: "own"; answer: Today.OwnAnswer }
+  | { type: "skipReason"; reason: DeclineReason }
   | { type: "remindLater" }
   | { type: "setReminder"; when: string }
   | { type: "reminderDue" }
@@ -121,7 +128,8 @@ export type Action =
   | { type: "confirm"; answer: Today.ConfirmAnswer }
   | { type: "keepGoing"; yes: boolean }
   | { type: "restartDay" }
-  | { type: "acceptGoal"; to: number }
+  | { type: "acceptGoal"; to: number; reason: string }
+  | { type: "setGoal"; to: number }
   | { type: "keepGoal" }
   | { type: "clinicianChat"; text: string }
   | { type: "forgetClinicianNote"; id: string }
@@ -142,7 +150,7 @@ export type Action =
   | { type: "setSuggestSource"; source: SuggestSource }
   | { type: "reset" };
 
-function reducer(state: AppState, action: Action): AppState {
+export function reducer(state: AppState, action: Action): AppState {
   const next = reduce(state, action);
   // Loading a save (or undoing an edit) restores answers as they were; only new answers get a rewind point.
   // "commit" shows a state a step has already produced (memorySession.ts), rewind points and all.
@@ -158,7 +166,10 @@ function reduce(state: AppState, action: Action): AppState {
     case "commit":
       return action.state;
     case "completeOnboarding":
-      return Today.startDay({ ...state, onboarded: true, profile: action.profile, plan: action.plan, planSource: ALL_FROM_PLAN });
+      // After real onboarding, Today first sets the weekly goal and plan; Skip onboarding (demo) goes straight to the day.
+      return Today.startDay({ ...state, onboarded: true, profile: action.profile, plan: action.plan, planSource: ALL_FROM_PLAN, weekSetup: action.setUpWeek || undefined });
+    case "setupGoal": return Today.setupGoal(state, action.label, action.to);
+    case "setupPlanDone": return Today.setupPlanDone(state, action.label);
     case "updateProfile":
       return { ...state, profile: { ...state.profile, ...action.patch } };
     case "setCategoryPref":
@@ -210,7 +221,7 @@ function reduce(state: AppState, action: Action): AppState {
     case "setToday":
       return Today.startDay({ ...state, todayIndex: action.index });
     case "loadPersona": {
-      const next = { ...state, ...personaState(action.personaId), syncCount: 0, painReports: 0, clinician: DEFAULT_CLINICIAN, goalSource: "default" as const, recapHandled: false };
+      const next = { ...state, ...personaState(action.personaId), syncCount: 0, painReports: 0, clinician: DEFAULT_CLINICIAN, recapHandled: false };
       return Today.startDay(state.onboarded ? { ...next, profile: personaProfile(next) } : next);
     }
     case "confirmTime": return Today.confirmTime(state, action.keep);
@@ -229,11 +240,13 @@ function reduce(state: AppState, action: Action): AppState {
       return i < 0 ? state : { ...state, chat: state.chat.slice(0, i) };
     }
     case "another": return Today.anotherOption(state);
+    case "skipReason": return Today.skipReason(state, action.reason);
     case "remindLater": return Today.remindLater(state);
     case "setReminder": return Today.setReminder(state, action.when);
     case "reminderDue": return Today.reminderDue(state);
     case "reason": return Today.chooseReason(state, action.reason);
     case "freeText": return Today.freeText(state, action.text);
+    case "own": return Today.ownAnswer(state, action.answer);
     case "addNote": return { ...state, notes: [...state.notes, { id: Today.newId("n"), text: action.text, where: action.where, day: state.todayIndex }] };
     case "forgetNote": return { ...state, notes: state.notes.filter((n) => n.id !== action.id) };
     case "wantMore": return Today.wantMore(state);
@@ -245,7 +258,17 @@ function reduce(state: AppState, action: Action): AppState {
       // Demo control: replay today from the check-in, without today's workouts.
       return Today.startDay({ ...state, sessions: state.sessions.filter((x) => x.dayIndex !== state.todayIndex) });
     case "acceptGoal":
-      return { ...state, goal: action.to, goalSource: "recap", recapHandled: true };
+      // The agent's offer, accepted: who, when and why are shown beside the goal.
+      return {
+        ...state, goal: action.to, goalSource: "recap", recapHandled: true,
+        goalSet: { by: "agent", on: appDate(state.todayIndex), reason: action.reason, from: state.goal },
+      };
+    case "setGoal": {
+      // The user's own number (Settings, onboarding, or typed on Progress). It also answers this week's offer.
+      const to = clampGoal(action.to);
+      if (to === state.goal && state.goalSource === "user") return state;
+      return { ...state, goal: to, goalSource: "user", recapHandled: true, goalSet: { by: "user", on: appDate(state.todayIndex), from: state.goal } };
+    }
     case "keepGoal":
       return { ...state, recapHandled: true };
     case "clinicianChat":

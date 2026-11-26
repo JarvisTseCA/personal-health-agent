@@ -126,7 +126,7 @@ CREATE TABLE IF NOT EXISTS memory_goals (
     user_id        TEXT NOT NULL,
     week_start     TEXT NOT NULL,                      -- the week's Monday, "2026-11-23"
     goal_met_hours REAL,
-    goal_set_by    TEXT,                               -- default | recap
+    goal_set_by    TEXT,                               -- default | recap | user
     mon TEXT, tue TEXT, wed TEXT, thu TEXT, fri TEXT, sat TEXT, sun TEXT,  -- off | 0 | 5 | 10 | 30 | 45
     updated_at     TEXT NOT NULL,
     PRIMARY KEY (user_id, week_start)
@@ -326,8 +326,8 @@ def _save_goals(conn: sqlite3.Connection, user_id: str, weeks: Any) -> None:
         if "goal_met_hours" in part:
             row["goal_met_hours"] = _above_zero(part["goal_met_hours"], f"{what}.goal_met_hours")
         if "goal_set_by" in part:
-            if part["goal_set_by"] not in ("default", "recap"):
-                raise MemoryDataError(f"{what}.goal_set_by is {part['goal_set_by']!r}, expected default or recap")
+            if part["goal_set_by"] not in ("default", "recap", "user"):
+                raise MemoryDataError(f"{what}.goal_set_by is {part['goal_set_by']!r}, expected default, recap or user")
             row["goal_set_by"] = part["goal_set_by"]
         if "plan" in part:
             plan = part["plan"]

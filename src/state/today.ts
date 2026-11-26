@@ -13,16 +13,18 @@ import { UNPLANNED_BOUTS } from "../data/mockFitbit";
 import { getFamily, getVariant, PICKABLE } from "../lib/activities";
 import { HISTORY_WEEKS, weekBefore, type FitbitImport } from "../lib/fitbit";
 import { howTos } from "../lib/moves";
-import { countsTowardGoal, fmt, fmtGoal, minutesFor, UNCONFIRMED_MET, type Session } from "../lib/met";
+import { countsTowardGoal, DAY_NAMES_LONG, fmt, fmtGoal, minutesFor, UNCONFIRMED_MET, type Session } from "../lib/met";
 import { WEEKLY_UPPER_LIMIT } from "../lib/goal";
-import { ALL_FROM_PLAN, SLOT_MINUTES, type DaySlot } from "../lib/plan";
+import { ALL_FROM_PLAN, SLOT_LABEL, SLOT_MINUTES, type DaySlot } from "../lib/plan";
 import { afterDecline, DECLINE_LABEL, suggest, type DeclineReason, type Energy, type Place, type Suggestion } from "../lib/suggest";
-import { matchActivity, parseEnergy, parseMinutes, parsePlace, parseReason, parseYesNo } from "../lib/freeText";
+import { matchActivity, parseEnergy, parseMinutes, parsePlace, parsePlanChanges, parseReason, parseYesNo } from "../lib/freeText";
+import { appDate, clampGoal } from "../lib/goalNote";
 import { SCRIPTED_REPLIES } from "../services/mockResponses";
 import type { BackendSuggestion } from "../services/backend";
 import { buildAgentContext, buildSuggestInput, creditOf, equipmentAt } from "../services/context";
 import type { AppState, TodayEntry, TodayRewind, TodayState } from "./types";
-import { codeOfTableId, isTableId, registerTable } from "../lib/tableActivities";
+import { codeOfTableId, isTableId, registerTable, tableId } from "../lib/tableActivities";
+import { matchTable } from "../lib/tableMatch";
 import { suggestSourceOf } from "./suggestSource";
 
 let seq = 0;
@@ -75,6 +77,7 @@ export function openedToday(state: Pick<AppState, "todayIndex" | "signIns">): bo
 export function startDay(state: AppState): AppState {
   // Opening the app today is a sign-in.
   const st: AppState = { ...state, signIns: openedToday(state) };
+  if (st.weekSetup) return startSetup(st);
   const ctx = buildAgentContext(st);
   const off = st.plan[st.todayIndex] === "off";
   const n = ctx.streak.current;
@@ -96,6 +99,40 @@ export function startDay(state: AppState): AppState {
     // A planned day starts by confirming its time; an off day asks if there's any time at all.
     today: { dayKey: dayKeyOf(st), step: off ? "time" : "time-confirm", checkIn: {}, entries, exclude: [], boost: false, nudged: false },
   };
+}
+
+// --- First time in Today: set the weekly goal, then the weekly plan -------------------------------
+
+/** Quick answers for the goal question: the guideline first. */
+export const SETUP_GOAL_OPTIONS: Array<[string, number]> = [["7.5, the guideline", 7.5], ["5 to start", 5], ["10", 10]];
+export const SETUP_PLAN_DONE = "Looks good";
+
+const SETUP_GOAL_Q =
+  "Welcome! Before your first check-in, let's set up your week. The guideline is 7.5 MET-hours a week: " +
+  "about 150 minutes of moderate activity or 75 of vigorous. What weekly goal do you want? You can change it any time in Settings.";
+const SETUP_PLAN_Q =
+  "How much time do you have each day? Every day starts at 10 min. Change the days that are different, " +
+  "and mark days you can't exercise at all as Off. Days with more time get more of the goal.";
+
+function startSetup(st: AppState): AppState {
+  return { ...st, today: { dayKey: dayKeyOf(st), step: "setup-goal", checkIn: {}, entries: [agent(SETUP_GOAL_Q)], exclude: [], boost: false, nudged: false } };
+}
+
+/** The goal the user picked or typed: saved as theirs, with today's date. */
+export function setupGoal(state: AppState, label: string, to: number): AppState {
+  const goal = clampGoal(to);
+  const s: AppState = { ...state, goal, goalSource: "user", goalSet: { by: "user", on: appDate(state.todayIndex), from: state.goal } };
+  const said = goal < 7.5 ? ` A good start; you can work up to 7.5.` : goal > 7.5 ? " Ambitious; I'll keep an eye on how it feels." : "";
+  return setToday(push(s, user(label), agent(`${fmtGoal(goal)} MET-hours a week it is.${said}`), agent(SETUP_PLAN_Q)), { step: "setup-plan" });
+}
+
+/** The plan is set (the grid changes it as the user taps): on to today's usual check-in. */
+export function setupPlanDone(state: AppState, label: string): AppState {
+  if (state.plan.every((d) => d === "off")) return push(state, user(label), agent("Pick at least one day with time, so the goal has somewhere to go."));
+  const days = state.plan.filter((d) => d !== "off").length;
+  const done = push(state, user(label), agent(`Your week is set: ${fmtGoal(state.goal)} MET-hours over ${days} ${days === 1 ? "day" : "days"}. Now, today.`));
+  const day = startDay({ ...done, weekSetup: undefined });
+  return { ...day, today: { ...day.today, entries: [...done.today.entries, ...day.today.entries] } };
 }
 
 /** Today's planned minutes: from the weekly plan, or from the calendar block if the user edited it. */
@@ -215,12 +252,13 @@ export function answerMood(state: AppState, label: string, mood: string): AppSta
 /** Run the ranker and show the result as the live suggestion card. */
 function offer(state: AppState, intro?: string): AppState {
   const input = buildSuggestInput(state);
-  let r = suggest(input);
+  const r = suggest(input);
   let s = state;
   if (!r.lead) {
-    r = suggest({ ...input, minutes: 0 });
-    s = push(s, agent("Nothing on your list fits right now. Here's something small you can do anywhere."));
-  } else if (intro) {
+    // Nothing fits: ask what they'd do, rather than offer the same small desk moves again and again.
+    return askOwn(s, "Nothing on my list fits right now.");
+  }
+  if (intro) {
     s = push(s, agent(intro));
   }
   // From the activity table: the card waits for the backend's pick ("Finding one for you…");
@@ -316,21 +354,127 @@ function learnLike(state: AppState, familyId: string): AppState {
   return { ...state, profile: { ...p, enjoyed: [...p.enjoyed, familyId], access: { ...p.access, [familyId]: p.access[familyId] ?? "have" } } };
 }
 
+/** Options the user can pass over with "Give me another option" before the agent asks for their own (ten seen). */
+export const MAX_PASSES = 9;
+
 /**
- * "Give me another option": swap in the next-ranked pick, no questions asked.
- * Cycles through the pick and its backups, so the user never hits a dead end.
+ * "Give me another option": no question asked. The next option of the set shows (the backups, in
+ * turn); once all three have been seen, a fresh set comes, leaving those three out for today.
+ * Under the new option the user may say why they passed the last one (skipReason), optionally.
+ * After ten options the button reads "None of these work", and pressing it asks for the user's own
+ * exercise, found in the activity table (askOwn). A reason given on the way starts the count again.
  */
 export function anotherOption(state: AppState, typed?: string): AppState {
   const c = state.today.current;
   if (!c) return state;
-  const s = push(state, user(typed ?? "Give me another option"));
-  if (c.backups.length === 0) {
-    return push(s, agent("This is the only option that fits your time today. Tell me if something's in the way and I'll adjust."));
+  const passed = state.today.passed ?? 0;
+  if (passed >= MAX_PASSES) {
+    return askOwn(push(state, user(typed ?? "None of these work")), `That's ${MAX_PASSES + 1} options.`);
   }
-  const [next, ...rest] = c.backups;
-  return setToday(push(s, agent("How about this instead?")), {
-    step: "suggested", reminder: undefined, howShown: 0, current: { ...c, lead: next, backups: [...rest, c.lead], showBackups: false },
+  const s = push(state, user(typed ?? "Give me another option"));
+  const seen = c.seen ?? 0;
+  if (c.backups.length > 0 && seen < c.backups.length) {
+    const [next, ...rest] = c.backups;
+    return setToday(push(s, agent("How about this instead?")), {
+      step: "suggested", reminder: undefined, howShown: 0, passed: passed + 1,
+      current: { ...c, lead: next, backups: [...rest, c.lead], showBackups: false, seen: seen + 1, skipped: c.lead },
+    });
+  }
+  // All three seen: leave them out for today and ask for a new set (the backend too, from the table).
+  const shown = [c.lead, ...c.backups].map((x) => x.familyId);
+  const fresh = offer(setToday(s, { exclude: [...new Set([...s.today.exclude, ...shown])] }), "Here are some different ones.");
+  const nc = fresh.today.current;
+  if (!nc || nc.desk || shown.includes(nc.lead.familyId)) {
+    return askOwn(s, "Those are all the options that fit your time and place today.");
+  }
+  return setToday(fresh, { current: { ...nc, skipped: c.lead }, passed: passed + 1 });
+}
+
+/** The optional "why not that one?" after "Give me another option": the same as a decline reason for it. */
+export function skipReason(state: AppState, reason: DeclineReason): AppState {
+  const c = state.today.current;
+  if (!c?.skipped) return state;
+  return chooseReason(setToday(state, { current: { ...c, lead: c.skipped, skipped: undefined } }), reason);
+}
+
+/** What the user is asked for their own exercise; the examples show the minutes can come along. */
+export const OWN_QUESTION = "What would you like to do instead? Tell me, like \"40 min badminton\", and I'll find it in the activity table.";
+
+/**
+ * The user names their own exercise: after ten options, or when nothing on the list fits.
+ * What they type is matched to the activity table (ownText), so it counts at the table's MET.
+ */
+export function askOwn(state: AppState, lead: string): AppState {
+  return setToday(push(state, agent(`${lead} ${OWN_QUESTION}`)), {
+    step: "own", passed: 0, reminder: undefined, own: undefined, current: undefined, accepted: undefined,
   });
+}
+
+const tableRow = (state: AppState, code: string) => state.tableActivities?.[code];
+
+/** "40 min of badminton, social singles and doubles (5.5 MET), 3.7 MET-hours." */
+function ownLine(state: AppState): string {
+  const own = state.today.own!;
+  const row = tableRow(state, own.codes[0])!;
+  const mh = (row.met * (own.minutes ?? 0)) / 60;
+  return `${own.minutes} min of ${row.label.charAt(0).toLowerCase()}${row.label.slice(1)} (${fmt(row.met)} MET), ${fmt(mh)} MET-hours`;
+}
+
+/** What the user typed at "What would you like to do instead?", matched to the activity table. */
+export function ownText(state: AppState, text: string): AppState {
+  let s = push(state, user(text));
+  const matches = matchTable(text);
+  if (matches.length === 0) {
+    s = note(s, `Wanted to do "${text}", not found in the activity table`, "Today: own exercise");
+    return setToday(push(s, agent("I couldn't find that in the activity table. Try another name for it, like \"cycling\" or \"weights\".")), { step: "own" });
+  }
+  const rows = matches.map((m) => m.row);
+  registerTable(rows);
+  s = { ...s, tableActivities: { ...s.tableActivities, ...Object.fromEntries(rows.map((r) => [r.code, r])) } };
+  const minutes = parseMinutes(text) ?? undefined;
+  s = setToday(s, { own: { text, codes: rows.map((r) => r.code), minutes: minutes && minutes > 0 ? Math.min(minutes, 240) : undefined } });
+  return ownNext(s);
+}
+
+/** Ask for the minutes if they're missing, else confirm the match and ask: done, or the plan? */
+function ownNext(state: AppState): AppState {
+  const own = state.today.own!;
+  const row = tableRow(state, own.codes[0])!;
+  if (!own.minutes) {
+    return setToday(push(state, agent(`In the activity table that's "${row.label}" (${fmt(row.met)} MET). How many minutes?`)), { step: "own-minutes" });
+  }
+  return setToday(push(state, agent(`That's ${ownLine(state)}. Have you done it already, or is it your plan for today?`)), { step: "own-confirm" });
+}
+
+export type OwnAnswer = "did" | "plan" | { code: string } | { minutes: number };
+
+/** A tap (or typed answer) at the own-exercise steps. */
+export function ownAnswer(state: AppState, answer: OwnAnswer, typed?: string): AppState {
+  const own = state.today.own;
+  if (!own) return state;
+  if (typeof answer === "object" && "minutes" in answer) {
+    if (answer.minutes <= 0) return push(state, user(typed ?? String(answer.minutes)), agent("Roughly how many minutes, like 20 or 45?"));
+    return ownNext(setToday(push(state, user(typed ?? `${answer.minutes} min`)), { own: { ...own, minutes: Math.min(answer.minutes, 240) } }));
+  }
+  if (typeof answer === "object") {
+    // Another of the matches: it goes first, and the confirmation is asked again.
+    const row = tableRow(state, answer.code);
+    if (!row) return state;
+    const codes = [answer.code, ...own.codes.filter((c) => c !== answer.code)];
+    return ownNext(setToday(push(state, user(typed ?? `It's ${row.label}`)), { own: { ...own, codes } }));
+  }
+  const row = tableRow(state, own.codes[0])!;
+  const id = tableId(row.code);
+  const pick: Suggestion = {
+    familyId: id, variantId: id, durationMin: own.minutes ?? 30, met: row.met,
+    credit: (row.met * (own.minutes ?? 30)) / 60, rawMetHours: (row.met * (own.minutes ?? 30)) / 60, reasons: ["Your own choice"], score: 0,
+  };
+  // Choosing it is feedback: at this place, it counts as picked before (as "Let's start" does).
+  const learned = setToday(learnPicked(state, id), { own: undefined });
+  if (answer === "plan") return setToday(accept(learned, pick, typed ?? "It's my plan"), { current: { lead: pick, backups: [], desk: false, showBackups: false, source: "rules" } });
+  const session: Session = { id: newId("m"), variantId: id, durationMin: pick.durationMin, dayIndex: state.todayIndex, source: "manual", confirmed: true };
+  const st = push({ ...learned, sessions: [...learned.sessions, session] }, user(typed ?? "I did it"), agent(`Logged: ${ownLine(state)}.`));
+  return afterCredit(learned, st, session);
 }
 
 /** "Remind me later": the coach asks when. */
@@ -381,7 +525,8 @@ export function chooseReason(state: AppState, reason: DeclineReason, typed?: str
   const cur = state.today.current?.lead;
   if (!cur) return state;
   const noun = getFamily(cur.familyId).noun;
-  let s = push(state, user(typed ?? DECLINE_LABEL[reason]), agent(REASON_REPLY[reason](noun)));
+  // A reason is new information, so "Give me another option" may be used again.
+  let s = push(setToday(state, { passed: 0 }), user(typed ?? DECLINE_LABEL[reason]), agent(REASON_REPLY[reason](noun)));
   s = { ...s, declines: [...s.declines, { id: newId("d"), familyId: cur.familyId, reason, day: s.todayIndex, note: typed, place: s.today.checkIn.place }] };
   if (reason === "other") {
     s = setToday(s, { exclude: [...s.today.exclude, cur.familyId] });
@@ -648,6 +793,22 @@ const DECLINE_WORDS = /\b(not today|no thanks|no thank|something else|don't want
 export function freeText(state: AppState, text: string): AppState {
   const t = state.today;
   switch (t.step) {
+    case "setup-goal": {
+      const n = text.match(/(\d+(?:\.\d+)?)/);
+      if (n) return setupGoal(state, text, parseFloat(n[1]));
+      if (/\b(guideline|default|standard|recommended|sure|ok|okay|yes)\b/i.test(text)) return setupGoal(state, text, 7.5);
+      return push(state, user(text), agent("Type a number of MET-hours, like 6, or tap one of the options."));
+    }
+    case "setup-plan": {
+      const changes = parsePlanChanges(text);
+      const days = Object.keys(changes).map(Number);
+      if (days.length) {
+        const plan = state.plan.map((x, i) => changes[i] ?? x);
+        return push({ ...state, plan }, user(text), agent(`Updated ${days.map((d) => `${DAY_NAMES_LONG[d]} to ${SLOT_LABEL[changes[d]]}`).join(", ")}. Anything else? Tap "${SETUP_PLAN_DONE}" when it's right.`));
+      }
+      if (parseYesNo(text) === true || /\b(done|good|fine|looks good|that's it|thats it)\b/i.test(text)) return setupPlanDone(state, text);
+      return push(state, user(text), agent('Tap the days to change them, or type something like "Thursday off, Saturday 45 min".'));
+    }
     case "time-confirm": {
       if (/\b(off|day off|sick|rest day|resting|not today)\b/i.test(text)) return takeDayOff(state, text);
       const yn = parseYesNo(text);
@@ -726,6 +887,21 @@ export function freeText(state: AppState, text: string): AppState {
     }
     case "wrap":
       return coachReply(state, text);
+    case "own":
+      return ownText(state, text);
+    case "own-minutes": {
+      // "45" answers the question; "45 min tennis" names another activity too.
+      if (matchTable(text).length) return ownText(state, text);
+      const m = parseMinutes(text);
+      if (m === null) return push(state, user(text), agent("Roughly how many minutes, like 20 or 45?"));
+      return ownAnswer(state, { minutes: m }, text);
+    }
+    case "own-confirm": {
+      const low = text.toLowerCase();
+      if (/\b(did|done|finished|already)\b/.test(low)) return ownAnswer(state, "did", text);
+      if (/\b(plan|will|later|going to|gonna|tonight)\b/.test(low)) return ownAnswer(state, "plan", text);
+      return ownText(state, text);
+    }
   }
 }
 
@@ -744,6 +920,7 @@ export function withRewind(prev: AppState, next: AppState): AppState {
   const rewind: TodayRewind = {
     entryCount: n, today, plan: prev.plan, planSource: prev.planSource, sessions: prev.sessions, declines: prev.declines, profile: prev.profile,
     notes: prev.notes, painReports: prev.painReports, syncCount: prev.syncCount,
+    goal: prev.goal, goalSource: prev.goalSource, goalSet: prev.goalSet, weekSetup: prev.weekSetup,
   };
   const entries = after.map((e, i) => (i >= n && e.role === "user" && !e.rewind ? { ...e, rewind } : e));
   return { ...next, today: { ...next.today, entries } };
@@ -757,6 +934,7 @@ export function editAnswer(state: AppState, entryId: string): AppState {
   return {
     ...state,
     plan: r.plan ?? state.plan, planSource: r.planSource ?? state.planSource, sessions: r.sessions, declines: r.declines, profile: r.profile, notes: r.notes, painReports: r.painReports, syncCount: r.syncCount,
+    ...(r.goal !== undefined ? { goal: r.goal, goalSource: r.goalSource ?? state.goalSource, goalSet: r.goalSet, weekSetup: r.weekSetup } : {}),
     today: { ...r.today, entries: state.today.entries.slice(0, r.entryCount) },
   };
 }

@@ -513,3 +513,70 @@ def test_each_persona_gets_a_pick_and_two_backups_at_each_place(real_table, pers
         assert p["major_heading"] not in body.get("exclude_headings", [])
         if body.get("limits", {}).get("no_vigorous"):
             assert p["met_value"] < 6
+
+
+# ---- Variety: no repeat of a recent movement, three different movements and kinds ----
+
+from app.suggest import pick_from_table  # noqa: E402
+from app.prompt import table_activity_question  # noqa: E402
+
+
+def _row(code, heading, family, kind):
+    return {"activity_code": code, "major_heading": heading, "family": family, "type": kind}
+
+
+def _answers(by_heading, order):
+    """Jev's answers where activities earlier in `order` are liked more."""
+    out = {}
+    for heading, rows in by_heading.items():
+        out[table_activity_question(heading)] = {
+            "probabilities": {r["activity_code"]: 1.0 - order.index(r["activity_code"]) / 10 for r in rows}
+        }
+    return out
+
+
+BY_HEADING = {
+    "Walking": [_row("17190", "Walking", "treadmill", "cardio"), _row("17200", "Walking", "walking", "cardio")],
+    "Running": [_row("12050", "Running", "treadmill", "cardio"), _row("12020", "Running", "running", "cardio")],
+    "Conditioning Exercise": [_row("02020", "Conditioning Exercise", "elliptical", "cardio"), _row("02150", "Conditioning Exercise", "yoga", "mind_body")],
+}
+RANKED = [("Walking", 0.5), ("Running", 0.3), ("Conditioning Exercise", 0.2)]
+ORDER = ["17190", "17200", "12050", "12020", "02020", "02150"]
+
+
+def test_the_three_picks_are_different_movements_and_kinds_where_possible():
+    picked = [r["activity_code"] for r, _, _ in pick_from_table(RANKED, _answers(BY_HEADING, ORDER), BY_HEADING)]
+    # Walking's favorite (treadmill) leads; Running's favorite is also treadmill, so its next one;
+    # Conditioning's favorite (elliptical) is cardio again, so yoga.
+    assert picked == ["17190", "12020", "02150"]
+
+
+def test_a_movement_done_recently_is_not_picked_again_if_anything_else_fits():
+    picked = [r["activity_code"] for r, _, _ in pick_from_table(RANKED, _answers(BY_HEADING, ORDER), BY_HEADING, ["treadmill"])]
+    assert "17190" not in picked and "12050" not in picked
+    assert picked[0] == "17200"
+
+
+def test_variety_gives_way_when_nothing_else_is_left():
+    only = {"Walking": [_row("17190", "Walking", "treadmill", "cardio")]}
+    picked = pick_from_table([("Walking", 1.0)], _answers(only, ["17190"]), only, ["treadmill"])
+    assert [r["activity_code"] for r, _, _ in picked] == ["17190"]
+
+
+@pytest.mark.parametrize("place", ["indoors_private", "indoors_with_others", "outside"])
+def test_with_the_real_table_the_picks_are_three_movements(real_table, place):
+    body = {**REQ, "picked_codes": [], "check_in": {**REQ["check_in"], "place": place}}
+    data = real_table.post("/api/suggest/table", json=body).json()
+    chosen = [data["lead"], *data["backups"]]
+    families = activities.families_of([p["activity_code"] for p in chosen])
+    assert len(families) == 3
+
+
+def test_yesterdays_movement_is_not_suggested_again(real_table):
+    first = real_table.post("/api/suggest/table", json={**REQ, "picked_codes": []}).json()["lead"]["activity_code"]
+    again = real_table.post(
+        "/api/suggest/table",
+        json={**REQ, "picked_codes": [], "recent": [{"family_id": "x", "name": "x", "days_ago": 1, "code": first}]},
+    ).json()
+    done = set(activities.families_of([first]))
+    assert not done & set(activities.families_of([p["activity_code"] for p in [again["lead"], *again["backups"]]]))

@@ -148,6 +148,12 @@ def test_a_week_is_found_by_its_monday():
     ]
 
 
+def test_a_goal_the_user_set_is_kept_as_theirs():
+    memory.save("alex", ALEX)
+    memory.save("alex", {"goals": [{"week_start": "2026-11-23", "goal_met_hours": 12, "goal_set_by": "user"}]})
+    assert memory.read("alex")["goals"][0]["goal_set_by"] == "user"
+
+
 def test_a_second_check_in_on_the_same_day_replaces_the_first():
     memory.save("alex", ALEX)
     memory.save("alex", {"daily": {"check_ins": [

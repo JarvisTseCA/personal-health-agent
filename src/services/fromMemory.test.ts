@@ -166,6 +166,15 @@ describe("fromMemory: preferences and picks", () => {
     expect(state.profile.equipment).toEqual({ home: ["yoga-mat", "custom:Foam roller"], gym: null });
   });
 
+  it("keeps a goal the user set, with who set it and when, and the first-day setup", () => {
+    const s = { ...onboarded("alex"), goal: 12, goalSource: "user" as const, goalSet: { by: "user" as const, on: "Nov 23", from: 10 }, weekSetup: true };
+    const { m, back } = through(s);
+    expect(m.goals.at(-1)!.goal_set_by).toBe("user");
+    expect(back.state.goalSource).toBe("user");
+    expect(back.state.goalSet).toEqual({ by: "user", on: "Nov 23", from: 10 });
+    expect(back.state.weekSetup).toBe(true);
+  });
+
   it("rebuilds pickedCodes by place from the accepted suggestions, each code once", () => {
     const entry = (id: string, place: string, code: string) => (
       { id, date: "2026-11-25", place, activity_code: code, activity_name: code, outcome: "accepted" as const, reason: null, note: null }

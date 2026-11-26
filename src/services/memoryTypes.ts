@@ -21,7 +21,7 @@ import type { TableActivity } from "../lib/tableActivities";
 import type { CategoryPrefs } from "../lib/categories";
 import type { DaySource } from "../lib/plan";
 import type { Access } from "../lib/suggest";
-import type { ChatMessage, ClinicianNotes, NoteRecord, SuggestSource, TodayState, UsualTime } from "../state/types";
+import type { ChatMessage, ClinicianNotes, GoalSet, NoteRecord, SuggestSource, TodayState, UsualTime } from "../state/types";
 
 // --- Memory ------------------------------------------------------------------------------------
 
@@ -29,7 +29,8 @@ export interface MemoryGoalWeek {
   /** The week's Monday */
   week_start: string;
   goal_met_hours: number | null;
-  goal_set_by: "default" | "recap" | null;
+  /** default, recap (the agent's offer, accepted) or user (typed in Settings, onboarding or Today's first conversation) */
+  goal_set_by: "default" | "recap" | "user" | null;
   /** Monday to Sunday: off | 0 | 5 | 10 | 30 | 45 */
   plan: string[] | null;
 }
@@ -116,6 +117,10 @@ export interface AppOwn {
   workouts: Record<string, { variantId: string; customName?: string }>;
   /** Declines by id: the app's activity for the ones that aren't from the activity table */
   declines: Record<string, { familyId: string }>;
+  /** This week's goal change: who set it, on which day, from what, and the agent's reason (shown beside the goal) */
+  goalSet?: GoalSet;
+  /** Today's first conversation still sets the week's goal and plan */
+  weekSetup?: boolean;
 }
 
 /** What the app keeps under Memory's "other". */

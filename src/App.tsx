@@ -46,6 +46,8 @@ export default function App() {
   const { state, dispatch } = useStore();
   // A text checkmark (✓) on the Today tab once today's target is reached; gone the next day, when the new day starts at 0.
   const todayComplete = useMemo(() => state.onboarded && reachedToday(buildAgentContext(state)), [state]);
+  /** A red dot, like an app badge, until today's target is reached (not on a day marked off) */
+  const todayOpen = state.onboarded && !todayComplete && (!!state.weekSetup || state.plan[state.todayIndex] !== "off");
   const [screen, setScreen] = useState<Screen>(() => readHash() ?? "today");
 
   const go = useCallback((to: Screen) => {
@@ -118,9 +120,11 @@ export default function App() {
                 <span className="tab-icon">
                   <Icon />
                   {id === "today" && todayComplete && <span className="tab-badge" aria-hidden>{"\u2713\uFE0E"}</span>}
+                  {id === "today" && todayOpen && <span className="tab-dot" aria-hidden />}
                 </span>
                 {label}
                 {id === "today" && todayComplete && <span className="sr-only">, today's target reached</span>}
+                {id === "today" && todayOpen && <span className="sr-only">, today's target not reached yet</span>}
               </button>
             ))}
           </nav>

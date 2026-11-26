@@ -91,6 +91,8 @@ export function personaProfile(state: AppState): UserProfile {
 export type Action =
   | { type: "hydrate"; state: AppState }
   | { type: "completeOnboarding"; profile: UserProfile; plan: WeekPlan; setUpWeek?: boolean }
+  /** Demo: a new user's first log-in. Today starts with the agent setting the week's goal and plan. */
+  | { type: "firstLogin" }
   | { type: "setupGoal"; label: string; to: number }
   | { type: "setupPlanDone"; label: string }
   | { type: "updateProfile"; patch: Partial<UserProfile> }
@@ -228,8 +230,25 @@ function reduce(state: AppState, action: Action): AppState {
       const next = Today.startDay({ ...state, plan: edited.plan, planSource: edited.sources });
       return { ...next, toast: `Calendar: today's exercise block is now ${SLOT_MINUTES[slot]} min.` };
     }
-    case "setToday":
-      return Today.startDay({ ...state, todayIndex: action.index });
+    case "setToday": {
+      // "Pretend today is …" (demo controls): the week as it stood when that day began. A workout
+      // on that day or later hasn't happened yet, so it isn't counted; the persona's own come back
+      // when the day is moved past them again. A real Fitbit week is left as it is.
+      if (state.fitbitWeek) return Today.startDay({ ...state, todayIndex: action.index });
+      const persona = PERSONAS.find((x) => x.id === state.personaId)?.thisWeek ?? [];
+      const fromPersona = new Set(persona.map((x) => x.id));
+      const sessions = [
+        ...persona.filter((x) => x.dayIndex < action.index),
+        ...state.sessions.filter((x) => !fromPersona.has(x.id) && x.dayIndex < action.index),
+      ];
+      return Today.startDay({ ...state, todayIndex: action.index, sessions });
+    }
+    case "firstLogin": {
+      // A new user (the "Fresh start" persona: no history, nothing this week), past onboarding, whose
+      // first Today conversation sets the week's goal and plan before the day's check-in.
+      const next = { ...state, ...personaState("fresh"), syncCount: 0, painReports: 0, clinician: DEFAULT_CLINICIAN, recapHandled: false, chat: [] };
+      return Today.startDay({ ...next, onboarded: true, profile: personaProfile(next), weekSetup: true });
+    }
     case "loadPersona": {
       const next = { ...state, ...personaState(action.personaId), syncCount: 0, painReports: 0, clinician: DEFAULT_CLINICIAN, recapHandled: false };
       return Today.startDay(state.onboarded ? { ...next, profile: personaProfile(next) } : next);

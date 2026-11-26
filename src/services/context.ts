@@ -41,7 +41,7 @@ export interface Vo2 {
 
 export interface AgentContext {
   goal: number;
-  goalBy: "default" | "recap";
+  goalBy: "default" | "recap" | "user";
   steppingStone: boolean;
   today: string;
   todayIndex: number;

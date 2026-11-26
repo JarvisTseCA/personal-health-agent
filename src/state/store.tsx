@@ -15,6 +15,7 @@ import { applyClinicianTurn } from "../services/clinicianChat";
 import * as Today from "./today";
 import type { EquipmentProfile } from "../data/mockFitbit";
 import type { AppState, ChatMessage, ClinicianNotes, Overlay, SuggestSource, UserProfile } from "./types";
+import { appDate, clampGoal } from "../lib/goalNote";
 
 export { newId } from "./today";
 
@@ -82,7 +83,9 @@ export function personaProfile(state: AppState): UserProfile {
 
 export type Action =
   | { type: "hydrate"; state: AppState }
-  | { type: "completeOnboarding"; profile: UserProfile; plan: WeekPlan }
+  | { type: "completeOnboarding"; profile: UserProfile; plan: WeekPlan; setUpWeek?: boolean }
+  | { type: "setupGoal"; label: string; to: number }
+  | { type: "setupPlanDone"; label: string }
   | { type: "updateProfile"; patch: Partial<UserProfile> }
   | { type: "setCategoryPref"; category: string; pref: CategoryPref | undefined }
   | { type: "setAccess"; familyId: string; access: Access }
@@ -119,7 +122,8 @@ export type Action =
   | { type: "confirm"; answer: Today.ConfirmAnswer }
   | { type: "keepGoing"; yes: boolean }
   | { type: "restartDay" }
-  | { type: "acceptGoal"; to: number }
+  | { type: "acceptGoal"; to: number; reason: string }
+  | { type: "setGoal"; to: number }
   | { type: "keepGoal" }
   | { type: "clinicianChat"; text: string }
   | { type: "forgetClinicianNote"; id: string }
@@ -135,7 +139,7 @@ export type Action =
   | { type: "setSuggestSource"; source: SuggestSource }
   | { type: "reset" };
 
-function reducer(state: AppState, action: Action): AppState {
+export function reducer(state: AppState, action: Action): AppState {
   const next = reduce(state, action);
   // Loading a save (or undoing an edit) restores answers as they were; only new answers get a rewind point.
   return next === state || action.type === "hydrate" ? next : Today.withRewind(state, next);
@@ -148,7 +152,10 @@ function reduce(state: AppState, action: Action): AppState {
       registerTable(Object.values(action.state.tableActivities ?? {}));
       return action.state;
     case "completeOnboarding":
-      return Today.startDay({ ...state, onboarded: true, profile: action.profile, plan: action.plan, planSource: ALL_FROM_PLAN });
+      // After real onboarding, Today first sets the weekly goal and plan; Skip onboarding (demo) goes straight to the day.
+      return Today.startDay({ ...state, onboarded: true, profile: action.profile, plan: action.plan, planSource: ALL_FROM_PLAN, weekSetup: action.setUpWeek || undefined });
+    case "setupGoal": return Today.setupGoal(state, action.label, action.to);
+    case "setupPlanDone": return Today.setupPlanDone(state, action.label);
     case "updateProfile":
       return { ...state, profile: { ...state.profile, ...action.patch } };
     case "setCategoryPref":
@@ -199,7 +206,7 @@ function reduce(state: AppState, action: Action): AppState {
     case "setToday":
       return Today.startDay({ ...state, todayIndex: action.index });
     case "loadPersona": {
-      const next = { ...state, ...personaState(action.personaId), syncCount: 0, painReports: 0, clinician: DEFAULT_CLINICIAN, goalSource: "default" as const, recapHandled: false };
+      const next = { ...state, ...personaState(action.personaId), syncCount: 0, painReports: 0, clinician: DEFAULT_CLINICIAN, goalSource: "default" as const, goalSet: undefined, recapHandled: false };
       return Today.startDay(state.onboarded ? { ...next, profile: personaProfile(next) } : next);
     }
     case "confirmTime": return Today.confirmTime(state, action.keep);
@@ -234,7 +241,17 @@ function reduce(state: AppState, action: Action): AppState {
       // Demo control: replay today from the check-in, without today's workouts.
       return Today.startDay({ ...state, sessions: state.sessions.filter((x) => x.dayIndex !== state.todayIndex) });
     case "acceptGoal":
-      return { ...state, goal: action.to, goalSource: "recap", recapHandled: true };
+      // The agent's offer, accepted: who, when and why are shown beside the goal.
+      return {
+        ...state, goal: action.to, goalSource: "recap", recapHandled: true,
+        goalSet: { by: "agent", on: appDate(state.todayIndex), reason: action.reason, from: state.goal },
+      };
+    case "setGoal": {
+      // The user's own number (Settings, onboarding, or typed on Progress). It also answers this week's offer.
+      const to = clampGoal(action.to);
+      if (to === state.goal && state.goalSource === "user") return state;
+      return { ...state, goal: to, goalSource: "user", recapHandled: true, goalSet: { by: "user", on: appDate(state.todayIndex), from: state.goal } };
+    }
     case "keepGoal":
       return { ...state, recapHandled: true };
     case "clinicianChat":

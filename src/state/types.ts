@@ -7,6 +7,15 @@ import type { DaySource, WeekPlan } from "../lib/plan";
 import type { Access, Constraint, DeclineReason, Energy, Place, Suggestion } from "../lib/suggest";
 import type { TableActivity } from "../lib/tableActivities";
 
+/** Who last changed the weekly goal, on which day of the app ("YYYY-MM-DD"), and the agent's reason. */
+export interface GoalSet {
+  by: "user" | "agent";
+  on: string;
+  /** For the agent's offers: the rule that triggered it, e.g. "You were under half your goal 3 weeks in a row." */
+  reason?: string;
+  from: number;
+}
+
 /** The app's built-in list of 15 activities, or the activity table through the backend. */
 export type SuggestSource = "library" | "table";
 
@@ -87,6 +96,8 @@ export interface CheckIn {
 }
 
 export type TodayStep =
+  // The first time Today opens after onboarding: the weekly goal, then the weekly plan.
+  | "setup-goal" | "setup-plan"
   | "time-confirm" | "time" | "place" | "energy" | "mood"
   | "suggested" | "reason" | "remind" | "reminded"
   | "accepted" | "confirm" | "confirm-other" | "nudge" | "wrap";
@@ -118,6 +129,11 @@ export interface TodayRewind {
   notes: NoteRecord[];
   painReports: number;
   syncCount: number;
+  /** Missing on rewind points saved before the goal could be set in Today */
+  goal?: number;
+  goalSource?: AppState["goalSource"];
+  goalSet?: GoalSet;
+  weekSetup?: boolean;
 }
 
 export interface TodayState {
@@ -161,9 +177,12 @@ export interface AppState {
   onboarded: boolean;
   profile: UserProfile;
   clinician: ClinicianNotes;
-  /** The user's weekly goal in MET-hours. Only the user changes it. */
+  /** The user's weekly goal in MET-hours. Only the user changes it (typing it, or accepting the agent's offer). */
   goal: number;
-  goalSource: "default" | "recap";
+  /** default: the 7.5 guideline · recap: the agent's offer, accepted · user: typed or stepped by the user */
+  goalSource: "default" | "recap" | "user";
+  /** When and why the goal last changed, shown beside it. Missing: the default, or an older save. */
+  goalSet?: GoalSet;
   plan: WeekPlan;
   /** Where each day's time came from: the weekly plan, or an exercise block the user edited on their calendar */
   planSource: DaySource[];
@@ -194,4 +213,9 @@ export interface AppState {
   overlay: Overlay;
   toast: string | null;
   recapHandled: boolean;
+  /**
+   * True from the end of onboarding until the user has set the weekly goal and plan in Today's
+   * first conversation. Missing (older saves, demo personas): already set up.
+   */
+  weekSetup?: boolean;
 }

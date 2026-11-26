@@ -13,11 +13,12 @@ import { UNPLANNED_BOUTS } from "../data/mockFitbit";
 import { getFamily, getVariant, PICKABLE } from "../lib/activities";
 import { HISTORY_WEEKS, weekBefore, type FitbitImport } from "../lib/fitbit";
 import { howTos } from "../lib/moves";
-import { countsTowardGoal, fmt, fmtGoal, minutesFor, UNCONFIRMED_MET, withCredit, type Session } from "../lib/met";
+import { countsTowardGoal, DAY_NAMES_LONG, fmt, fmtGoal, minutesFor, UNCONFIRMED_MET, withCredit, type Session } from "../lib/met";
 import { WEEKLY_UPPER_LIMIT } from "../lib/goal";
-import { ALL_FROM_PLAN, SLOT_MINUTES, type DaySlot } from "../lib/plan";
+import { ALL_FROM_PLAN, SLOT_LABEL, SLOT_MINUTES, type DaySlot } from "../lib/plan";
 import { afterDecline, DECLINE_LABEL, suggest, type DeclineReason, type Energy, type Place, type Suggestion } from "../lib/suggest";
-import { matchActivity, parseEnergy, parseMinutes, parsePlace, parseReason, parseYesNo } from "../lib/freeText";
+import { matchActivity, parseEnergy, parseMinutes, parsePlace, parsePlanChanges, parseReason, parseYesNo } from "../lib/freeText";
+import { appDate, clampGoal } from "../lib/goalNote";
 import { SCRIPTED_REPLIES } from "../services/mockResponses";
 import type { BackendSuggestion } from "../services/backend";
 import { buildAgentContext, buildSuggestInput, equipmentAt } from "../services/context";
@@ -49,6 +50,7 @@ export function startDay(state: AppState): AppState {
   // Opening the app today is a sign-in.
   const signIns = Array.from({ length: 7 }, (_, i) => (i === state.todayIndex ? true : !!state.signIns?.[i]));
   const st: AppState = { ...state, signIns };
+  if (st.weekSetup) return startSetup(st);
   const ctx = buildAgentContext(st);
   const off = st.plan[st.todayIndex] === "off";
   const n = ctx.streak.current;
@@ -70,6 +72,40 @@ export function startDay(state: AppState): AppState {
     // A planned day starts by confirming its time; an off day asks if there's any time at all.
     today: { dayKey: dayKeyOf(st), step: off ? "time" : "time-confirm", checkIn: {}, entries, exclude: [], boost: false, nudged: false },
   };
+}
+
+// --- First time in Today: set the weekly goal, then the weekly plan -------------------------------
+
+/** Quick answers for the goal question: the guideline first. */
+export const SETUP_GOAL_OPTIONS: Array<[string, number]> = [["7.5, the guideline", 7.5], ["5 to start", 5], ["10", 10]];
+export const SETUP_PLAN_DONE = "Looks good";
+
+const SETUP_GOAL_Q =
+  "Welcome! Before your first check-in, let's set up your week. The guideline is 7.5 MET-hours a week: " +
+  "about 150 minutes of moderate activity or 75 of vigorous. What weekly goal do you want? You can change it any time in Settings.";
+const SETUP_PLAN_Q =
+  "How much time do you have each day? Every day starts at 10 min. Change the days that are different, " +
+  "and mark days you can't exercise at all as Off. Days with more time get more of the goal.";
+
+function startSetup(st: AppState): AppState {
+  return { ...st, today: { dayKey: dayKeyOf(st), step: "setup-goal", checkIn: {}, entries: [agent(SETUP_GOAL_Q)], exclude: [], boost: false, nudged: false } };
+}
+
+/** The goal the user picked or typed: saved as theirs, with today's date. */
+export function setupGoal(state: AppState, label: string, to: number): AppState {
+  const goal = clampGoal(to);
+  const s: AppState = { ...state, goal, goalSource: "user", goalSet: { by: "user", on: appDate(state.todayIndex), from: state.goal } };
+  const said = goal < 7.5 ? ` A good start; you can work up to 7.5.` : goal > 7.5 ? " Ambitious; I'll keep an eye on how it feels." : "";
+  return setToday(push(s, user(label), agent(`${fmtGoal(goal)} MET-hours a week it is.${said}`), agent(SETUP_PLAN_Q)), { step: "setup-plan" });
+}
+
+/** The plan is set (the grid changes it as the user taps): on to today's usual check-in. */
+export function setupPlanDone(state: AppState, label: string): AppState {
+  if (state.plan.every((d) => d === "off")) return push(state, user(label), agent("Pick at least one day with time, so the goal has somewhere to go."));
+  const days = state.plan.filter((d) => d !== "off").length;
+  const done = push(state, user(label), agent(`Your week is set: ${fmtGoal(state.goal)} MET-hours over ${days} ${days === 1 ? "day" : "days"}. Now, today.`));
+  const day = startDay({ ...done, weekSetup: undefined });
+  return { ...day, today: { ...day.today, entries: [...done.today.entries, ...day.today.entries] } };
 }
 
 /** Today's planned minutes: from the weekly plan, or from the calendar block if the user edited it. */
@@ -603,6 +639,22 @@ const DECLINE_WORDS = /\b(not today|no thanks|no thank|something else|don't want
 export function freeText(state: AppState, text: string): AppState {
   const t = state.today;
   switch (t.step) {
+    case "setup-goal": {
+      const n = text.match(/(\d+(?:\.\d+)?)/);
+      if (n) return setupGoal(state, text, parseFloat(n[1]));
+      if (/\b(guideline|default|standard|recommended|sure|ok|okay|yes)\b/i.test(text)) return setupGoal(state, text, 7.5);
+      return push(state, user(text), agent("Type a number of MET-hours, like 6, or tap one of the options."));
+    }
+    case "setup-plan": {
+      const changes = parsePlanChanges(text);
+      const days = Object.keys(changes).map(Number);
+      if (days.length) {
+        const plan = state.plan.map((x, i) => changes[i] ?? x);
+        return push({ ...state, plan }, user(text), agent(`Updated ${days.map((d) => `${DAY_NAMES_LONG[d]} to ${SLOT_LABEL[changes[d]]}`).join(", ")}. Anything else? Tap "${SETUP_PLAN_DONE}" when it's right.`));
+      }
+      if (parseYesNo(text) === true || /\b(done|good|fine|looks good|that's it|thats it)\b/i.test(text)) return setupPlanDone(state, text);
+      return push(state, user(text), agent('Tap the days to change them, or type something like "Thursday off, Saturday 45 min".'));
+    }
     case "time-confirm": {
       if (/\b(off|day off|sick|rest day|resting|not today)\b/i.test(text)) return takeDayOff(state, text);
       const yn = parseYesNo(text);
@@ -699,6 +751,7 @@ export function withRewind(prev: AppState, next: AppState): AppState {
   const rewind: TodayRewind = {
     entryCount: n, today, plan: prev.plan, planSource: prev.planSource, sessions: prev.sessions, declines: prev.declines, profile: prev.profile,
     notes: prev.notes, painReports: prev.painReports, syncCount: prev.syncCount,
+    goal: prev.goal, goalSource: prev.goalSource, goalSet: prev.goalSet, weekSetup: prev.weekSetup,
   };
   const entries = after.map((e, i) => (i >= n && e.role === "user" && !e.rewind ? { ...e, rewind } : e));
   return { ...next, today: { ...next.today, entries } };
@@ -712,6 +765,7 @@ export function editAnswer(state: AppState, entryId: string): AppState {
   return {
     ...state,
     plan: r.plan ?? state.plan, planSource: r.planSource ?? state.planSource, sessions: r.sessions, declines: r.declines, profile: r.profile, notes: r.notes, painReports: r.painReports, syncCount: r.syncCount,
+    ...(r.goal !== undefined ? { goal: r.goal, goalSource: r.goalSource ?? state.goalSource, goalSet: r.goalSet, weekSetup: r.weekSetup } : {}),
     today: { ...r.today, entries: state.today.entries.slice(0, r.entryCount) },
   };
 }

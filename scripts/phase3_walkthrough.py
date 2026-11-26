@@ -30,9 +30,14 @@ REASONS = [("no-time", "No time"), ("tired", "Too tired"), ("not-mood", "Not in 
 rows, problems = [], []
 
 async def state(pg):
-    await pg.wait_for_timeout(450)  # saves are debounced 300 ms
+    """The app's state as the backend keeps it. With Memory (#35) the app saves each step there:
+    today's conversation under other.today and the table rows it knows under other.app."""
+    await pg.wait_for_timeout(450)  # let the step reach the backend
     return await pg.evaluate("""async () => { const id = localStorage.getItem('pha-user-id');
-        const r = await fetch('/api/state?user_id=' + encodeURIComponent(id)); return (await r.json()).state; }""")
+        const q = '?user_id=' + encodeURIComponent(id) + '&group=other';
+        const m = (await (await fetch('/api/memory' + q)).json()).memory;
+        if (m && m.other && m.other.today) return { today: m.other.today, tableActivities: (m.other.app || {}).tableActivities };
+        const r = await fetch('/api/state' + q); return (await r.json()).state; }""")
 
 async def wait_pick(pg):
     t = time.perf_counter()

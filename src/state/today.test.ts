@@ -252,19 +252,20 @@ describe("today flow", () => {
     expect(s.today.entries.some((e) => /mood for/.test(e.text))).toBe(false);
   });
 
-  it("'Give me another option' swaps the pick without asking why, then brings a fresh set", () => {
+  it("'Give me another option' shows the four backups in turn without asking why, then asks for the user's own", () => {
     let s = checkIn(onboarded());
-    const first = [s.today.current!.lead, ...s.today.current!.backups].map((x) => x.familyId);
+    const five = [s.today.current!.lead, ...s.today.current!.backups].map((x) => x.familyId);
+    expect(five.length).toBe(5);
     const declinesBefore = s.declines.length;
-    s = T.anotherOption(s);
-    expect(s.today.step).toBe("suggested");
-    expect(s.today.current!.lead.familyId).toBe(first[1]);
-    expect(s.today.current!.skipped!.familyId).toBe(first[0]); // the user may say why, optionally
+    for (let i = 1; i < 5; i++) {
+      s = T.anotherOption(s);
+      expect(s.today.step).toBe("suggested");
+      expect(s.today.current!.lead.familyId).toBe(five[i]);
+      expect(s.today.current!.skipped!.familyId).toBe(five[i - 1]); // the reason chips are about this one
+    }
     expect(s.declines.length).toBe(declinesBefore);
-    s = T.anotherOption(T.anotherOption(s)); // past both backups
-    expect(s.today.entries.at(-1)!.text).toBe("Here are some different ones.");
-    const next = [s.today.current!.lead, ...s.today.current!.backups].map((x) => x.familyId);
-    expect(next.some((f) => first.includes(f))).toBe(false);
+    s = T.anotherOption(s); // the fifth option's button: "None of these work"
+    expect(s.today.step).toBe("own");
     expect(s.declines.length).toBe(declinesBefore);
   });
 
@@ -277,7 +278,7 @@ describe("today flow", () => {
     expect(s.today.current!.skipped).toBeUndefined();
   });
 
-  it("'another option' ends after at most ten options and asks for the user's own exercise", () => {
+  it("'another option' ends after at most five options and asks for the user's own exercise", () => {
     let s = checkIn(onboarded());
     let presses = 0;
     while (s.today.step === "suggested" && presses < 20) { s = T.anotherOption(s); presses++; }
@@ -286,12 +287,12 @@ describe("today flow", () => {
     expect(s.today.entries.at(-1)!.text).toMatch(/What would you like to do instead\?/);
   });
 
-  it("the tenth option's button asks for the user's own exercise instead of an eleventh option", () => {
+  it("the fifth option's button asks for the user's own exercise instead of a sixth option", () => {
     let s = checkIn(onboarded());
     s = { ...s, today: { ...s.today, passed: T.MAX_PASSES } };
     s = T.anotherOption(s);
     expect(s.today.entries.at(-2)!.text).toBe("None of these work");
-    expect(s.today.entries.at(-1)!.text).toBe(`That's 10 options. ${T.OWN_QUESTION}`);
+    expect(s.today.entries.at(-1)!.text).toBe(`That's 5 options. ${T.OWN_QUESTION}`);
     expect(s.today.step).toBe("own");
   });
 

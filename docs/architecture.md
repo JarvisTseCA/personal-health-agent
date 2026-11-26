@@ -118,7 +118,7 @@ Tests: `.venv/bin/python -m pytest` (from `backend/`). They never call Jev or Ch
 |---|---|
 | `backend/app/prompt.py` | Builds the prompts for both calls: `state` (the check-in variables), the activity question, and the duration questions. **Edit this to tune the prompt.** The prompts for `/api/suggest/table` are at the bottom of the file. |
 | `backend/app/jev.py` | Calls Jev with the API key; the mock used when there's no key |
-| `backend/app/suggest.py` | After call 1, picks the activity and two backups; after call 2, gives each its own minutes and reasons |
+| `backend/app/suggest.py` | After call 1, picks the activity and four backups (five different movements, different workout types where possible); after call 2, gives each its own minutes and reasons |
 | `backend/app/activities.py` | The activity table: copies the CSV into SQLite when the backend starts, and picks the rows that fit a user today |
 | `backend/app/chat_rules.py` | Chat, check 1: reads the urgent keywords and tells whether a message matches one |
 | `backend/app/chat_gate.py` | Chat, check 2: the three yes/no questions for Jev, the thresholds, and the mock used when there's no key. **Edit this to tune the questions.** |

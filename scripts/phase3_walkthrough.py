@@ -3,7 +3,7 @@
 Five personas (the app's four scenarios, plus Alex with a health flag) x three places x three
 energy levels, then each decline reason once per persona. Running is marked 👎 for everyone.
 For every pick it checks: it came from the table, the verifier passes, nothing from a 👎
-category, nothing outdoor-only indoors, nothing vigorous with a health flag, two backups,
+category, nothing outdoor-only indoors, nothing vigorous with a health flag, up to four backups,
 and that the next pick follows each decline. It also times how long each pick took.
 
 Works with Jev mocked (no TYPESAFE_API_KEY) or live. Steps: docs/testing-and-hosting.md.
@@ -30,9 +30,14 @@ REASONS = [("no-time", "No time"), ("tired", "Too tired"), ("not-mood", "Not in 
 rows, problems = [], []
 
 async def state(pg):
-    await pg.wait_for_timeout(450)  # saves are debounced 300 ms
+    """The app's state as the backend keeps it. With Memory (#35) the app saves each step there:
+    today's conversation under other.today and the table rows it knows under other.app."""
+    await pg.wait_for_timeout(450)  # let the step reach the backend
     return await pg.evaluate("""async () => { const id = localStorage.getItem('pha-user-id');
-        const r = await fetch('/api/state?user_id=' + encodeURIComponent(id)); return (await r.json()).state; }""")
+        const q = '?user_id=' + encodeURIComponent(id) + '&group=other';
+        const m = (await (await fetch('/api/memory' + q)).json()).memory;
+        if (m && m.other && m.other.today) return { today: m.other.today, tableActivities: (m.other.app || {}).tableActivities };
+        const r = await fetch('/api/state' + q); return (await r.json()).state; }""")
 
 async def wait_pick(pg):
     t = time.perf_counter()
@@ -103,7 +108,7 @@ async def main():
                     if row and row["heading"] == "Running": problems.append(f"{name}: disliked Running suggested")
                     if row and place != "outside" and row["places"] == ["outside"]: problems.append(f"{name} · {place_label}: outdoor-only pick {row['code']}")
                     if health and lead["met"] >= 6: problems.append(f"{name} · {place_label} · {energy[0]}: vigorous {lead['met']} MET with a health flag")
-                    if len(cur["backups"]) != 2: problems.append(f"{name} · {place_label} · {energy[0]}: {len(cur['backups'])} backups")
+                    if not 1 <= len(cur["backups"]) <= 4: problems.append(f"{name} · {place_label} · {energy[0]}: {len(cur['backups'])} backups")
                     rows.append(r)
             # Each decline reason, from a fresh pick at Indoors, with others (Normal).
             for reason, label in REASONS:

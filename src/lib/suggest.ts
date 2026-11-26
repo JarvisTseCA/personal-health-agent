@@ -1,5 +1,5 @@
 /**
- * Daily suggestion ranker: filter → score → pick one lead and two backups.
+ * Daily suggestion ranker: filter → score → pick one lead and four backups.
  *
  * Rule-based on purpose. The coach writes the suggestion up in friendly
  * words, but the activity, minutes and MET-hours come from here, so they are
@@ -299,6 +299,9 @@ export function candidates(input: SuggestInput): { options: Array<{ family: Acti
   return { options, durations };
 }
 
+/** Backups behind the lead: "Give me another option" goes through them, five options in all. */
+export const BACKUPS = 4;
+
 export function suggest(input: SuggestInput): SuggestResult {
   const { options, durations: choices } = candidates(input);
   if (choices.length === 0) return deskOptions();
@@ -336,10 +339,17 @@ export function suggest(input: SuggestInput): SuggestResult {
   best.sort((a, b) => b.score - a.score);
   const lead = best[0] ?? null;
   if (!lead) return { lead: null, backups: [], desk: false };
-  const leadKind = getFamily(lead.familyId).kind;
+  // Four backups, best first, each of a kind not yet in the set while any is left (cardio, strength,
+  // mind-body, …), then the best of the rest: five options that differ as much as the list allows.
+  const kinds = new Set([getFamily(lead.familyId).kind]);
+  const backups: Suggestion[] = [];
   const rest = best.slice(1);
-  const differentKind = rest.filter((s) => getFamily(s.familyId).kind !== leadKind);
-  const backups = [...differentKind, ...rest.filter((s) => !differentKind.includes(s))].slice(0, 2);
+  while (backups.length < BACKUPS && rest.length > 0) {
+    const i = rest.findIndex((s) => !kinds.has(getFamily(s.familyId).kind));
+    const [next] = rest.splice(i >= 0 ? i : 0, 1);
+    kinds.add(getFamily(next.familyId).kind);
+    backups.push(next);
+  }
   return { lead, backups, desk: false };
 }
 

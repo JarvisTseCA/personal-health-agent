@@ -354,14 +354,14 @@ function learnLike(state: AppState, familyId: string): AppState {
   return { ...state, profile: { ...p, enjoyed: [...p.enjoyed, familyId], access: { ...p.access, [familyId]: p.access[familyId] ?? "have" } } };
 }
 
-/** Options the user can pass over with "Give me another option" before the agent asks for their own (ten seen). */
-export const MAX_PASSES = 9;
+/** Options the user can pass over with "Give me another option" before the agent asks for their own (five seen). */
+export const MAX_PASSES = 4;
 
 /**
  * "Give me another option": no question asked. The next option of the set shows (the backups, in
  * turn); once all three have been seen, a fresh set comes, leaving those three out for today.
  * Under the new option the user may say why they passed the last one (skipReason), optionally.
- * After ten options the button reads "None of these work", and pressing it asks for the user's own
+ * After five options the button reads "None of these work", and pressing it asks for the user's own
  * exercise, found in the activity table (askOwn). A reason given on the way starts the count again.
  */
 export function anotherOption(state: AppState, typed?: string): AppState {
@@ -401,7 +401,7 @@ export function skipReason(state: AppState, reason: DeclineReason): AppState {
 export const OWN_QUESTION = "What would you like to do instead? Tell me, like \"40 min badminton\", and I'll find it in the activity table.";
 
 /**
- * The user names their own exercise: after ten options, or when nothing on the list fits.
+ * The user names their own exercise: after five options, or when nothing on the list fits.
  * What they type is matched to the activity table (ownText), so it counts at the table's MET.
  */
 export function askOwn(state: AppState, lead: string): AppState {

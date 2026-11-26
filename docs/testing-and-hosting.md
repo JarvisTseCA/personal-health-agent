@@ -76,7 +76,7 @@ the same on every pull request.
 - **Dislikes:** Running is marked 👎 for everyone.
 
 For every pick it checks:
-- the pick came from the table and has two backups
+- the pick came from the table and has up to four backups
 - the verifier passes
 - nothing comes from a 👎 category
 - nothing outdoor-only is suggested indoors

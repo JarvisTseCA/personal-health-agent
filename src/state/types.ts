@@ -101,7 +101,7 @@ export type TodayStep =
   | "time-confirm" | "time" | "place" | "energy" | "mood"
   | "suggested" | "reason" | "remind" | "reminded"
   | "accepted" | "confirm" | "confirm-other" | "nudge" | "wrap"
-  // The user's own exercise, after ten options or when nothing fits: what, how long, did or plan.
+  // The user's own exercise, after five options or when nothing fits: what, how long, did or plan.
   | "own" | "own-minutes" | "own-confirm";
 
 export interface TodayEntry {

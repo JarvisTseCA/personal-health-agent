@@ -74,7 +74,7 @@ from .schemas import (  # noqa: E402
     TableSuggestRequest, TableSuggestResponse,
 )
 from .suggest import (  # noqa: E402
-    HEADINGS_TO_ASK, RECENT_DAYS, AnswerError, assemble, assemble_table, pick_activities, pick_from_table, rank_headings,
+    HEADINGS_TO_ASK, AnswerError, assemble, assemble_table, pick_activities, pick_from_table, rank_headings,
 )
 
 VIGOROUS_MET = 6.0  # "no vigorous activity" means under this, as in the app (src/lib/met.ts)
@@ -292,11 +292,7 @@ def suggest_from_table(req: TableSuggestRequest) -> TableSuggestResponse:
             jev_answers["activity"] = mock_table_activities(req, {h: by_heading[h] for h, _ in top})
         log.info("[3] Ask Jev #2 (which activity in each heading)… %.1fs", time.perf_counter() - t)
         log.debug("    Answer #2: %s", json.dumps(jev_answers["activity"], ensure_ascii=False))
-        # Movements done in the last couple of days (by their table code) aren't picked again if anything else fits.
-        recent_families = activities.families_of([r.code for r in req.recent if r.code and r.days_ago <= RECENT_DAYS])
-        if recent_families:
-            log.info("    Not repeating: %s", ", ".join(recent_families))
-        picked = pick_from_table(top, jev_answers["activity"], by_heading, recent_families)
+        picked = pick_from_table(top, jev_answers["activity"], by_heading)
         for h, _ in top:
             log.info("    %s: %s", h, _top(jev_answers["activity"][table_activity_question(h)]))
 

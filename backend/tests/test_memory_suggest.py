@@ -247,7 +247,7 @@ def test_a_check_in_is_all_it_takes(client):
     assert res.status_code == 200, res.text
     data = res.json()
     assert data["source"] == "mock"
-    assert len(codes(data)) == 3
+    assert len(codes(data)) == 4  # up to five picks; only four activities fit
     assert data["today"] == {
         "day_name": "Wednesday", "weekly_goal_met_hours": 7.5, "done_this_week_met_hours": 2.5,
         "left_this_week_met_hours": 5.0, "target_met_hours": pytest.approx(2.0), "done_today_met_hours": 0,

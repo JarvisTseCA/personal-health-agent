@@ -21,7 +21,7 @@ import { matchActivity, parseEnergy, parseMinutes, parsePlace, parsePlanChanges,
 import { appDate, clampGoal } from "../lib/goalNote";
 import { SCRIPTED_REPLIES } from "../services/mockResponses";
 import type { BackendSuggestion } from "../services/backend";
-import { buildAgentContext, buildSuggestInput, creditOf, equipmentAt } from "../services/context";
+import { buildAgentContext, buildSuggestInput, creditOf, equipmentAt, ownContext } from "../services/context";
 import type { AppState, TodayEntry, TodayRewind, TodayState } from "./types";
 import { codeOfTableId, isTableId, registerTable, tableId } from "../lib/tableActivities";
 import { matchTable } from "../lib/tableMatch";
@@ -88,7 +88,10 @@ export function startDay(state: AppState): AppState {
   const recap = first && st.history.length > 0 ? { recap: "due" as const } : {};
   const ctx = buildAgentContext(st);
   // Only while nothing has counted toward this week's goal yet: once there are MET-hours, the week is under way.
-  const unstarted = ctx.week.done === 0;
+  // Read from the workouts themselves, not ctx: with the backend, ctx still holds the numbers of the
+  // day on screen until the backend answers, so after "Pretend today is Sunday" it would count
+  // Wednesday's week.
+  const unstarted = ownContext(st).week.done === 0;
   if (unstarted && (st.weekSetup || (st.onboarded && first && !st.weekPlanned))) return startSetup({ ...st, weekSetup: true }, recap);
   if (st.weekSetup) return startDay({ ...state, weekSetup: undefined });
   const off = st.plan[st.todayIndex] === "off";

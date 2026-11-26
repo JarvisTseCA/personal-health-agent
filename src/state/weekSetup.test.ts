@@ -1,6 +1,8 @@
 /** Today's first conversation sets the weekly goal and plan; the goal shows who set it, when and why. */
 import { describe, expect, it } from "vitest";
 import { appDate, goalNote, shortDate } from "../lib/goalNote";
+import { showNumbers } from "../services/numbers";
+import { numbersLike } from "../services/numbers.testkit";
 import { initialState, personaProfile, reducer } from "./store";
 import * as T from "./today";
 import type { AppState } from "./types";
@@ -112,5 +114,20 @@ describe("the week's first log-in: goal and plan once a week", () => {
   it("not on a later log-in that week, nor on a restart of the day once it's set", () => {
     expect(open(2, [true, ...none.slice(1)]).today.step).not.toBe("setup-goal");
     expect(open(0, none, { weekPlanned: true }).today.step).not.toBe("setup-goal");
+  });
+});
+
+describe("with the backend: Pretend today is Sunday", () => {
+  it("sets up the week even while the numbers on screen are still the earlier day's", () => {
+    // Jordan on Wednesday, with the backend's numbers for Wednesday held: Sunday's hike counts there.
+    const wed = { ...initialState("jordan"), onboarded: true, profile: personaProfile(initialState("jordan")) };
+    showNumbers(wed, numbersLike(wed, "2026-11-22"));
+    try {
+      const sun = reducer(wed, { type: "setToday", index: 0 });
+      expect(sun.today.step).toBe("setup-goal");
+      expect(sun.today.recap).toBe("due");
+    } finally {
+      showNumbers(null, null);
+    }
   });
 });

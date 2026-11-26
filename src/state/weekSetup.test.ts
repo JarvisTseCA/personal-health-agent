@@ -57,13 +57,20 @@ describe("first time in Today: goal, then plan", () => {
 });
 
 describe("the note beside the goal", () => {
+  it("demo: Alex's goal was raised to 10 by the agent on Monday, with the reason", () => {
+    const s = initialState("alex");
+    expect(s.goal).toBe(10);
+    expect(goalNote(s)).toBe(`Raised by the agent from 7.5 on ${shortDate(appDate(0))}, and you accepted. Last week you did 11.4 MET-hours, well above your 7.5 goal.`);
+    expect(initialState("roll").goal).toBe(7.5);
+  });
+
   it("default, set by the user, and the agent's accepted offer with its reason", () => {
     let s = afterOnboarding(false);
-    expect(goalNote(s)).toMatch(/^The guideline/);
+    expect(goalNote(s)).toMatch(/^The guideline/); // Fresh start: the default
     s = reducer(s, { type: "setGoal", to: 8.3 });
     expect(s.goal).toBe(8.5); // steps of 0.5
     expect(goalNote(s)).toMatch(/^Set by you on /);
     s = reducer(s, { type: "acceptGoal", to: 10, reason: "You reached at least 10 MET-hours in each of the last 2 weeks." });
-    expect(goalNote(s)).toBe(`Suggested by the agent, accepted on ${shortDate(appDate(s.todayIndex))}. You reached at least 10 MET-hours in each of the last 2 weeks.`);
+    expect(goalNote(s)).toBe(`Raised by the agent from 8.5 on ${shortDate(appDate(s.todayIndex))}, and you accepted. You reached at least 10 MET-hours in each of the last 2 weeks.`);
   });
 });

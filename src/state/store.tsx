@@ -39,7 +39,7 @@ function migrateClinician(c: unknown): ClinicianNotes {
   return { entries: [{ id: "cn-migrated", text: old.name?.trim() ? `${old.name.trim()} said: ${text}` : text, at: old.updated ?? new Date().toISOString() }] };
 }
 
-function personaState(personaId: string): Pick<AppState, "personaId" | "sessions" | "history" | "declines" | "notes" | "plan" | "planSource" | "goal" | "signIns" | "vo2"> {
+function personaState(personaId: string): Pick<AppState, "personaId" | "sessions" | "history" | "declines" | "notes" | "plan" | "planSource" | "goal" | "goalSource" | "goalSet" | "signIns" | "vo2"> {
   const p = PERSONAS.find((x) => x.id === personaId) ?? PERSONAS[0];
   return {
     personaId: p.id,
@@ -50,6 +50,9 @@ function personaState(personaId: string): Pick<AppState, "personaId" | "sessions
     plan: p.plan,
     planSource: ALL_FROM_PLAN,
     goal: p.goal,
+    // Demo: a goal the agent raised on Monday of this week, with its reason, shown beside the goal.
+    goalSource: p.goalRaise ? "recap" : "default",
+    goalSet: p.goalRaise ? { by: "agent", on: appDate(0), from: p.goalRaise.from, reason: p.goalRaise.reason } : undefined,
     signIns: p.signInsThisWeek,
     vo2: p.vo2,
   };
@@ -61,7 +64,6 @@ export function initialState(personaId = "alex"): AppState {
     onboarded: false,
     profile: DEFAULT_PROFILE,
     clinician: DEFAULT_CLINICIAN,
-    goalSource: "default",
     ...personaState(personaId),
     todayIndex: 2, // Wednesday: a stable mid-week for demos
     today: { dayKey: "", step: "time", checkIn: {}, entries: [], exclude: [], boost: false, nudged: false },
@@ -206,7 +208,7 @@ function reduce(state: AppState, action: Action): AppState {
     case "setToday":
       return Today.startDay({ ...state, todayIndex: action.index });
     case "loadPersona": {
-      const next = { ...state, ...personaState(action.personaId), syncCount: 0, painReports: 0, clinician: DEFAULT_CLINICIAN, goalSource: "default" as const, goalSet: undefined, recapHandled: false };
+      const next = { ...state, ...personaState(action.personaId), syncCount: 0, painReports: 0, clinician: DEFAULT_CLINICIAN, recapHandled: false };
       return Today.startDay(state.onboarded ? { ...next, profile: personaProfile(next) } : next);
     }
     case "confirmTime": return Today.confirmTime(state, action.keep);

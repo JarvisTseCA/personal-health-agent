@@ -41,6 +41,11 @@ export interface DemoPersona {
   name: string;
   blurb: string;
   goal: number;
+  /**
+   * For the demo: the goal was raised by the agent (and accepted) on this week's Monday, from
+   * `from` to `goal`, for this reason. Missing: the goal is the default.
+   */
+  goalRaise?: { from: number; reason: string };
   enjoyed: string[];
   access: Record<string, Access>;
   plan: WeekPlan;
@@ -113,8 +118,9 @@ export const PERSONAS: DemoPersona[] = [
   {
     id: "alex",
     name: "Alex",
-    blurb: "34, working parent. A 12-day streak, VO2 max up 3 since spring; the recap keeps the goal at 7.5.",
-    goal: 7.5,
+    blurb: "34, working parent. A 12-day streak, VO2 max up 3 since spring; the agent raised the goal to 10 on Monday after an 11.4 MET-hour week.",
+    goal: 10,
+    goalRaise: { from: 7.5, reason: "Last week you did 11.4 MET-hours, well above your 7.5 goal." },
     enjoyed: ["cycling", "dancing", "walking"],
     access: { cycling: "have", dancing: "have", walking: "have" },
     plan: USUAL,

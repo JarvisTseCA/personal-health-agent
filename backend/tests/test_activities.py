@@ -97,7 +97,7 @@ def test_a_row_keeps_its_leading_zero_and_its_values(tmp_path):
         "activity_description": "Bicycling, stationary, 60 watts, light to moderate effort",
         "intensity_high": 0, "intensity_low": 1,
         "loc_gym": 1, "at_home": 0, "loc_outside": 0,
-        "needs_equipment": 1, "need_friends": 0, "exercise_rec": 1,
+        "needs_equipment": 1, "need_friends": 0, "exercise_rec": 1, "family": "", "type": "",
     }]
     with db.session() as conn:
         assert conn.execute("SELECT typeof(activity_code) FROM activities").fetchone()[0] == "text"
@@ -258,7 +258,7 @@ def test_a_candidate_carries_every_column(small_table):
         "activity_description": "Walking, treadmill, 3.5 to 3.9 mph (5.6 to 6.3 km/h), 0% grade",
         "intensity_high": 0, "intensity_low": 1,
         "loc_gym": 1, "at_home": 0, "loc_outside": 0,
-        "needs_equipment": 1, "need_friends": 0, "exercise_rec": 1,
+        "needs_equipment": 1, "need_friends": 0, "exercise_rec": 1, "family": "", "type": "",
     }
 
 
@@ -305,7 +305,7 @@ def test_the_api_lists_the_recommended_activities(small_table, client):
         "activity_description": "Bicycling, stationary, 60 watts, light to moderate effort",
         "intensity_high": 0, "intensity_low": 1,
         "loc_gym": 1, "at_home": 0, "loc_outside": 0,
-        "needs_equipment": 1, "need_friends": 0, "exercise_rec": 1,
+        "needs_equipment": 1, "need_friends": 0, "exercise_rec": 1, "family": "", "type": "",
     }
 
 

@@ -167,6 +167,13 @@ describe("the table request", () => {
     expect(after("tired").below_met).not.toBeNull();
   });
 
+  it("after all three table picks are passed over, the next request leaves them out", () => {
+    let s = withTablePick();
+    s = T.anotherOption(T.anotherOption(T.anotherOption(s)));
+    expect(s.today.current!.pending).toBe(true); // waiting for a fresh set from the table
+    expect(buildTableRequest(s).exclude_codes).toEqual(expect.arrayContaining(["01216", "17358", "12050"]));
+  });
+
   it("recent workouts from the table carry their code", () => {
     let s = withTablePick();
     s = { ...s, sessions: [...s.sessions, { id: "x", variantId: "table-01216", durationMin: 20, dayIndex: s.todayIndex - 1, source: "fitbit", confirmed: true }] };

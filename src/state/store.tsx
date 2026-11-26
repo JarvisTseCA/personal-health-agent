@@ -111,6 +111,7 @@ export type Action =
   | { type: "editAnswer"; entryId: string }
   | { type: "editChat"; id: string }
   | { type: "another" }
+  | { type: "skipReason"; reason: DeclineReason }
   | { type: "remindLater" }
   | { type: "setReminder"; when: string }
   | { type: "reminderDue" }
@@ -227,6 +228,7 @@ function reduce(state: AppState, action: Action): AppState {
       return i < 0 ? state : { ...state, chat: state.chat.slice(0, i) };
     }
     case "another": return Today.anotherOption(state);
+    case "skipReason": return Today.skipReason(state, action.reason);
     case "remindLater": return Today.remindLater(state);
     case "setReminder": return Today.setReminder(state, action.when);
     case "reminderDue": return Today.reminderDue(state);

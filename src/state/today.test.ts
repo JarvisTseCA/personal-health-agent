@@ -252,17 +252,29 @@ describe("today flow", () => {
     expect(s.today.entries.some((e) => /mood for/.test(e.text))).toBe(false);
   });
 
-  it("'Give me another option' swaps the pick without asking why, and cycles back", () => {
+  it("'Give me another option' swaps the pick without asking why, then brings a fresh set", () => {
     let s = checkIn(onboarded());
-    const first = s.today.current!.lead;
-    const n = s.today.current!.backups.length;
+    const first = [s.today.current!.lead, ...s.today.current!.backups].map((x) => x.familyId);
     const declinesBefore = s.declines.length;
     s = T.anotherOption(s);
     expect(s.today.step).toBe("suggested");
-    expect(s.today.current!.lead).not.toBe(first);
+    expect(s.today.current!.lead.familyId).toBe(first[1]);
+    expect(s.today.current!.skipped!.familyId).toBe(first[0]); // the user may say why, optionally
     expect(s.declines.length).toBe(declinesBefore);
-    for (let i = 0; i < n; i++) s = T.anotherOption(s);
-    expect(s.today.current!.lead).toBe(first);
+    s = T.anotherOption(T.anotherOption(s)); // past both backups
+    expect(s.today.entries.at(-1)!.text).toBe("Here are some different ones.");
+    const next = [s.today.current!.lead, ...s.today.current!.backups].map((x) => x.familyId);
+    expect(next.some((f) => first.includes(f))).toBe(false);
+    expect(s.declines.length).toBe(declinesBefore);
+  });
+
+  it("the optional reason after 'another option' counts as a decline of the option passed over", () => {
+    let s = T.anotherOption(checkIn(onboarded()));
+    const passed = s.today.current!.skipped!;
+    s = T.skipReason(s, "weather");
+    expect(s.declines.at(-1)).toMatchObject({ familyId: passed.familyId, reason: "weather" });
+    expect(s.today.constraint?.indoorOnly).toBe(true);
+    expect(s.today.current!.skipped).toBeUndefined();
   });
 
   it("'Remind me later' asks when, sets the reminder, and brings the pick back", () => {

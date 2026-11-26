@@ -51,7 +51,9 @@ CREATE TABLE IF NOT EXISTS activities (
     loc_outside          INTEGER NOT NULL,
     needs_equipment      INTEGER NOT NULL,
     need_friends         INTEGER NOT NULL,
-    exercise_rec         INTEGER NOT NULL    -- 1 = marked as an exercise to recommend
+    exercise_rec         INTEGER NOT NULL,   -- 1 = marked as an exercise to recommend
+    family               TEXT NOT NULL DEFAULT '',  -- the movement, e.g. running, cycling_indoor ('' = not given)
+    type                 TEXT NOT NULL DEFAULT ''   -- the kind of workout, e.g. cardio, mind_body
 );
 CREATE TABLE IF NOT EXISTS fitbit_tokens (
     user_id       TEXT PRIMARY KEY,
@@ -74,6 +76,11 @@ def connect() -> sqlite3.Connection:
     conn = sqlite3.connect(path)
     conn.row_factory = sqlite3.Row
     conn.executescript(SCHEMA)
+    # The activities table is rebuilt from the CSV at every start, so an older layout
+    # (before family and type) is simply dropped and made again.
+    if "family" not in {r["name"] for r in conn.execute("PRAGMA table_info(activities)")}:
+        conn.execute("DROP TABLE activities")
+        conn.executescript(SCHEMA)
     return conn
 
 

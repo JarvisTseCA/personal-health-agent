@@ -311,17 +311,38 @@ function learnLike(state: AppState, familyId: string): AppState {
  * "Give me another option": swap in the next-ranked pick, no questions asked.
  * Cycles through the pick and its backups, so the user never hits a dead end.
  */
+/**
+ * "Give me another option": no question asked. The next option of the set shows (the backups, in
+ * turn); once all three have been seen, a fresh set comes, leaving those three out for today.
+ * Under the new option the user may say why they passed the last one (skipReason), optionally.
+ */
 export function anotherOption(state: AppState, typed?: string): AppState {
   const c = state.today.current;
   if (!c) return state;
   const s = push(state, user(typed ?? "Give me another option"));
-  if (c.backups.length === 0) {
-    return push(s, agent("This is the only option that fits your time today. Tell me if something's in the way and I'll adjust."));
+  const seen = c.seen ?? 0;
+  if (c.backups.length > 0 && seen < c.backups.length) {
+    const [next, ...rest] = c.backups;
+    return setToday(push(s, agent("How about this instead?")), {
+      step: "suggested", reminder: undefined, howShown: 0,
+      current: { ...c, lead: next, backups: [...rest, c.lead], showBackups: false, seen: seen + 1, skipped: c.lead },
+    });
   }
-  const [next, ...rest] = c.backups;
-  return setToday(push(s, agent("How about this instead?")), {
-    step: "suggested", reminder: undefined, howShown: 0, current: { ...c, lead: next, backups: [...rest, c.lead], showBackups: false },
-  });
+  // All three seen: leave them out for today and ask for a new set (the backend too, from the table).
+  const shown = [c.lead, ...c.backups].map((x) => x.familyId);
+  const fresh = offer(setToday(s, { exclude: [...new Set([...s.today.exclude, ...shown])] }), "Here are some different ones.");
+  const nc = fresh.today.current;
+  if (!nc || nc.desk || shown.includes(nc.lead.familyId)) {
+    return push(setToday(s, { current: { ...c, seen: 0, skipped: undefined } }), agent("Those are all the options that fit your time and place today. Tell me what's in the way and I'll adjust."));
+  }
+  return setToday(fresh, { current: { ...nc, skipped: c.lead } });
+}
+
+/** The optional "why not that one?" after "Give me another option": the same as a decline reason for it. */
+export function skipReason(state: AppState, reason: DeclineReason): AppState {
+  const c = state.today.current;
+  if (!c?.skipped) return state;
+  return chooseReason(setToday(state, { current: { ...c, lead: c.skipped, skipped: undefined } }), reason);
 }
 
 /** "Remind me later": the coach asks when. */

@@ -152,6 +152,10 @@ export interface TodayState {
     backups: Suggestion[];
     desk: boolean;
     showBackups: boolean;
+    /** How many times "Give me another option" has moved through this set (the lead and its backups) */
+    seen?: number;
+    /** The option just passed over with "Give me another option": the user may say why (optional) */
+    skipped?: Suggestion;
     /** Who picked it: the in-app ranker, or Jev via the backend (live or mocked) */
     source?: "rules" | "jev" | "mock";
     /**

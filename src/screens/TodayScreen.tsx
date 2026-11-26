@@ -320,6 +320,14 @@ export function TodayScreen({ go, openPrefs }: { go: (s: Screen) => void; openPr
               <button className="btn btn-quiet" onClick={() => dispatch({ type: "remindLater" })}>Remind me later</button>
               <button className="btn btn-quiet" onClick={() => dispatch({ type: "another" })}>Give me another option</button>
             </div>
+            {t.current.skipped && (
+              <div className="skip-why">
+                <p className="xs muted">Optional: why not {getFamily(t.current.skipped.familyId).noun}? It helps me pick better.</p>
+                <Bubbles label="Why not the last option (optional)">
+                  {REASONS.map((r) => <button key={r} className={`chip chip-small${r === "hurts" ? " chip-care" : ""}`} onClick={() => dispatch({ type: "skipReason", reason: r })}>{DECLINE_LABEL[r]}</button>)}
+                </Bubbles>
+              </div>
+            )}
             <ShowHow />
           </div>
         )}

@@ -15,7 +15,7 @@ options are rows of the activity table and Jev is asked three times: which
 heading (`rank_headings`), which activity in each of the top headings
 (`pick_from_table`), and how long (`assemble_table`).
 """
-from typing import Dict, List, Tuple
+from typing import Dict, Iterable, List, Tuple
 
 from .activities import label_of
 from .prompt import Row, duration_question, heading_key, table_activity_question, table_duration_question
@@ -106,16 +106,26 @@ def rank_headings(heading_answers: Dict[str, dict], headings: List[str]) -> List
     return [(by_key[k], round(probs[k], 4)) for k in sorted(probs, key=probs.get, reverse=True)]
 
 
+RECENT_DAYS = 2  # a movement done this many days ago or less isn't picked again, if anything else fits
+
+
 def pick_from_table(
-    ranked: List[Tuple[str, float]], activity_answers: Dict[str, dict], by_heading: Dict[str, List[Row]]
+    ranked: List[Tuple[str, float]], activity_answers: Dict[str, dict], by_heading: Dict[str, List[Row]],
+    recent_families: Iterable[str] = (),
 ) -> List[Tuple[Row, float, float]]:
     """After call 2: [lead, backup, backup], each as (row, heading probability, activity probability).
 
-    `ranked` holds the headings asked about in call 2, best first. The lead is
-    the best activity of the best heading, and each backup is the best
-    activity of the next heading, so the backups are a different kind of
-    activity. With fewer than three headings, it goes around again for each
-    heading's next best activity.
+    `ranked` holds the headings asked about in call 2, best first. Each pick comes from the next
+    heading in turn, so the three are different categories. Within a heading Jev's favorite is
+    taken unless it would repeat something; then the next one down that doesn't:
+
+    1. a movement (`family`) done in the last RECENT_DAYS days, e.g. yesterday's stationary bike;
+    2. a movement already picked, e.g. treadmill walking under Walking and treadmill running
+       under Running are different categories but similar;
+    3. a kind of workout (`type`) already picked, so three picks aren't all cardio.
+
+    A rule gives way only when no heading has anything left that keeps it. With fewer than three
+    headings, it goes around again for each heading's next pick.
     """
     lines = []  # per heading: its activities, Jev's favorite first
     for heading, heading_p in ranked:
@@ -124,14 +134,39 @@ def pick_from_table(
         best_first = sorted(probs, key=probs.get, reverse=True)
         lines.append([(rows[code], heading_p, round(probs[code], 4)) for code in best_first])
 
-    picked: List[Tuple[Row, float, float]] = []
-    place = 0  # 0 = each heading's best activity, 1 = each heading's second best, ...
-    while len(picked) < HEADINGS_TO_ASK and any(place < len(line) for line in lines):
-        for line in lines:
-            if place < len(line) and len(picked) < HEADINGS_TO_ASK:
-                picked.append(line[place])
-        place += 1
-    return picked
+    recent = set(recent_families)
+    family = lambda row: row.get("family") or row["activity_code"]  # noqa: E731  ('' = not given: unique)
+    kind = lambda row: row.get("type") or row["activity_code"]  # noqa: E731
+    tests = [
+        lambda r, fams, kinds: family(r) not in recent and family(r) not in fams and kind(r) not in kinds,
+        lambda r, fams, kinds: family(r) not in recent and family(r) not in fams,
+        lambda r, fams, kinds: family(r) not in fams,
+        lambda r, fams, kinds: True,
+    ]
+    picked: List[Tuple[int, int, Tuple[Row, float, float]]] = []  # (round, heading index, pick)
+    taken = [0] * len(lines)  # picks from each heading so far
+    rounds = max((len(line) for line in lines), default=0)
+    # First without repeating a recent movement: one pick per heading (three categories), then a
+    # second round if there are fewer headings. Within a round the strictest rule is tried across
+    # every heading before it gives way. Only if that leaves fewer than three picks may a recent
+    # movement come back.
+    for group in (tests[:2], tests[2:]):
+        for turn in range(rounds):
+            for test in group:
+                for i, line in enumerate(lines):
+                    if len(picked) >= HEADINGS_TO_ASK:
+                        break
+                    if taken[i] != turn:
+                        continue
+                    fams = {family(p[0]) for _, _, p in picked}
+                    kinds = {kind(p[0]) for _, _, p in picked}
+                    chosen = {id(p) for _, _, p in picked}
+                    x = next((x for x in line if id(x) not in chosen and test(x[0], fams, kinds)), None)
+                    if x:
+                        picked.append((turn, i, x))
+                        taken[i] += 1
+    # In Jev's order of headings, first round first: the best heading that gave a pick leads.
+    return [p for _, _, p in sorted(picked, key=lambda t: (t[0], t[1]))]
 
 
 def table_reasons(row: Row, req: TableSuggestRequest, liked: List[str]) -> List[str]:

@@ -24,9 +24,11 @@ Screens ──► useStore() ──► AppState (React reducer)
    │      pick shown is the backend's
    │      verifySuggestion() checks whatever is shown             lib/verify.ts
    │
-   └─► agent.reply(history, ctx) ──► MockAgent  (Chat tab)         services/agent.ts
-                                       picks a scripted reply      services/mockResponses.ts
-                                       and streams it word by word
+   └─► agentFor(session).reply(history, ctx)   (Chat tab)          services/agent.ts
+          without the backend: MockAgent picks a scripted reply   services/mockResponses.ts
+          and streams it word by word
+          with the backend: MemoryAgent sends the message to      backend/ (POST /api/chat/memory)
+          the backend: two checks, then a model writes the reply
 ```
 
 The workflow doc's backend is **two agents and a calculator**: the coach (user-facing) makes the
@@ -41,10 +43,12 @@ keeps the numbers correct and testable no matter which model we use.
 **Two ways to run, one switch.** When the app opens it asks once whether the backend answers.
 
 - **Without the backend** (the online demo on GitHub Pages): the app remembers the user in the
-  browser, works the numbers out itself and picks with the in-app ranker, as the demo build always has.
+  browser, works the numbers out itself, picks with the in-app ranker and answers in Chat from its
+  script, as the demo build always has.
 - **With the backend** (on a laptop today): Memory remembers the user, and the backend works out
-  every number on the screens and suggests. The app shows them and collects input. See
-  [Memory](#done-memory-and-the-numbers-worked-out-in-the-backend) below.
+  every number on the screens, suggests, and answers in Chat. The app shows them and collects input. See
+  [Memory](#done-memory-and-the-numbers-worked-out-in-the-backend) and
+  [Chat](#done-chat-in-the-app-when-it-runs-with-the-backend) below.
 
 ## Done: the suggestion backend (Jev)
 
@@ -124,6 +128,7 @@ Tests: `.venv/bin/python -m pytest` (from `backend/`). They never call Jev or Ch
 | `backend/app/chat_gate.py` | Chat, check 2: the three yes/no questions for Jev, the thresholds, and the mock used when there's no key. **Edit this to tune the questions.** |
 | `backend/app/chat_replies.py` | Chat: reads the three fixed replies |
 | `backend/app/chat_prompt.py` | Chat: builds the system prompt for the model that writes |
+| `backend/app/memory_chat.py` | Chat: what the model is told about the user, read from Memory and worked out by the backend |
 | `backend/app/chat_writer.py` | Chat: calls ChatGPT with the API key and passes its reply on piece by piece; a placeholder when there's no key |
 | `backend/chat_content/` | The wording of the Chat route, editable without code: `urgent_keywords.csv`, `fixed_replies.csv`, `chat_brief.txt` |
 | `backend/app/db.py` | SQLite: the connection, a log of every prompt and answer, the activity table, and the app state in one piece as it was saved before Memory. Memory's own tables are in `memory.py` (the Memory section) |
@@ -139,9 +144,10 @@ Tests: `.venv/bin/python -m pytest` (from `backend/`). They never call Jev or Ch
 | `POST /api/suggest/table` | The same, with the options taken from the activity table (next section). The app calls it itself only when it isn't running on Memory and *Suggestions from* is set to the activity table |
 | `POST /api/suggest/memory` | The same again, from today's check-in alone: the rest is read from Memory (the Memory section). What the app uses when it runs with the backend |
 | `GET /api/activities` | The activity table. `?place=gym`, `?heading=Bicycling` (repeatable) and `?recommended=false` narrow or widen it |
-| `POST /api/chat` | A Chat message in, the reply out as streamed plain text (see the Chat section). Not used by the app yet |
+| `POST /api/chat/memory` | A Chat message in, the reply out as streamed plain text; what the model is told about the user is read from Memory (the Chat section). What the app uses when it runs with the backend |
+| `POST /api/chat` | The same, with what the model is told about the user sent by the caller as `system`. For trying the checks and the model on their own |
 | `GET / POST / DELETE /api/memory` | Read Memory, add to it or update it, forget the user (the Memory section) |
-| `DELETE /api/memory/{kind}/{key}` | Take one entry out of Memory: a check-in, a suggestion or a workout |
+| `DELETE /api/memory/{kind}/{key}` | Take one entry out of Memory: a check-in, a suggestion, a workout, a chat message, or what the app keeps under one name in "other" |
 | `GET /api/numbers?date=` | Every number on the app's screens for one day, worked out from Memory |
 | `GET / PUT / DELETE /api/state` | The app state in one piece, as the app saved it before Memory. Now only read, once, to bring an earlier save over into Memory |
 | `GET /api/suggestions/log?limit=20` | Recent prompts and answers |
@@ -246,7 +252,7 @@ Not handled yet:
 When the app runs with the backend, the backend remembers the user and works out every number on
 the screens. The app shows them and collects input. Without the backend, none of this is used.
 
-**Memory** is what the backend remembers about each user, kept in SQLite in six groups
+**Memory** is what the backend remembers about each user, kept in SQLite in seven groups
 (`backend/app/memory.py`):
 
 | Group | What it holds | Tables |
@@ -256,9 +262,15 @@ the screens. The app shows them and collects input. Without the backend, none of
 | goals | One row a week: the weekly goal, and the plan for its seven days | `memory_goals` |
 | daily | Each day's check-in; suggestions accepted or declined; workouts; the days the app was opened | `memory_daily_check_ins`, `memory_daily_suggestions`, `memory_daily_workouts`, `memory_daily_app_opens` |
 | health | VO2 max, one reading a month; the average heart rate of a workout | `memory_health_vo2_max`, `memory_health_heart_rates` |
-| other | What the app keeps for itself and gets back as it sent it: the Today conversation, the chat, notes, clinician feedback | `memory_other` |
+| chat | The conversation in the Chat tab, one row a message: who said it, the words, when, and for a reply from the backend what kind it was. No limit on how many | `memory_chat_messages` |
+| other | What the app keeps for itself and gets back as it sent it: the Today conversation, notes, clinician feedback | `memory_other` |
 
-The backend works with the first five. "other" it only looks after.
+The backend works with the first five. "chat" is the record of the conversation; the app saves it
+there message by message and is given all of it back when it opens. "other" the backend only looks
+after. A Memory from before Chat had its own group still holds the conversation under "other": the
+first time the app opens, it moves it over. An older version of the app doesn't know the chat group,
+so run on the same Memory afterwards it shows an empty Chat; what is typed there is moved over too,
+the next time this version opens.
 
 **Opening.** The app reads Memory (`GET /api/memory?date=…`), saves that it was opened today, and
 puts its state back together from what came back. The first time, when Memory doesn't have the
@@ -277,6 +289,7 @@ numbers too. Three kinds of step are lighter:
 
 - A step that changes no number (a chat message, a decline) is shown at once and saved right after.
 - A chat reply arrives a few words at a time. Each piece is shown, and the reply is saved once, when it is whole.
+- Editing an earlier chat message drops it and what came after it; those messages are taken out of Memory too.
 - A step that changes only the screen (a toast closing, a sheet opening) is shown and nothing is sent.
 
 When the backend doesn't answer, a toast says the step didn't go through. What wasn't saved goes
@@ -317,30 +330,29 @@ Rules the numbers follow:
 | `backend/app/memory_numbers.py` | All the numbers for one day in one piece; and the recent part of Memory, as the app is given it |
 | `backend/app/memory_suggest.py` | From the check-in and Memory to the request the table route takes |
 | `src/state/memorySession.ts` | The app running with the backend: opening from Memory, and how each step is taken |
-| `src/services/toMemory.ts`, `fromMemory.ts` | The app's state laid out as Memory's six groups, and what a step changed; and the state put back together from Memory |
+| `src/services/toMemory.ts`, `fromMemory.ts` | The app's state laid out as Memory's seven groups, and what a step changed; and the state put back together from Memory |
 | `src/services/numbers.ts` | The backend's numbers, in the shape the screens use |
 | `src/services/memoryClient.ts`, `memoryTypes.ts` | The calls to `/api/memory` and `/api/numbers`, and the shapes of Memory and the numbers |
 | `shared_examples/` | The examples both calculators are held to |
 
 ### Still open
 
-- The Chat tab is still scripted in the app (see the Chat section).
 - A real Fitbit together with Memory hasn't been tried end to end.
 - With the real Jev, the picks tend to add up to more than today's target; that is for prompt tuning.
 - How the weekly goal gets set (a weekly offer, as now, or a default the user changes when they want to) is not settled.
 
-## Done in the backend: the Chat route (not in the app yet)
+## Done: Chat, in the app when it runs with the backend
 
-The Chat tab answers general questions in the user's own words. In the app it is still scripted
-(`MockAgent`). The backend can now answer for real: `POST /api/chat` takes the message through two
-checks and, if it passes both, has a model write the reply. Jev doesn't write text, so the reply
-comes from ChatGPT.
+The Chat tab answers general questions in the user's own words. Without the backend (the online
+demo) it answers from the app's script (`MockAgent`). With the backend it answers for real:
+`POST /api/chat/memory` takes the message through two checks and, if it passes both, has a model
+write the reply. Jev doesn't write text, so the reply comes from ChatGPT.
 
 ```
 the last user ──► 1. urgent keywords ──► 2. Jev: three yes/no ──────► 3. ChatGPT writes the reply
-message              a match gets the       questions. urgent, medical    (its brief repeats the
-                     fixed "urgent"         advice or off topic gets      same three rules)
-                     reply                  its fixed reply
+message              a match gets the       questions. urgent, medical    from the Chat brief and the
+                     fixed "urgent"         advice or off topic gets      user's data, which the backend
+                     reply                  its fixed reply               reads from Memory
 ```
 
 1. **Urgent keywords** (`chat_rules.py`). The message is compared with the list in
@@ -355,19 +367,50 @@ message              a match gets the       questions. urgent, medical    (its b
    check.
 3. **The model that writes** (`chat_writer.py`). ChatGPT, through OpenAI's Chat Completions API. Its
    system prompt (`chat_prompt.py`) is the Chat brief, with the three fixed replies in it word for
-   word, followed by what the app sent as `system`. The brief tells the model to turn down the same
-   three kinds of message, so it is the third and last check.
+   word, followed by the user's data. The brief tells the model to turn down the same three kinds
+   of message, so it is the third and last check.
 
-**What comes back.** Plain text, sent piece by piece as the model writes it. That is what
-`HttpAgent` in `src/services/agent.ts` already reads. A fixed reply arrives in one piece. Two
-response headers say what happened:
+**The user's data comes from Memory** (`memory_chat.py`), as it does for a suggestion. The app sends
+who the user is, which day it is for them and the recent conversation; a request that carries a
+prompt or numbers of its own is refused. For a message that passed both checks, the backend reads
+the user from Memory and takes the numbers as it works them out for the screens: name, 👍 / 👎
+categories, equipment, no vigorous exercise; today's check-in, target, done and still needed, and
+what the user turned down today; this week day by day with its workouts; the streak, the trophies,
+the last four weeks, VO2 max. MET-hours are given to one decimal, as the screens write them, so a number the
+model repeats reads the same as the one on screen. Nothing is read for a message that is stopped.
+
+**Clinician feedback stays with the app.** A message that gives the clinician's feedback ("My doctor
+said…") is taken in by the app's own script (`src/services/clinicianChat.ts`), with or without the
+backend, and doesn't reach the route. The saved notes are in the app's own part of Memory ("other"),
+which the backend doesn't read. So the app sends them along with each chat message
+(`clinician_notes`), and the model gets them as context: the brief tells it not to treat a note as
+a goal. Suggestions made by the backend don't look at the notes.
+
+**What comes back.** Plain text, sent piece by piece as the model writes it. A fixed reply arrives
+in one piece. Two response headers say what happened:
 
 | Header | Values |
 |---|---|
 | `X-Chat-Stopped-By` | `keywords`, `jev` or `none` |
 | `X-Chat-Reply` | `urgent`, `medical_advice`, `off_topic`, or `model` when the model wrote the reply |
 
-The backend terminal prints each step, [1] to [5].
+The app doesn't show which check stopped a message; the fixed reply says what the user needs. It
+keeps `X-Chat-Reply` with the message it saves. The backend terminal prints each step, [1] to [5],
+and for a message that reached the model, whose data was read.
+
+**In the app** (`src/services/agent.ts`, `src/screens/ChatScreen.tsx`). The Chat tab follows the
+app's one switch: `agentFor(session)` gives `MemoryAgent` when the app opened with the backend and
+`MockAgent` when it didn't.
+
+- `MemoryAgent` first waits until every step taken so far is saved, so the backend reads Memory as
+  it is now. It sends the latest 20 messages (`RECENT_MESSAGES`); Memory keeps all of them.
+- The conversation is saved in Memory's "chat" group by the app, message by message, the same way
+  every other step is saved. The route itself stores nothing.
+- A reply from the backend has no quick replies under it. The ones under the greeting and under
+  the app's own scripted replies are as before.
+- If the backend can't answer (it stopped, or Jev or the model failed), the reply says "I couldn't
+  reach the agent just now." That line is kept with the conversation and isn't sent on to the model
+  with later messages.
 
 **The wording is in three files** in `backend/chat_content/`, so it can change without touching
 code: edit a file, restart the backend. A file that can't be read stops the backend when it starts
@@ -388,38 +431,35 @@ and names the line.
 - `TYPESAFE_API_KEY`: the same Jev key as for suggestions. Without it a local mock answers the
   three questions.
 
-With both keys, a message that isn't stopped by a keyword makes one Jev call, and one ChatGPT call
-if Jev lets it through. What the app sends as `system` (the user's name, progress and clinician
-notes; simulated in the demo) goes to OpenAI together with the conversation.
+With both keys, a chat message that isn't stopped by a keyword makes one Jev call, and one ChatGPT
+call if Jev lets it through. So with the backend running and both keys in `.env`, typing in the
+Chat tab now costs a little each time. The user's data (name, progress, clinician notes; simulated
+in the demo) goes to OpenAI together with the conversation.
 
-To try it with the backend running:
+To try the route without the app, with the backend running (`demo` is the user the app uses in
+development):
 
 ```bash
-curl -s -i -X POST http://localhost:8000/api/chat -H 'Content-Type: application/json' -d '{"messages":[{"role":"user","content":"I have high blood pressure, can I do HIIT?"}]}'
+curl -s -i -X POST http://localhost:8000/api/chat/memory -H 'Content-Type: application/json' -d '{"user_id":"demo","messages":[{"role":"user","content":"How am I doing this week?"}]}'
 ```
 
-To switch the app over: in `src/services/agent.ts`, change the last line to
-
-```ts
-export const agent: Agent = new HttpAgent("/api/chat");
-```
-
-`HttpAgent` already sends `buildSystemPrompt(ctx)` plus the chat history. Keep `MockAgent` for when
-there is no backend (GitHub Pages) and for tests.
+`POST /api/chat` is the same route without Memory: the caller sends what the model is told about
+the user as `system`. The app doesn't use it.
 
 Not handled yet:
 
 - The keyword list, the fixed replies, the brief and the wording of Jev's three questions are first
   drafts. They have not had a clinical review.
 - The thresholds are starting values. The checks have run on a few real messages only; they haven't
-  been measured on labelled examples.
-- Chat messages aren't saved. There is no log like `suggestion_log` for them.
+  been measured on labelled examples. Memory keeps each reply with its kind, but Jev's three
+  probabilities are only in the backend terminal; there is no log like `suggestion_log` for them.
 - Only the last user message is checked.
-- The app's `system` still carries the coach brief written for the Today tab. The Chat brief comes
-  first and wins where the two differ. A cleaner split is for the app to send only the user's data.
-- A message that gives the clinician's feedback ("My doctor said…") is handled in the frontend
-  (`src/services/clinicianChat.ts`) and doesn't reach the backend.
 - The model's reply isn't checked before the user sees it.
+- With the backend, a saved clinician note is context for Chat only. The app's script still says
+  "I'll keep my suggestions to moderate activity", and the backend's suggestions don't do that yet.
+- The demo panel's "What the agent sees" still shows the prompt the app would build itself
+  (`buildSystemPrompt`). With the backend, the model's prompt is built by the backend; set
+  `LOG_LEVEL=DEBUG` in `.env` to see it in the terminal.
 
 Ideas for later: run `VERIFIER_BRIEF` (prompts.ts) as a second agent that checks the coach's
 replies, and parse free-text "Other" notes into structured preferences.

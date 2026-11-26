@@ -201,7 +201,7 @@ function reduceOne(state: AppState, action: Action): AppState {
     case "accept": return Today.accept(state, action.suggestion);
     case "sync": return Today.sync(state);
     case "addMessage": return { ...state, chat: [...state.chat, action.message] };
-    case "updateMessage": return { ...state, chat: state.chat.map((m) => (m.id === action.id ? { ...m, text: action.text, suggestions: action.suggestions ?? m.suggestions } : m)) };
+    case "updateMessage": return { ...state, chat: state.chat.map((m) => (m.id === action.id ? { ...m, text: action.text, suggestions: action.suggestions ?? m.suggestions, ...(action.reply ? { reply: action.reply } : {}) } : m)) };
     case "editChat": {
       const i = state.chat.findIndex((m) => m.id === action.id);
       return i < 0 ? state : { ...state, chat: state.chat.slice(0, i) };
@@ -551,6 +551,22 @@ describe("running the app with the backend (memorySession)", () => {
     expect(sends()).toHaveLength(2); // the user's message, then the whole reply
     expect(memoryChat()).toEqual(["Is walking enough?", "Walking counts when it's brisk."]);
     expect(backend.calls.some((c) => c.name !== "sendChanges")).toBe(false);
+  });
+
+  it("a reply from the backend is saved with what kind of reply it was", async () => {
+    const o = await open(onboarded());
+
+    // The Chat screen with the backend's agent: the kind arrives with the reply and is told by the step that finishes it.
+    await o.step({ type: "addMessage", message: message("My knee hurts when I run") });
+    await o.step({ type: "addMessage", message: { id: "reply", role: "agent", text: "" }, unfinished: true });
+    await o.step({ type: "updateMessage", id: "reply", text: "I can't give medical advice.", reply: "medical_advice" });
+
+    expect(backend.memory.chat.map((m) => [m.role, m.reply])).toEqual([["user", null], ["agent", "medical_advice"]]);
+
+    // It is still there at the next open.
+    showNumbers(null, null);
+    const second = await open(onboarded());
+    expect(second.state.chat.at(-1)).toEqual({ id: "reply", role: "agent", text: "I can't give medical advice.", reply: "medical_advice" });
   });
 
   it("editing an earlier chat message takes it, and what came after it, out of Memory", async () => {

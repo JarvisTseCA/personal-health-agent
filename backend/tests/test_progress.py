@@ -383,3 +383,90 @@ def test_no_goal_saved_yet_says_so(tmp_path, monkeypatch):
     mem = memory.read("nobody", ["goals", "daily"])  # a user Memory knows nothing about
     with pytest.raises(NotEnoughMemory, match="no weekly goal"):
         progress.numbers(mem["goals"], mem["daily"], WEDNESDAY)
+
+
+# --- More than RECENT_WEEKS past weeks ---------------------------------------------------------
+# With today on Wednesday 2026-11-25, last week starts 2026-11-16. The 26 most recent past weeks
+# start on 2026-05-25 (26 Mondays back from 2026-11-23) and run to 2026-11-16. Thirty past weeks
+# start on 2026-04-27, so the four oldest (04-27, 05-04, 05-11, 05-18) are outside the 26.
+
+
+def weeks_back(n):
+    """The Monday n weeks before MONDAY, as a date string: weeks_back(1) is last week's start."""
+    return (MONDAY - timedelta(weeks=n)).isoformat()
+
+
+def long_history(weeks=30):
+    """(goals, workouts, opens) for a user whose first goal was saved `weeks` weeks ago, goal 7.5.
+
+    The oldest week (weeks ago) has one 7.5 MET-hour workout on its Monday and the second oldest one on its
+    Sunday: both reach the goal. The three weeks after them have one 2.5 workout on their Monday, and so does
+    every week after, this week too. The Sunday workout leaves the longest gap in the oldest weeks: the 12 days
+    between the first Monday and the next Sunday. The opens are 5 days in a row in the oldest week.
+    """
+    first = weeks_back(weeks)
+    goals = [{"week_start": first, "goal_met_hours": 7.5, "goal_set_by": "default", "plan": PLAN}]
+    workouts = [workout(first, met=5.0, minutes=90), workout(days_of(weeks_back(weeks - 1), 6)[0], met=5.0, minutes=90)]
+    workouts += [workout(weeks_back(n)) for n in range(weeks - 2, 0, -1)] + [workout(MONDAY.isoformat())]
+    return goals, workouts, days_of(first, 0, 1, 2, 3, 4)
+
+
+def test_past_weeks_are_the_last_recent_weeks_oldest_first():
+    goals, workouts, opens = long_history(30)
+    weeks = [week["week_start"] for week in numbers(goals=goals, workouts=workouts, opens=opens)["past_weeks"]]
+    assert len(weeks) == progress.RECENT_WEEKS == 26
+    assert (weeks[0], weeks[-1]) == ("2026-05-25", "2026-11-16")
+    assert weeks == [weeks_back(n) for n in range(26, 0, -1)]  # one Monday after the other, no gaps
+
+
+@pytest.mark.parametrize("past, kept, first", [
+    (progress.RECENT_WEEKS - 1, 25, "2026-06-01"),  # 25 past weeks: all of them
+    (progress.RECENT_WEEKS, 26, "2026-05-25"),  # exactly 26: nothing cut
+    (progress.RECENT_WEEKS + 1, 26, "2026-05-25"),  # 27: the oldest one (05-18) is cut
+])
+def test_nothing_is_cut_up_to_recent_weeks_and_the_oldest_goes_after_that(past, kept, first):
+    goals = [{"week_start": weeks_back(past), "goal_met_hours": 7.5, "goal_set_by": "default", "plan": PLAN}]
+    weeks = numbers(goals=goals)["past_weeks"]
+    assert len(weeks) == kept
+    assert (weeks[0]["week_start"], weeks[-1]["week_start"]) == (first, "2026-11-16")
+
+
+def test_trophies_count_weeks_older_than_the_recent_ones():
+    goals, workouts, opens = long_history(30)
+    n = numbers(goals=goals, workouts=workouts, opens=opens)
+    # The two trophy weeks (04-27 and 05-04) are among the four that "past_weeks" no longer has.
+    assert [week["trophy"] for week in n["past_weeks"]] == [False] * 26
+    assert (n["trophy"], n["trophies"]) == (False, 2)
+
+
+def test_the_best_streak_keeps_a_run_in_weeks_older_than_the_recent_ones():
+    goals, workouts, opens = long_history(30)
+    n = numbers(goals=goals, workouts=workouts, opens=opens)
+    assert all(not any(week["app_opens"]) for week in n["past_weeks"])  # no open in the 26 weeks shown
+    assert n["streak"] == {"current": 0, "best": 5}  # Monday to Friday of the oldest week
+
+
+def test_months_are_made_from_the_recent_weeks_only():
+    goals, workouts, opens = long_history(30)
+    n = numbers(goals=goals, workouts=workouts, opens=opens)
+    in_months = [start for month in n["months"] for start in month["week_starts"]]
+    assert sorted(in_months) == [week["week_start"] for week in n["past_weeks"]]  # the same 26 weeks
+    # A week belongs to the month of its Thursday: 05-25 is a May week, and April is not there at all.
+    assert [month["month"] for month in n["months"]] == [f"2026-{m:02d}" for m in (11, 10, 9, 8, 7, 6, 5)]
+    assert n["months"][-1]["week_starts"] == ["2026-05-25"]
+    assert sum(month["trophies"] for month in n["months"]) == 0  # the trophy weeks are older than these
+
+
+def test_the_longest_gap_still_sees_weeks_older_than_the_recent_ones():
+    goals, workouts, opens = long_history(30)
+    n = numbers(goals=goals, workouts=workouts, opens=opens)
+    # Apr 28 to May 9 (the first Monday's workout, then the next Sunday's) is 12 days without one.
+    # Every week after has a Monday workout, so the gaps there are at most 6.
+    assert n["summary"]["longest_gap"] == 12
+
+
+def test_the_goal_offer_and_summary_averages_follow_the_latest_weeks():
+    goals, workouts, opens = long_history(30)
+    n = numbers(goals=goals, workouts=workouts, opens=opens)
+    assert n["summary"]["weeks"] == progress.SUMMARY_WEEKS  # four full weeks, however many there are
+    assert n["summary"]["avg_met_hours"] == pytest.approx(2.5)  # each of the last four had one 2.5 workout

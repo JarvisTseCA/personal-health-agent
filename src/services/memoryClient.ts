@@ -25,9 +25,15 @@ async function call(path: string, method: string, date?: string, body?: unknown)
   return res.json();
 }
 
-/** Everything Memory holds about this user. */
-export async function readMemory(): Promise<Memory> {
-  return (await call("/memory", "GET")).memory!;
+/**
+ * What Memory holds about this user, as the backend gives it to the app: this week and the
+ * 26 weeks before it. Memory itself keeps everything, however far back it goes; the totals in
+ * the numbers (the streak, the trophies) count all of it. `date` is any day of this week.
+ * The reply also carries the numbers for `date`; they are left alone here. The app asks for
+ * the numbers of its own today, after it has saved today's open (memorySession.ts).
+ */
+export async function readMemory(date: string): Promise<Memory> {
+  return (await call("/memory", "GET", date)).memory!;
 }
 
 /** The numbers for one day. null: Memory has no weekly goal and plan yet, so there is nothing to work out. */

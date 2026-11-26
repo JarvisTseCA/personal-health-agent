@@ -10,7 +10,7 @@ import { tableId } from "../lib/tableActivities";
 import { initialState, personaProfile } from "../state/store";
 import type { AppState } from "../state/types";
 import { fromMemory } from "./fromMemory";
-import type { Memory, MemoryWorkout, OtherOfApp } from "./memoryTypes";
+import { addDays, type Memory, type MemoryWorkout, type OtherOfApp } from "./memoryTypes";
 import { numbersLike } from "./numbers.testkit";
 import { toMemory } from "./toMemory";
 
@@ -93,6 +93,26 @@ describe("fromMemory: the round trip", () => {
     const last = state.history[state.history.length - 1];
     expect(last.signIns).toEqual([false, false, false, false, false, false, false]);
     expect(state.history[0].signIns).toEqual(s.history[0].signIns);
+  });
+});
+
+describe("fromMemory: a history as long as the backend's", () => {
+  it("builds exactly as many weeks as numbers.past_weeks lists, in the same order", () => {
+    const s = onboarded("alex");
+    const base = numbersLike(s, MONDAY);
+    // 26 past weeks (the most the backend lists), each with a goal of its own: 5.00, 5.01, ...
+    const past_weeks = Array.from({ length: 26 }, (_, i) => ({
+      ...base.past_weeks[i % base.past_weeks.length],
+      week_start: addDays(MONDAY, -7 * (26 - i)),
+      goal_met_hours: 5 + i / 100,
+      plan: base.past_weeks[i % base.past_weeks.length].plan,
+    }));
+    const numbers = { ...base, past_weeks, streak: { current: 3, best: 200 }, trophies: 40 };
+
+    const back = fromMemory(toMemory(s, MONDAY), numbers, initialState())!;
+
+    expect(back.state.history).toHaveLength(26);
+    expect(back.state.history.map((w) => w.goal)).toEqual(past_weeks.map((w) => w.goal_met_hours));
   });
 });
 

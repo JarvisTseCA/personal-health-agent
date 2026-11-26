@@ -513,12 +513,20 @@ def _numbers(user_id: str, day: date) -> Dict[str, Any]:
 def get_memory(
     user_id: str = "demo", group: Optional[List[str]] = Query(None), day: Optional[str] = Query(None, alias="date"),
 ) -> Dict[str, Any]:
-    """Read. All six groups, or only the ones asked for: ?group=preferences&group=daily. With ?date=, the numbers too."""
+    """Read. All six groups, or only the ones asked for: ?group=preferences&group=daily.
+
+    Without ?date=: everything Memory holds, however far back it goes.
+    With ?date=: what the app is given. Memory from this week and the 26 before it
+    (memory_numbers.recent), and the numbers too.
+    """
+    today = _day(day) if day else None  # a date that can't be read stops the request here
     try:
-        reply: Dict[str, Any] = {"memory": memory.read(user_id, group)}
+        mem = memory.read(user_id, group)
     except memory.MemoryDataError as e:
         raise HTTPException(422, str(e)) from e
-    return {**reply, **_numbers(user_id, _day(day))} if day else reply
+    if today is None:
+        return {"memory": mem}
+    return {"memory": memory_numbers.recent(mem, today), **_numbers(user_id, today)}
 
 
 @app.post("/api/memory")

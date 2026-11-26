@@ -11,7 +11,7 @@ import type { DaySlot } from "../lib/plan";
 import { initialState, personaProfile } from "../state/store";
 import type { AppState } from "../state/types";
 import { buildAgentContext, creditOf, ownContext, reachedToday } from "./context";
-import type { Numbers } from "./memoryTypes";
+import { addDays, type Numbers } from "./memoryTypes";
 import { numbersKey, numbersAhead, numbersFor, periodsFromNumbers, showNumbers, summaryFromNumbers } from "./numbers";
 import { numbersLike } from "./numbers.testkit";
 import { buildSummary } from "./summary";
@@ -162,6 +162,42 @@ describe("the context with numbers held", () => {
   it("works it out from target and done when no number says (the app's own context)", () => {
     expect(reachedToday({ todayTarget: 2, todayDone: 2 })).toBe(true);
     expect(reachedToday({ todayTarget: 0, todayDone: 0 })).toBe(false);
+  });
+});
+
+describe("the context when the backend's totals are larger than the 26 weeks it lists", () => {
+  // 26 past weeks (the most the backend lists), goals 5.00, 5.01, ... so each can be told apart;
+  // only three of them hold a trophy, yet the totals say 40 and a best streak of 200.
+  function longHistory(): { state: AppState; n: Numbers } {
+    const state = onboarded();
+    const base = numbersLike(state, MONDAY);
+    const past_weeks = Array.from({ length: 26 }, (_, i) => ({
+      ...base.past_weeks[i % base.past_weeks.length],
+      week_start: addDays(MONDAY, -7 * (26 - i)),
+      goal_met_hours: 5 + i / 100,
+      trophy: i === 3 || i === 10 || i === 25,
+    }));
+    return { state, n: { ...base, past_weeks, streak: { current: 31, best: 200 }, trophies: 40 } };
+  }
+
+  it("shows the backend's streak and trophy count as they are", () => {
+    const { state, n } = longHistory();
+    showNumbers(state, n);
+    const ctx = buildAgentContext(state);
+    expect(n.past_weeks.filter((w) => w.trophy)).toHaveLength(3);
+    expect(ctx.trophies).toBe(40);
+    expect(ctx.streak).toEqual({ current: 31, best: 200 });
+  });
+
+  it("has exactly the weeks in past_weeks, in order", () => {
+    const { state, n } = longHistory();
+    showNumbers(state, n);
+    const ctx = buildAgentContext(state);
+    expect(ctx.past).toHaveLength(26);
+    expect(ctx.past.map((w) => w.goal)).toEqual(n.past_weeks.map((w) => w.goal_met_hours));
+    expect(ctx.past.map((w) => w.trophy)).toEqual(n.past_weeks.map((w) => w.trophy));
+    expect(ctx.past[0].start).toEqual(new Date(2026, 4, 25)); // 26 weeks before 2026-11-23
+    expect(ctx.past[25].start).toEqual(new Date(2026, 10, 16));
   });
 });
 

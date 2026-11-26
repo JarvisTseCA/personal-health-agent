@@ -204,12 +204,14 @@ export interface Numbers {
   today_index: number;
   day: { name: string; target_met_hours: number; done_met_hours: number; needed_met_hours: number; reached: boolean };
   this_week: NumbersThisWeek;
+  /** Days in a row on record as opened, ending today; `best` is the longest run in everything Memory holds */
   streak: { current: number; best: number };
   trophy: boolean;
+  /** All so far, this week's included, counted over everything Memory holds */
   trophies: number;
-  /** Oldest first; the last one is last week */
+  /** Oldest first; the last one is last week. The last 26 at most: Memory keeps the weeks before them */
   past_weeks: NumbersWeek[];
-  /** Newest first */
+  /** Newest first; made from past_weeks */
   months: NumbersMonth[];
   goal_offer: { kind: "raise" | "lower" | "keep"; from: number; to: number; reason: string };
   summary: NumbersSummary;

@@ -5,7 +5,7 @@ from datetime import date
 import pytest
 from fastapi.testclient import TestClient
 
-from app import calculator, main, memory, memory_numbers
+from app import calculator, main, memory, memory_numbers, progress
 from app.memory_suggest import NotEnoughMemory
 
 WEDNESDAY = date(2026, 11, 25)  # its week starts Monday 2026-11-23
@@ -192,3 +192,186 @@ def test_reading_memory_with_a_date_gives_the_numbers_too(client):
     assert data["memory"] == memory.read("sam")
     assert data["numbers"] == numbers(client)["numbers"]
     assert set(client.get("/api/memory?user_id=sam").json()) == {"memory"}
+
+
+# --- recent(): Memory as the app is given it ---------------------------------------------------
+# With today on Wednesday 2026-11-25 the window starts on the Monday 26 weeks before this week's:
+# Monday 2026-05-25. Sunday 2026-05-24 is the last day outside it.
+
+FIRST = "2026-05-25"
+BEFORE = "2026-05-24"
+OLD = "2026-01-05"  # much older
+
+
+def goal_row(week, hours=7.5, plan=PLAN):
+    return {"week_start": week, "goal_met_hours": hours, "goal_set_by": "default", "plan": plan}
+
+
+def work(wid, day):
+    return {"id": wid, "date": day, "activity_name": "Walking", "met": 3.5, "duration_min": 30}
+
+
+def full_memory():
+    """What memory.read() gives for a user with an entry on each side of the window's first day."""
+    days = [BEFORE, FIRST, "2026-11-25", "2026-11-27"]  # outside, the first day, today, after today
+    return {
+        "who": {"name": "Alex", "fitbit_connected": True},
+        "preferences": {"categories": {"Walking": "like"}, "equipment": {"home": ["Dumbbells"], "gym": None}, "no_vigorous": False},
+        "goals": [goal_row("2026-05-18"), goal_row(FIRST), goal_row("2026-11-23")],
+        "daily": {
+            "check_ins": [{"date": d, "minutes": 30, "place": "outside", "energy": "normal", "mood": "surprise"} for d in days],
+            "suggestions": [{"id": f"s-{d}", "date": d, "outcome": "accepted"} for d in days],
+            "workouts": [work(f"w-{d}", d) for d in days],
+            "app_opens": days,
+        },
+        "health": {
+            "vo2_max": [{"month": "2026-01", "ml_kg_min": 38.0, "source": "fitbit"}],
+            "heart_rates": [{"workout_id": f"w-{BEFORE}", "avg_bpm": 120}, {"workout_id": f"w-{FIRST}", "avg_bpm": 130}],
+        },
+        "other": {"notes": [{"id": "n1", "text": "knee is sore", "where": "Today: mood"}]},
+    }
+
+
+def test_recent_leaves_out_what_is_dated_before_the_first_monday_of_the_window():
+    daily = memory_numbers.recent(full_memory(), WEDNESDAY)["daily"]
+    kept = [FIRST, "2026-11-25", "2026-11-27"]  # the first Monday stays, so do today and the days after it
+    assert [e["date"] for e in daily["check_ins"]] == kept
+    assert [e["date"] for e in daily["suggestions"]] == kept
+    assert [e["date"] for e in daily["workouts"]] == kept
+    assert daily["app_opens"] == kept
+
+
+def test_recent_drops_the_heart_rate_of_a_dropped_workout_and_keeps_the_rest():
+    health = memory_numbers.recent(full_memory(), WEDNESDAY)["health"]
+    assert health["heart_rates"] == [{"workout_id": f"w-{FIRST}", "avg_bpm": 130}]
+    assert health["vo2_max"] == full_memory()["health"]["vo2_max"]  # VO2 max has no week to go by
+
+
+def test_recent_keeps_the_goal_rows_in_the_window():
+    goals = [goal_row(FIRST), goal_row("2026-08-03"), goal_row("2026-11-23")]
+    mem = {"goals": goals}
+    assert memory_numbers.recent(mem, WEDNESDAY)["goals"] == goals
+
+
+def test_recent_carries_the_one_row_before_the_window_that_has_both_the_goal_and_the_plan():
+    older, latest = goal_row(OLD, 5.0), goal_row("2026-03-02", 6.0, ["off"] * 7)
+    mem = {"goals": [goal_row("2025-12-01", 4.0), older, latest, goal_row(FIRST), goal_row("2026-11-23")]}
+    # Only the latest before the window stays: it has the goal and the plan both.
+    assert memory_numbers.recent(mem, WEDNESDAY)["goals"] == [latest, goal_row(FIRST), goal_row("2026-11-23")]
+
+
+def test_recent_carries_two_earlier_rows_when_the_latest_has_no_goal():
+    goal_row_a = goal_row(OLD, 5.0, PLAN)
+    plan_row_b = goal_row("2026-03-02", None, ["off"] * 7)  # a plan saved with no goal
+    mem = {"goals": [goal_row("2025-12-01", 4.0, ["10"] * 7), goal_row_a, plan_row_b, goal_row("2026-11-23")]}
+    # The goal still in force is row a's, the plan is row b's; the 2025 row is much older than both.
+    assert memory_numbers.recent(mem, WEDNESDAY)["goals"] == [goal_row_a, plan_row_b, goal_row("2026-11-23")]
+
+
+def test_recent_carries_the_goal_row_when_the_latest_has_no_plan():
+    goal_only = goal_row("2026-03-02", 6.0, None)
+    plan_row = goal_row(OLD, 5.0, PLAN)
+    mem = {"goals": [plan_row, goal_only]}
+    assert memory_numbers.recent(mem, WEDNESDAY)["goals"] == [plan_row, goal_only]  # oldest first
+
+
+def test_recent_leaves_who_preferences_and_other_as_they_were():
+    mem = full_memory()
+    out = memory_numbers.recent(mem, WEDNESDAY)
+    for group in ("who", "preferences", "other"):
+        assert out[group] == full_memory()[group]
+
+
+def test_recent_works_on_the_groups_it_is_given():
+    mem = full_memory()
+    assert set(memory_numbers.recent({"preferences": mem["preferences"]}, WEDNESDAY)) == {"preferences"}
+    only_goals = memory_numbers.recent({"goals": [goal_row(OLD), goal_row("2026-11-23")]}, WEDNESDAY)
+    assert set(only_goals) == {"goals"} and len(only_goals["goals"]) == 2
+    only_daily = memory_numbers.recent({"daily": mem["daily"]}, WEDNESDAY)
+    assert set(only_daily) == {"daily"} and len(only_daily["daily"]["workouts"]) == 3
+    # Health alone can't tell which workouts are kept: its heart rates stay as they were.
+    assert memory_numbers.recent({"health": mem["health"]}, WEDNESDAY) == {"health": mem["health"]}
+    assert memory_numbers.recent({}, WEDNESDAY) == {}
+
+
+def test_recent_does_not_change_the_memory_it_is_given():
+    mem = full_memory()
+    memory_numbers.recent(mem, WEDNESDAY)
+    assert mem == full_memory()
+
+
+def test_the_window_moves_with_the_day_asked():
+    # On Monday 2026-06-01 the window starts 26 weeks back: 2025-12-01. Everything here is inside it.
+    daily = memory_numbers.recent(full_memory(), date(2026, 6, 1))["daily"]
+    assert [e["date"] for e in daily["workouts"]] == [BEFORE, FIRST, "2026-11-25", "2026-11-27"]
+
+
+# --- GET /api/memory: all of Memory, or the recent part with ?date= ----------------------------
+
+OLD_DAY = "2026-04-28"  # 30 weeks back, in the week of 2026-04-27
+
+
+@pytest.fixture
+def old_client(client):
+    """The client, with Maya added: 30 past weeks of history, a trophy and a 5-day run in the oldest week."""
+    memory.save("maya", {
+        "goals": [{"week_start": "2026-04-27", "goal_met_hours": 7.5, "goal_set_by": "default", "plan": PLAN}],
+        "daily": {
+            "check_ins": [{"date": OLD_DAY, "minutes": 30, "place": "outside", "energy": "normal", "mood": "surprise"}],
+            "workouts": [
+                {"id": "w-old", "date": OLD_DAY, "activity_name": "Bicycling", "met": 5.0, "duration_min": 90},  # 7.5: a trophy
+                {"id": "w-new", "date": "2026-11-23", "activity_name": "Walking", "met": 3.5, "duration_min": 30},
+            ],
+            "app_opens": ["2026-04-27", "2026-04-28", "2026-04-29", "2026-04-30", "2026-05-01", "2026-11-23"],
+        },
+        "health": {"heart_rates": [{"workout_id": "w-old", "avg_bpm": 120}]},
+    })
+    return client
+
+
+def test_reading_memory_without_a_date_gives_everything_it_holds(old_client):
+    mem = old_client.get("/api/memory?user_id=maya").json()["memory"]
+    assert [w["id"] for w in mem["daily"]["workouts"]] == ["w-old", "w-new"]
+    assert [c["date"] for c in mem["daily"]["check_ins"]] == [OLD_DAY]
+    assert len(mem["daily"]["app_opens"]) == 6
+    assert mem["goals"][0]["week_start"] == "2026-04-27"
+    assert mem["health"]["heart_rates"] == [{"workout_id": "w-old", "avg_bpm": 120}]
+
+
+def test_reading_memory_with_a_date_leaves_out_what_is_older_than_the_recent_weeks(old_client):
+    data = old_client.get("/api/memory?user_id=maya&date=2026-11-25").json()
+    assert set(data) == {"memory", "numbers"}
+    mem = data["memory"]
+    assert [w["id"] for w in mem["daily"]["workouts"]] == ["w-new"]
+    assert mem["daily"]["check_ins"] == [] and mem["daily"]["app_opens"] == ["2026-11-23"]
+    assert mem["health"]["heart_rates"] == []  # it went with its workout
+    # The only goal row is from before the window; the weeks after ran on it, so it stays.
+    assert [g["week_start"] for g in mem["goals"]] == ["2026-04-27"]
+
+
+def test_reading_with_a_date_deletes_nothing(old_client):
+    before = old_client.get("/api/memory?user_id=maya").json()
+    old_client.get("/api/memory?user_id=maya&date=2026-11-25")
+    assert old_client.get("/api/memory?user_id=maya").json() == before
+    assert memory.read("maya")["daily"]["workouts"][0]["id"] == "w-old"
+
+
+def test_the_numbers_in_a_dated_read_still_count_the_older_weeks(old_client):
+    n = old_client.get("/api/memory?user_id=maya&date=2026-11-25").json()["numbers"]
+    assert len(n["past_weeks"]) == progress.RECENT_WEEKS == 26
+    assert n["past_weeks"][0]["week_start"] == "2026-05-25"
+    assert n["trophies"] == 1  # the week of 2026-04-27 had 7.5 of its 7.5
+    assert n["streak"] == {"current": 0, "best": 5}  # the run in the oldest week; today isn't on record
+
+
+def test_reading_memory_with_a_date_that_is_not_a_date_is_a_422(old_client):
+    res = old_client.get("/api/memory?user_id=maya&date=nonsense")
+    assert res.status_code == 422
+    assert "2026-11-23" in res.json()["detail"]
+
+
+def test_reading_one_group_with_a_date_gives_that_group_cut_to_the_recent_weeks(old_client):
+    data = old_client.get("/api/memory?user_id=maya&group=daily&date=2026-11-25").json()
+    assert set(data["memory"]) == {"daily"}
+    assert [w["id"] for w in data["memory"]["daily"]["workouts"]] == ["w-new"]
+    assert data["numbers"]["trophies"] == 1

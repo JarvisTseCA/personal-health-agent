@@ -35,7 +35,7 @@ const MONDAY = "2026-11-23";
 const TODAY = "2026-11-25"; // the demo's Wednesday, todayIndex 2
 
 type Call =
-  | { name: "readMemory" }
+  | { name: "readMemory"; date: string }
   | { name: "readNumbers"; date: string }
   | { name: "saveMemory"; part: MemoryPart; date?: string }
   | { name: "sendChanges"; changes: MemoryChanges; date?: string }
@@ -147,8 +147,8 @@ function workedOut(memory: Memory, date: string): Numbers | null {
 }
 
 vi.mock("../services/memoryClient", () => ({
-  readMemory: async (): Promise<Memory> => {
-    backend.calls.push({ name: "readMemory" });
+  readMemory: async (date: string): Promise<Memory> => {
+    backend.calls.push({ name: "readMemory", date });
     return copy(backend.memory);
   },
   saveMemory: async (part: MemoryPart, date?: string): Promise<Numbers | null> => {
@@ -293,6 +293,13 @@ describe("running the app with the backend (memorySession)", () => {
     expect(numbersFor(o.state)).not.toBeNull();
     // Memory now holds the app's own part, so the next open reads it back.
     expect((backend.memory.other as OtherOfApp).app?.suggestSource).toBe("table");
+  });
+
+  it("opening reads Memory with this week's Monday as the date", async () => {
+    await open(onboarded());
+    const reads = backend.calls.filter((c): c is Extract<Call, { name: "readMemory" }> => c.name === "readMemory");
+    expect(reads.length).toBeGreaterThan(0);
+    expect(reads.map((r) => r.date)).toEqual(reads.map(() => MONDAY));
   });
 
   it("first open with an earlier save puts that save into Memory, chat included", async () => {
@@ -479,6 +486,8 @@ describe("running the app with the backend (memorySession)", () => {
 
     // Memory was read again before the step sent anything.
     expect(backend.calls.slice(0, 2).map((c) => c.name)).toEqual(["readNumbers", "readMemory"]);
+    // ... and it asked for this week's Monday, so the reply is the recent part.
+    expect(backend.calls[1]).toEqual({ name: "readMemory", date: MONDAY });
     const after = o.last();
     const added = after.sessions.filter((s) => !sessionsOf(before).includes(s.id));
     expect(added).toHaveLength(1);

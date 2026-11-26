@@ -34,8 +34,13 @@ Where each part comes from:
 
 Today's three numbers are calculator.today_numbers(), the same call POST /api/suggest/memory
 makes, so a suggestion and the screen never disagree about what is needed today.
+
+Memory keeps everything, and the app is given the recent part: `recent()` is Memory from
+this week and the progress.RECENT_WEEKS before it, the same weeks "past_weeks" covers.
+GET /api/memory gives that when the request carries a `date`. The totals in the numbers
+(the streak, the trophies) still count every week Memory holds.
 """
-from datetime import date
+from datetime import date, timedelta
 from typing import Any, Dict, List, Optional
 
 from . import calculator, memory, progress
@@ -68,6 +73,39 @@ def for_user(user_id: str, today: date) -> Dict[str, Any]:
     }
     numbers["vo2"] = vo2_of(mem["health"]["vo2_max"], today)
     return numbers
+
+
+def recent(mem: Dict[str, Any], today: date) -> Dict[str, Any]:
+    """Memory as the app is given it: this week and the progress.RECENT_WEEKS before it. `mem` is what memory.read() gave.
+
+    What is dated before that first Monday is left out of "goals" and "daily". A heart rate goes
+    with its workout, when "daily" is read along with "health"; "health" read on its own keeps them all.
+    The latest goal and plan saved before it stay: the weeks after ran on them.
+    "who", "preferences", VO2 max and "other" have no week to go by, so they are as Memory has them.
+    Nothing is deleted: Memory itself still holds all of it.
+    """
+    first = (calculator.monday_of(today) - timedelta(weeks=progress.RECENT_WEEKS)).isoformat()
+    out = dict(mem)
+    if "goals" in mem:
+        earlier = [week for week in mem["goals"] if week["week_start"] < first]
+        carried: List[Dict[str, Any]] = []
+        for field in ("goal_met_hours", "plan"):
+            week = next((w for w in reversed(earlier) if w.get(field) is not None), None)
+            if week is not None and week not in carried:
+                carried.append(week)
+        carried.sort(key=lambda week: week["week_start"])
+        out["goals"] = carried + [week for week in mem["goals"] if week["week_start"] >= first]
+    if "daily" in mem:
+        daily = mem["daily"]
+        out["daily"] = {
+            **daily,
+            **{kind: [entry for entry in daily[kind] if entry["date"] >= first] for kind in ("check_ins", "suggestions", "workouts")},
+            "app_opens": [day for day in daily["app_opens"] if day >= first],
+        }
+    if "health" in mem and "daily" in mem:
+        kept = {workout["id"] for workout in out["daily"]["workouts"]}
+        out["health"] = {**mem["health"], "heart_rates": [r for r in mem["health"]["heart_rates"] if r["workout_id"] in kept]}
+    return out
 
 
 def vo2_of(readings: List[Dict[str, Any]], today: date) -> Optional[Dict[str, Any]]:

@@ -61,7 +61,7 @@ const NOT_SAVED = "The backend didn't answer, so that last step didn't go throug
 /** Open the app from Memory. Throws when the backend can't be used; the store then runs without it. */
 export async function openMemorySession(o: Opening): Promise<{ state: AppState; session: MemorySession }> {
   const monday = mondayOf(new Date());
-  const memory = await readMemory();
+  const memory = await readMemory(monday); // this week and the 26 before it; Memory keeps the rest
   const own = (memory.other as OtherOfApp).app;
 
   let state: AppState | null = null;
@@ -103,7 +103,7 @@ export async function openMemorySession(o: Opening): Promise<{ state: AppState; 
   const held = async (): Promise<Memory> => {
     if (mem) return mem;
     const numbers = await readNumbers(todayOf(current, monday));
-    const there = numbers && fromMemory(await readMemory(), numbers, o.initial());
+    const there = numbers && fromMemory(await readMemory(monday), numbers, o.initial());
     if (!there) throw new Error("Memory can't be read back.");
     // Laid out the way the app lays its own state out, so the two can be compared entry by entry.
     return toMemory(there.state, monday);

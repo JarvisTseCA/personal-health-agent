@@ -32,6 +32,12 @@ Past weeks start at the earliest week Memory knows anything about (a goal, a wor
 open) and run to last week with no gaps: a week with nothing in it is a week with nothing done.
 A week's goal and plan are the latest ones saved up to that week, as for today's week
 (week_for in memory_suggest.py); for a week before the first ones saved, the first ones stand in.
+
+Memory has no limit on how far back it goes, and the totals count all of it: the streak and
+its best run, the trophies, the longest gap on the Summary page. The detail the app is given
+is the last RECENT_WEEKS past weeks: "past_weeks", and "months", which is made from them.
+(The app's own calculator never holds more than that many weeks, so the shared examples
+have none about this; tests/test_progress.py does.)
 """
 import math
 from datetime import date, timedelta
@@ -51,6 +57,9 @@ RAISE_WINDOW = 2
 LOWER_WINDOW = 3
 LOWER_THRESHOLD = 0.5
 WEEKLY_UPPER_LIMIT: Optional[float] = None  # an open clinical question: None until the team's clinician sets it
+
+# What the app is given of the past: Memory keeps every week, the screens show half a year.
+RECENT_WEEKS = 26  # past weeks in "past_weeks" and "months" (HISTORY_WEEKS in src/lib/fitbit.ts)
 
 # The Summary page (src/services/summary.ts)
 SUMMARY_WEEKS = 4  # full weeks behind the averages
@@ -145,15 +154,16 @@ def numbers(goals: List[Dict[str, Any]], daily: Dict[str, Any], today: date) -> 
         start += timedelta(days=7)
 
     opened = [day for week in past for day in week["app_opens"]] + this_week["app_opens"][: index + 1]
+    recent = past[-RECENT_WEEKS:]  # the detail the app is given; the totals count every week
     return {
         "today": today.isoformat(),
         "today_index": index,  # 0 = Monday
-        "streak": streak_of(opened),
+        "streak": streak_of(opened),  # over every week on record
         "trophy": this_week["trophy"],  # this week's goal is reached
         "trophies": sum(week["trophy"] for week in past) + int(this_week["trophy"]),  # all so far, this week's included
         "this_week": this_week,  # up to and including today
-        "past_weeks": past,  # oldest first; the last one is last week
-        "months": _months(past, monday),  # newest first
+        "past_weeks": recent,  # oldest first; the last one is last week; RECENT_WEEKS at most
+        "months": _months(recent, monday),  # newest first
         "goal_offer": goal_offer(now["goal_met_hours"], [week["done_met_hours"] for week in past]),
         "summary": _summary(past, this_week, index),
     }

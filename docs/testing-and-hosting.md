@@ -274,7 +274,10 @@ To take the demo off the backend completely, delete `API_BASE` and run **Deploy 
 
 ## 5. Known gaps
 
-- **Chat:** the Chat tab still uses scripted replies; it doesn't call the backend's `/api/chat` yet.
+- **Chat:** with the backend, the Chat tab calls `POST /api/chat/memory` (architecture.md, the Chat section).
+  On a hosted backend that has `OPENAI_API_KEY` set, each message a visitor sends can make one Jev call and
+  one ChatGPT call; without the key, a message that passes the checks gets a placeholder reply. This hasn't
+  been tried on a hosted backend.
 - **Real Fitbit after a table pick:** a real workout is matched to the app's own activities
   (BIKING → Cycling), so the coach asks "Right?" instead of logging it straight away. The
   simulated sync logs it directly.

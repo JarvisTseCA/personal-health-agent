@@ -82,6 +82,7 @@ def recent(mem: Dict[str, Any], today: date) -> Dict[str, Any]:
     with its workout, when "daily" is read along with "health"; "health" read on its own keeps them all.
     The latest goal and plan saved before it stay: the weeks after ran on them.
     "who", "preferences", VO2 max and "other" have no week to go by, so they are as Memory has them.
+    "chat" is given whole as well: the conversation has no limit yet on how far back the app shows it.
     Nothing is deleted: Memory itself still holds all of it.
     """
     first = (calculator.monday_of(today) - timedelta(weeks=progress.RECENT_WEEKS)).isoformat()

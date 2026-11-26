@@ -1,5 +1,5 @@
 /**
- * toMemory(): the app's state laid out as Memory's six groups, and memoryChanges(): what to
+ * toMemory(): the app's state laid out as Memory's seven groups, and memoryChanges(): what to
  * tell the backend between two such layouts. Both are pure, so the tests build states from the
  * demo personas, change one thing, and look at what comes out. This week's Monday is fixed.
  */
@@ -173,9 +173,36 @@ describe("toMemory: preferences and health", () => {
   });
 });
 
+describe("toMemory: chat", () => {
+  const at = Date.UTC(2026, 10, 25, 14, 3, 20);
+
+  it("lays the conversation out one entry a message, in the order it was said", () => {
+    const s: AppState = {
+      ...onboarded(),
+      chat: [
+        { id: "u1", role: "user", text: "Is walking enough?", at },
+        { id: "a1", role: "agent", text: "Brisk walking counts.", reply: "model" },
+      ],
+    };
+    expect(toMemory(s, MONDAY).chat).toEqual([
+      { id: "u1", role: "user", text: "Is walking enough?", at: "2026-11-25T14:03:20.000Z", reply: null, app: null },
+      { id: "a1", role: "agent", text: "Brisk walking counts.", at: null, reply: "model", app: null },
+    ]);
+  });
+
+  it("keeps the quick replies under a message, and the answer it waits for, in the app's own part of the entry", () => {
+    const s: AppState = {
+      ...onboarded(),
+      chat: [{ id: "a1", role: "agent", text: "Want me to add it?", suggestions: ["Add strength training"], kind: "offer-strength" }],
+    };
+    expect(toMemory(s, MONDAY).chat[0].app).toEqual({ suggestions: ["Add strength training"], kind: "offer-strength" });
+  });
+});
+
 describe("toMemory: other", () => {
-  it("has exactly today, chat, notes, clinician and app", () => {
-    expect(Object.keys(toMemory(onboarded(), MONDAY).other).sort()).toEqual(["app", "chat", "clinician", "notes", "today"]);
+  it("has exactly today, notes, clinician and app: the Chat conversation has a group of its own", () => {
+    const s: AppState = { ...onboarded(), chat: [{ id: "u1", role: "user", text: "hi" }] };
+    expect(Object.keys(toMemory(s, MONDAY).other).sort()).toEqual(["app", "clinician", "notes", "today"]);
   });
 
   it("records the week as Monday in the app's own part", () => {
@@ -252,9 +279,33 @@ describe("memoryChanges", () => {
     expect(changes(a, b)).toEqual({ save: null, remove: [] });
   });
 
-  it("saves only chat when a chat message is added", () => {
-    const next = { ...s, chat: [...s.chat, { id: "c1", role: "user" as const, text: "hi" }] };
-    expect(Object.keys(changes(s, next).save?.other ?? {})).toEqual(["chat"]);
+  it("saves only the new message when a chat message is added", () => {
+    const before = { ...s, chat: [{ id: "c1", role: "user" as const, text: "hi" }] };
+    const next = { ...before, chat: [...before.chat, { id: "c2", role: "agent" as const, text: "Hello!" }] };
+    expect(changes(before, next)).toEqual({
+      save: { chat: [{ id: "c2", role: "agent", text: "Hello!", at: null, reply: null, app: null }] },
+      remove: [],
+    });
+  });
+
+  it("saves a reply again when it has changed: the whole reply, once it is finished", () => {
+    const before = { ...s, chat: [{ id: "a1", role: "agent" as const, text: "Brisk" }] };
+    const next = { ...s, chat: [{ id: "a1", role: "agent" as const, text: "Brisk walking counts.", reply: "model" as const }] };
+    expect(changes(before, next).save).toEqual({
+      chat: [{ id: "a1", role: "agent", text: "Brisk walking counts.", at: null, reply: "model", app: null }],
+    });
+  });
+
+  it("takes out the messages that are gone after the user edits an earlier one", () => {
+    const chat = [
+      { id: "u1", role: "user" as const, text: "Is walking enough?" },
+      { id: "a1", role: "agent" as const, text: "Brisk walking counts." },
+      { id: "u2", role: "user" as const, text: "And cycling?" },
+      { id: "a2", role: "agent" as const, text: "Cycling counts too." },
+    ];
+    const before = { ...s, chat };
+    const next = { ...s, chat: chat.slice(0, 2) }; // "And cycling?" is being edited: it and the reply after it go
+    expect(changes(before, next)).toEqual({ save: null, remove: [{ kind: "chat", key: "u2" }, { kind: "chat", key: "a2" }] });
   });
 
   it("saves who when the name changes and preferences when a category preference changes", () => {

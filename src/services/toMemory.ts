@@ -1,7 +1,7 @@
 /**
  * Telling the backend what happened: the app's state as Memory holds it, and what changed.
  *
- * `toMemory()` lays the whole state out in Memory's six groups. The app counts days as
+ * `toMemory()` lays the whole state out in Memory's seven groups. The app counts days as
  * 0 = Monday … 6 = Sunday inside "this week" and "n weeks ago"; Memory holds real dates. So
  * everything is put on the calendar from one date, this week's Monday: day 2 of this week is
  * that Monday + 2, and the last past week starts 7 days before it.
@@ -18,16 +18,18 @@
  *    goals         one row a week: this week's goal and plan, and each past week's
  *    daily         workouts, declines, accepted table picks, today's check-in, days the app was opened
  *    health        VO2 max by month, a workout's average heart rate
- *    other         the Today conversation, Chat, notes, the clinician's feedback, and the rest (memoryTypes.ts)
+ *    chat          the conversation in the Chat tab, one entry a message
+ *    other         the Today conversation, notes, the clinician's feedback, and the rest (memoryTypes.ts)
  */
 import { getFamily, getVariant } from "../lib/activities";
 import { equipmentName } from "../lib/equipment";
 import type { Session } from "../lib/met";
 import { PLACES } from "../lib/suggest";
 import { codeOfTableId, isTableId } from "../lib/tableActivities";
-import type { AppState } from "../state/types";
+import type { AppState, ChatMessage } from "../state/types";
 import {
-  addDays, addMonths, type AppOwn, type Memory, type MemoryPart, type MemorySuggestion, type MemoryWorkout, type OtherOfApp,
+  addDays, addMonths, type AppOwn, type Memory, type MemoryChatMessage, type MemoryPart, type MemorySuggestion, type MemoryWorkout,
+  type OtherOfApp,
 } from "./memoryTypes";
 
 /** The app's today as a date: this week's Monday + the day it is in the app. */
@@ -58,7 +60,20 @@ function workoutOf(s: Session, weekMonday: string): MemoryWorkout {
   };
 }
 
-/** The whole state as Memory's six groups. `monday` is this week's Monday, "2026-11-23". */
+/** A Chat message as Memory keeps it (chatMessageOf in fromMemory.ts is the other direction). */
+function chatMessage(m: ChatMessage): MemoryChatMessage {
+  const app = { ...(m.suggestions?.length ? { suggestions: m.suggestions } : {}), ...(m.kind ? { kind: m.kind } : {}) };
+  return {
+    id: m.id,
+    role: m.role,
+    text: m.text,
+    at: m.at === undefined ? null : new Date(m.at).toISOString(),
+    reply: m.reply ?? null,
+    app: Object.keys(app).length ? app : null,
+  };
+}
+
+/** The whole state as Memory's seven groups. `monday` is this week's Monday, "2026-11-23". */
 export function toMemory(state: AppState, monday: string): Memory {
   const today = todayOf(state, monday);
   const mondays = pastMondays(state.history.length, monday);
@@ -127,7 +142,7 @@ export function toMemory(state: AppState, monday: string): Memory {
     ),
     declines: Object.fromEntries(state.declines.filter((d) => !isTableId(d.familyId)).map((d) => [d.id, { familyId: d.familyId }])),
   };
-  const other: OtherOfApp = { today: state.today, chat: state.chat, notes: state.notes, clinician: state.clinician, app: own };
+  const other: OtherOfApp = { today: state.today, notes: state.notes, clinician: state.clinician, app: own };
 
   return {
     who: { name: p.name, fitbit_connected: p.fitbitConnected },
@@ -154,13 +169,15 @@ export function toMemory(state: AppState, monday: string): Memory {
       vo2_max: vo2.map((value, i) => ({ month: addMonths(month, i - (vo2.length - 1)), ml_kg_min: value, source: "fitbit" })),
       heart_rates: sessions.filter((s) => s.avgHeartRate !== undefined).map((s) => ({ workout_id: s.id, avg_bpm: s.avgHeartRate! })),
     },
+    chat: state.chat.map(chatMessage),
     other: other as Record<string, unknown>,
   };
 }
 
 /** One entry to take out of Memory: DELETE /api/memory/{kind}/{key}. */
 export interface MemoryRemoval {
-  kind: "workouts" | "suggestions" | "check_ins";
+  /** "other": what the app keeps under one name there, taken out by that name */
+  kind: "workouts" | "suggestions" | "check_ins" | "chat" | "other";
   key: string;
 }
 
@@ -192,6 +209,8 @@ function gone<T>(prev: T[], next: T[], key: (x: T) => string): T[] {
  *  - Only this week's goal and plan are sent. A past week keeps the goal it had.
  *  - Only a workout from this week can be taken out. One that left the app's 26 weeks stays in Memory.
  *  - A day the app was opened is never taken back, and an accepted pick stays accepted.
+ * The Chat conversation is told message by message: a new one is added, and one that is gone
+ * from the screen (the user edited an earlier message, which drops what came after it) is taken out.
  * Starting over (another demo persona, Reset, the first sync of a real Fitbit) replaces
  * everything instead; the store does that with replaceMemory().
  */
@@ -233,6 +252,10 @@ export function memoryChanges(prev: Memory, next: Memory, monday: string): Memor
   const heart = changed(prev.health.heart_rates, next.health.heart_rates, (r) => r.workout_id);
   if (heart.length) health.heart_rates = heart;
   if (Object.keys(health).length) save.health = health;
+
+  const chat = changed(prev.chat, next.chat, (m) => m.id);
+  if (chat.length) save.chat = chat;
+  remove.push(...gone(prev.chat, next.chat, (m) => m.id).map((m): MemoryRemoval => ({ kind: "chat", key: m.id })));
 
   const other = Object.fromEntries(Object.entries(next.other).filter(([name, value]) => !same(prev.other[name], value)));
   if (Object.keys(other).length) save.other = other;

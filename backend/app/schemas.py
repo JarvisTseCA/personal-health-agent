@@ -238,6 +238,32 @@ class ChatRequest(BaseModel):
     messages: List[ChatMessage]
 
 
+class ClinicianNote(BaseModel):
+    """What the user saved in Chat as their clinician's feedback. The app keeps these itself and sends them along."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    text: str
+
+
+class MemoryChatRequest(BaseModel):
+    """POST /api/chat/memory: the conversation. What the model is told about the user is read from Memory.
+
+    There is no `system` here. The backend builds the model's prompt itself, from the Chat brief
+    and the user's data in Memory (memory_chat.py), and a request that carries one anyway is
+    refused, so the app's own notes and numbers can never get mixed in with the backend's.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    user_id: str = "demo"
+    # The user's "today", e.g. "2026-11-23". Left out: the date on the backend's own clock.
+    date: Optional[str] = None
+    # The recent conversation, oldest first; the last user message is the one to answer.
+    messages: List[ChatMessage]
+    clinician_notes: List[ClinicianNote] = []
+
+
 class TodayReadRequest(BaseModel):
     """A typed answer on the Today tab, for ChatGPT to turn into fields (POST /api/today/read)."""
 

@@ -5,6 +5,7 @@
  *
  *  1. readTyped   a typed answer → the fields the buttons would give, or "it's a question"
  *  2. askToday    a question typed on Today → a reply, through the same checks as the Chat tab
+ *                 (askTodayFromMemory on Memory: /api/chat/memory, as the Chat tab does)
  *  3. whyLine     today's pick and the code's facts → one "Based on …" sentence
  *  4. weekRecap   last week's numbers → Monday's two sentences
  *
@@ -56,6 +57,18 @@ export async function weekRecap(facts: Record<string, number | string | boolean>
 /** A question asked on Today, answered through /api/chat: urgent keywords, Jev's checks, then ChatGPT. */
 export async function askToday(system: string, messages: Array<{ role: "user" | "assistant"; content: string }>): Promise<string | null> {
   const res = await post("/chat", { system, messages }, 30_000);
+  if (!res) return null;
+  try {
+    const text = (await res.text()).trim();
+    return text || null;
+  } catch {
+    return null;
+  }
+}
+
+/** The same through /api/chat/memory, as the Chat tab does: the backend reads the user from Memory. */
+export async function askTodayFromMemory(body: unknown): Promise<string | null> {
+  const res = await post("/chat/memory", body, 30_000);
   if (!res) return null;
   try {
     const text = (await res.text()).trim();

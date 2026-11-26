@@ -14,11 +14,12 @@ import { repository } from "../services/store";
 import { applyClinicianTurn } from "../services/clinicianChat";
 import { showNumbers } from "../services/numbers";
 import { openMemorySession, type MemorySession } from "./memorySession";
-import { askToday, chatModelLive, readTyped, weekRecap, whyLine } from "../services/todayWords";
+import { askToday, askTodayFromMemory, chatModelLive, readTyped, weekRecap, whyLine } from "../services/todayWords";
+import { buildMemoryChatRequest } from "../services/agent";
 import { buildSystemPrompt } from "../services/prompts";
 import * as Today from "./today";
 import type { EquipmentProfile } from "../data/mockFitbit";
-import type { AppState, ChatMessage, ClinicianNotes, Overlay, SuggestSource, UserProfile } from "./types";
+import type { AppState, ChatMessage, ChatReply, ClinicianNotes, Overlay, SuggestSource, UserProfile } from "./types";
 import { appDate, clampGoal } from "../lib/goalNote";
 
 export { newId } from "./today";
@@ -149,7 +150,8 @@ export type Action =
   // `unfinished`: the agent is still writing this message. It is shown as it grows; with the
   // backend it is saved once, by the update that finishes it (memorySession.ts).
   | { type: "addMessage"; message: ChatMessage; unfinished?: boolean }
-  | { type: "updateMessage"; id: string; text: string; suggestions?: string[]; unfinished?: boolean }
+  // `reply`: for a reply from the backend, what kind it was (ChatReply); kept with the message.
+  | { type: "updateMessage"; id: string; text: string; suggestions?: string[]; reply?: ChatReply; unfinished?: boolean }
   | { type: "backendSuggestion"; replaces: Suggestion; result: BackendSuggestion }
   | { type: "backendFailed"; replaces: Suggestion }
   | { type: "suggestionFailed"; replaces: Suggestion }
@@ -302,7 +304,9 @@ function reduce(state: AppState, action: Action): AppState {
     case "updateMessage":
       return {
         ...state,
-        chat: state.chat.map((m) => (m.id === action.id ? { ...m, text: action.text, suggestions: action.suggestions ?? m.suggestions } : m)),
+        chat: state.chat.map((m) => (m.id === action.id
+          ? { ...m, text: action.text, suggestions: action.suggestions ?? m.suggestions, ...(action.reply ? { reply: action.reply } : {}) }
+          : m)),
       };
     case "backendSuggestion":
       return Today.applyBackendSuggestion(state, action.replaces, action.result);
@@ -324,6 +328,8 @@ interface Store {
   state: AppState;
   dispatch: React.Dispatch<Action>;
   ctx: AgentContext;
+  /** Set when the app runs with the backend (the one switch, decided when it opens); null without it */
+  session: MemorySession | null;
 }
 
 const StoreContext = createContext<Store | null>(null);
@@ -457,7 +463,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   }, [state, dispatch]);
 
   const ctx = useMemo(() => buildAgentContext(state), [state]);
-  const value = useMemo(() => ({ state, dispatch, ctx }), [state, ctx]);
+  // `memory.current` is set just before the state read from Memory is shown, so it is in step with `state`.
+  const value = useMemo(() => ({ state, dispatch, ctx, session: memory.current }), [state, dispatch, ctx]);
   return <StoreContext.Provider value={value}>{children}</StoreContext.Provider>;
 }
 
@@ -496,7 +503,7 @@ const READ_STEPS = new Set(["setup-goal", "setup-plan", "time-confirm", "time", 
  * as before. `pending` is the typed text while it waits, shown with the typing dots.
  */
 export function useTypedAnswer(): { submit: (text: string) => Promise<void>; pending: string | null } {
-  const { state, ctx, dispatch } = useStore();
+  const { state, ctx, dispatch, session } = useStore();
   const [pending, setPending] = useState<string | null>(null);
   const submit = useCallback(async (text: string) => {
     const step = state.today.step;
@@ -509,7 +516,11 @@ export function useTypedAnswer(): { submit: (text: string) => Promise<void>; pen
       const question = [...state.today.entries].reverse().find((e) => e.role === "agent")?.text ?? "";
       const read = await readTyped(step, question, text);
       if (read?.intent === "question") {
-        const reply = await askToday(todaySystem(state, ctx), todayHistory(state, text));
+        // On Memory (the usual case with the backend): /api/chat/memory, as the Chat tab, so the backend
+        // reads the user from Memory and the app sends no prompt of its own. Otherwise /api/chat.
+        const reply = session
+          ? await session.settled().then(() => askTodayFromMemory(buildMemoryChatRequest(todayHistory(state, text), state, session.today(state))))
+          : await askToday(todaySystem(state, ctx), todayHistory(state, text).map((m) => ({ role: m.role === "user" ? "user" : "assistant", content: m.text })));
         dispatch(reply ? { type: "todayReply", question: text, reply } : { type: "freeText", text });
         return;
       }
@@ -517,7 +528,7 @@ export function useTypedAnswer(): { submit: (text: string) => Promise<void>; pen
     } finally {
       setPending(null);
     }
-  }, [state, ctx, dispatch]);
+  }, [state, ctx, dispatch, session]);
   return { submit, pending };
 }
 
@@ -528,10 +539,21 @@ function todaySystem(state: AppState, ctx: AgentContext): string {
   return `${buildSystemPrompt(ctx)}\n\nThe user is in today's check-in on the Today tab and typed a question there. ${pick} Answer in two or three sentences; they will go back to the check-in after.`;
 }
 
-/** The last few turns of today's conversation, then the question. */
-function todayHistory(state: AppState, text: string): Array<{ role: "user" | "assistant"; content: string }> {
+/**
+ * The last few turns of today's conversation, what's on the card (the model can't see it), then the
+ * question. Shaped as Chat messages, so the Chat tab's request builder can send them.
+ */
+function todayHistory(state: AppState, text: string): ChatMessage[] {
   const recent = state.today.entries.filter((e) => e.role === "agent" || e.role === "user").slice(-6);
-  return [...recent.map((e) => ({ role: e.role === "user" ? ("user" as const) : ("assistant" as const), content: e.text })), { role: "user", content: text }];
+  const c = state.today.current;
+  const card = c && ["suggested", "accepted", "reminded"].includes(state.today.step)
+    ? [{ id: "today-card", role: "agent" as const, text: `Today's suggestion on the card: ${c.lead.durationMin} min (${c.lead.reasons.join("; ")}).` }]
+    : [];
+  return [
+    ...recent.map((e) => ({ id: e.id, role: e.role === "user" ? ("user" as const) : ("agent" as const), text: e.text })),
+    ...card,
+    { id: "today-question", role: "user", text },
+  ];
 }
 
 export function useStore(): Store {

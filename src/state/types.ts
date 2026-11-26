@@ -76,6 +76,12 @@ export interface NoteRecord {
   day: number;
 }
 
+/**
+ * What kind of reply the backend's Chat route gave: the model wrote it, or one of the three
+ * fixed replies a message gets when a check stops it (backend/app/main.py, X-Chat-Reply).
+ */
+export type ChatReply = "model" | "urgent" | "medical_advice" | "off_topic";
+
 export interface ChatMessage {
   id: string;
   role: "user" | "agent";
@@ -86,6 +92,8 @@ export interface ChatMessage {
   suggestions?: string[];
   /** An agent message waiting for a specific answer: the clinician's feedback, or yes to adding strength */
   kind?: "ask-clinician" | "offer-strength";
+  /** An agent message from the backend: what kind of reply it was. Kept on record, not shown. */
+  reply?: ChatReply;
 }
 
 export interface CheckIn {

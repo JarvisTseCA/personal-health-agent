@@ -1,17 +1,22 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { AiNotice } from "../components/AiNotice";
 import { SendIcon } from "../components/Icons";
 import { UserMessage } from "../components/UserMessage";
 import { fmt, fmtGoal } from "../lib/met";
-import { agent } from "../services/agent";
+import { agentFor, NO_REPLY } from "../services/agent";
 import { starterSuggestions } from "../services/mockResponses";
 import { newId, useStore } from "../state/store";
 import { clinicianTurnKind } from "../services/clinicianChat";
 import type { ChatMessage } from "../state/types";
 
-/** Chat: free-form questions to the same agent as Today, answered with the user's own numbers. */
+/**
+ * Chat: free-form questions to the same agent as Today, answered with the user's own numbers.
+ * With the backend the answer comes from there (two checks, then a model writes); without it,
+ * from the app's own script (services/agent.ts).
+ */
 export function ChatScreen() {
-  const { state, dispatch, ctx } = useStore();
+  const { state, dispatch, ctx, session } = useStore();
+  const agent = useMemo(() => agentFor(session), [session]);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
   const [selected, setSelected] = useState<string | null>(null);
@@ -48,16 +53,16 @@ export function ChatScreen() {
     // The reply arrives a few words at a time: each piece is shown, and the whole reply is saved once at the end.
     dispatch({ type: "addMessage", message: { id: agentId, role: "agent", text: "" }, unfinished: true });
 
-    const { stream, suggestions } = agent.reply([...before, userMsg], ctx);
+    const { stream, suggestions, kind } = agent.reply([...before, userMsg], ctx);
     let acc = "";
     try {
       for await (const chunk of stream) {
         acc += chunk;
         dispatch({ type: "updateMessage", id: agentId, text: acc, unfinished: true });
       }
-      dispatch({ type: "updateMessage", id: agentId, text: acc, suggestions });
+      dispatch({ type: "updateMessage", id: agentId, text: acc, suggestions, reply: kind?.() });
     } catch {
-      dispatch({ type: "updateMessage", id: agentId, text: "I couldn't reach the agent just now. Check your connection and try again." });
+      dispatch({ type: "updateMessage", id: agentId, text: NO_REPLY });
     } finally {
       setBusy(false);
     }

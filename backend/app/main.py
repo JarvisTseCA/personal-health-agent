@@ -8,12 +8,15 @@ FastAPI backend for the Personal Health Agent.
                                   and today's numbers are worked out here (memory_suggest.py, calculator.py)
     POST   /api/chat              a Chat message → urgent keywords → Jev: three yes/no questions →
                                   a fixed reply, or the model that writes. Plain text, streamed
+    POST   /api/chat/memory       the same, with what the model is told about the user read from Memory
+                                  and worked out here (memory_chat.py). This is the one the app uses
     GET    /api/state             load the saved app state
     PUT    /api/state             save it
     DELETE /api/state             forget it
-    GET    /api/memory            what Memory holds about a user, in its six groups (memory.py)
-    POST   /api/memory            add to it or update it: any part of the six groups
-    DELETE /api/memory/{kind}/{key}   take one entry out: a check-in, a suggestion or a workout
+    GET    /api/memory            what Memory holds about a user, in its seven groups (memory.py)
+    POST   /api/memory            add to it or update it: any part of the seven groups
+    DELETE /api/memory/{kind}/{key}   take one entry out: a check-in, a suggestion, a workout, a chat message,
+                                  or what the app keeps under one name in "other"
     DELETE /api/memory            forget the user
     GET    /api/numbers           every number on the app's screens, worked out from Memory for one day
                                   (memory_numbers.py). The three routes above that read or change Memory
@@ -41,7 +44,7 @@ import time
 from contextlib import asynccontextmanager
 from datetime import date
 from pathlib import Path
-from typing import Any, Dict, Iterator, List, Optional, Tuple
+from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple
 
 from dotenv import load_dotenv
 
@@ -56,8 +59,8 @@ from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
 from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse, StreamingResponse  # noqa: E402
 
 from . import (  # noqa: E402
-    activities, calculator, chat_gate, chat_prompt, chat_replies, chat_rules, chat_writer, db, memory, memory_numbers,
-    memory_suggest, today_words,
+    activities, calculator, chat_gate, chat_prompt, chat_replies, chat_rules, chat_writer, db, memory, memory_chat,
+    memory_numbers, memory_suggest, today_words,
 )
 from . import google_health as gh  # noqa: E402
 from .jev import (  # noqa: E402
@@ -70,7 +73,7 @@ from .prompt import (  # noqa: E402
     group_by_heading, table_activity_question,
 )
 from .schemas import (  # noqa: E402
-    ChatRequest, MemorySuggestRequest, MemorySuggestResponse, SuggestRequest, SuggestResponse,
+    ChatRequest, MemoryChatRequest, MemorySuggestRequest, MemorySuggestResponse, SuggestRequest, SuggestResponse,
     TableSuggestRequest, TableSuggestResponse, TodayReadRequest, TodayRecapRequest, TodayWhyRequest,
 )
 from .suggest import (  # noqa: E402
@@ -79,7 +82,7 @@ from .suggest import (  # noqa: E402
 
 VIGOROUS_MET = 6.0  # "no vigorous activity" means under this, as in the app (src/lib/met.ts)
 
-# What POST /api/chat tells the app besides the reply text, as response headers.
+# What POST /api/chat and POST /api/chat/memory tell the app besides the reply text, as response headers.
 CHAT_STOPPED_BY = "X-Chat-Stopped-By"  # keywords | jev | none
 CHAT_REPLY = "X-Chat-Reply"            # urgent | medical_advice | off_topic, or "model" when the model wrote it
 
@@ -377,19 +380,19 @@ def _fixed_reply(name: str, stopped_by: str, step: int) -> PlainTextResponse:
     return PlainTextResponse(replies[name], headers={CHAT_STOPPED_BY: stopped_by, CHAT_REPLY: name})
 
 
-@app.post("/api/chat")
-def chat(req: ChatRequest):
-    """One Chat message in, the reply out as plain text.
+def _answer_chat(route: str, messages: List[Dict[str, str]], system_prompt: Callable[[str, Dict[str, str]], str]):
+    """What both Chat routes do with a conversation: one message in, the reply out as plain text.
 
     The last user message goes through two checks before any model writes:
       1. urgent keywords (chat_rules.py): a match gets the fixed "urgent" reply, and Jev isn't asked
       2. Jev's three yes/no questions (chat_gate.py): urgent, medical advice, or off topic gets its fixed reply
     A message that passes both goes to the model that writes (chat_writer.py), and its reply is streamed.
-    The model's system prompt is the Chat brief, then what the app sent as `system` (chat_prompt.py).
+
+    `system_prompt(brief, replies)` gives that model's system prompt. It is asked for only once a
+    message has passed both checks, so nothing about the user is read for a message that is stopped.
 
     Two response headers say what happened: X-Chat-Stopped-By and X-Chat-Reply.
     """
-    messages = [m.model_dump() for m in req.messages]
     try:
         message = chat_gate.latest_user_message(messages)
     except chat_gate.GateError as e:
@@ -398,7 +401,7 @@ def chat(req: ChatRequest):
 
     live = has_api_key()
     model = jev_model() if live else "mock"
-    log.info("── POST /api/chat  (Jev: %s · writer: %s) ──", model, chat_writer.name())
+    log.info("── POST %s  (Jev: %s · writer: %s) ──", route, model, chat_writer.name())
     log.info("[1] Message: \"%s\"", _short(message))
 
     # Check 1: urgent keywords. A match stops here.
@@ -428,9 +431,9 @@ def chat(req: ChatRequest):
         return _fixed_reply(decision.reply, "jev", step=4)
 
     # Both checks passed: the model that writes answers, and each piece goes to the app as it comes.
-    system = chat_prompt.build_system(brief, replies, req.system)
-    log.debug("    System prompt: %s", system)
     log.info("[4] Passed both checks. Writing (%s)…", chat_writer.name())
+    system = system_prompt(brief, replies)
+    log.debug("    System prompt: %s", system)
     t = time.perf_counter()
     reply = chat_writer.write(system, messages)
     # Wait for the first piece before answering, so a wrong key or model is an error, not an empty reply.
@@ -460,6 +463,42 @@ def chat(req: ChatRequest):
         pieces(), media_type="text/plain; charset=utf-8",
         headers={CHAT_STOPPED_BY: "none", CHAT_REPLY: "model"},
     )
+
+
+@app.post("/api/chat")
+def chat(req: ChatRequest):
+    """A Chat message answered with what the caller says about the user: the two checks, then a fixed reply or the model.
+
+    The model's system prompt is the Chat brief, then what was sent as `system` (chat_prompt.py).
+    The app itself uses POST /api/chat/memory below; this one is for trying the checks and the model on their own.
+    """
+    messages = [m.model_dump() for m in req.messages]
+    return _answer_chat("/api/chat", messages, lambda brief, replies: chat_prompt.build_system(brief, replies, req.system))
+
+
+@app.post("/api/chat/memory")
+def chat_from_memory(req: MemoryChatRequest):
+    """A Chat message answered with what Memory holds about the user: the two checks, then a fixed reply or the model.
+
+    The app sends the recent conversation, who the user is and which day it is for them. For a message
+    that passes both checks, the backend reads the user from Memory and works their numbers out
+    (memory_chat.py): the same numbers the screens show. The model's system prompt is the Chat brief,
+    then that data. Feedback from the user's clinician is the one thing the app sends along itself
+    (`clinician_notes`): it keeps those in its own part of Memory, which the backend doesn't read.
+
+    The conversation itself is kept in Memory's "chat" group. The app saves it there message by
+    message, through POST /api/memory; this route stores nothing.
+    """
+    today = _day(req.date)  # a date that can't be read stops the request before any check runs
+    messages = [m.model_dump() for m in req.messages]
+    notes = [n.model_dump() for n in req.clinician_notes]
+
+    def system_prompt(brief: str, replies: Dict[str, str]) -> str:
+        data = memory_chat.user_data(req.user_id, today, notes)
+        log.info("    The user's data, from Memory: %s", memory_chat.summary(data))
+        return chat_prompt.build_system(brief, replies, user_data=data)
+
+    return _answer_chat("/api/chat/memory", messages, system_prompt)
 
 
 # --- ChatGPT on the Today tab (today_words.py) ---------------------------------------------
@@ -517,7 +556,7 @@ def delete_state(user_id: str = "demo") -> Dict[str, bool]:
     return {"ok": True}
 
 
-# --- Memory: what the backend remembers about a user, in six groups (memory.py) ----------------
+# --- Memory: what the backend remembers about a user, in seven groups (memory.py) --------------
 # When the app finds the backend running, these are what it uses: it reads Memory when it opens,
 # tells it what changed after every step, and shows the numbers that come back. It no longer
 # saves its state in one piece through /api/state above; that is only read once, to bring an
@@ -551,7 +590,7 @@ def _numbers(user_id: str, day: date) -> Dict[str, Any]:
 def get_memory(
     user_id: str = "demo", group: Optional[List[str]] = Query(None), day: Optional[str] = Query(None, alias="date"),
 ) -> Dict[str, Any]:
-    """Read. All six groups, or only the ones asked for: ?group=preferences&group=daily.
+    """Read. All seven groups, or only the ones asked for: ?group=preferences&group=daily.
 
     Without ?date=: everything Memory holds, however far back it goes.
     With ?date=: what the app is given. Memory from this week and the 26 before it
@@ -571,9 +610,9 @@ def get_memory(
 def post_memory(
     part: Dict[str, Any] = Body(...), user_id: str = "demo", day: Optional[str] = Query(None, alias="date"),
 ) -> Dict[str, Any]:
-    """Add or update. Send any part of the six groups; what is left out stays as it is.
+    """Add or update. Send any part of the seven groups; what is left out stays as it is.
 
-    Entries under "daily" and "health" are added (or replace the one with the same key);
+    Entries under "daily", "health" and "chat" are added (or replace the one with the same key);
     "who", "preferences" and a week's goal and plan are updated; each name under "other" is
     replaced by what is sent. The shape is at the top of memory.py.
 
@@ -591,7 +630,8 @@ def post_memory(
 def delete_memory_entry(
     kind: str, key: str, user_id: str = "demo", day: Optional[str] = Query(None, alias="date"),
 ) -> Dict[str, Any]:
-    """Delete one entry: /api/memory/suggestions/<id>, /api/memory/workouts/<id> or /api/memory/check_ins/<date>.
+    """Delete one entry: /api/memory/suggestions/<id>, /api/memory/workouts/<id>, /api/memory/check_ins/<date>,
+    /api/memory/chat/<id>, or /api/memory/other/<name> for what the app keeps under that name.
 
     With ?date=, the reply also has the numbers as they are without it.
     """

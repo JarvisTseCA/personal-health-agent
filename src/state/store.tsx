@@ -129,7 +129,8 @@ export type Action =
   // the "Based on" line under the pick, and Monday's recap.
   | { type: "typedRead"; text: string; read: Today.TypedRead }
   | { type: "todayReply"; question: string; reply: string }
-  | { type: "whyLine"; key: string; line: string }
+  | { type: "whyPending"; key: string }
+  | { type: "whyLine"; key: string; line: string | null }
   | { type: "weekRecap"; dayKey: string; text: string }
   | { type: "addNote"; text: string; where: string }
   | { type: "forgetNote"; id: string }
@@ -277,6 +278,7 @@ function reduce(state: AppState, action: Action): AppState {
     case "freeText": return Today.freeText(state, action.text);
     case "typedRead": return Today.applyTyped(state, action.text, action.read);
     case "todayReply": return Today.todayReply(state, action.question, action.reply);
+    case "whyPending": return Today.whyPending(state, action.key);
     case "whyLine": return Today.setWhy(state, action.key, action.line);
     case "weekRecap": return Today.addRecap(state, action.dayKey, action.text);
     case "own": return Today.ownAnswer(state, action.answer);
@@ -463,9 +465,15 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     const want = key && !whyAsked.current.has(key) ? Today.whyFacts(state) : null;
     if (!key || !want) return;
     whyAsked.current.add(key);
-    chatModelLive()
-      .then((live) => (live ? whyLine(want.activity, want.facts) : null))
-      .then((line) => line && dispatch({ type: "whyLine", key, line }));
+    void (async () => {
+      if (!(await chatModelLive())) {
+        // No ChatGPT (any more): a loading line left from before a reload goes.
+        if (state.today.current?.whyPending) dispatch({ type: "whyLine", key, line: null });
+        return;
+      }
+      dispatch({ type: "whyPending", key });
+      dispatch({ type: "whyLine", key, line: await whyLine(want.activity, want.facts) });
+    })();
   }, [state, dispatch]);
 
   // Monday: ChatGPT's two sentences about last week, at the top of the conversation.

@@ -864,3 +864,4 @@ input[type="range"] { width: 100%; accent-color: var(--ink); height: 32px; }
 
 /* ChatGPT's "Based on …" line under today's pick */
 .why-line { margin: 8px 4px 0; font-style: italic; }
+.why-loading { animation: blink 1.2s infinite; }

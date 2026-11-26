@@ -341,7 +341,11 @@ export function TodayScreen({ go, openPrefs }: { go: (s: Screen) => void; openPr
         {t.step === "suggested" && t.current && !t.current.pending && !t.current.failed && (
           <div className="live">
             <SuggestionCard s={t.current.lead} lead />
-            {t.current.why && <p className="why-line small muted">{t.current.why}</p>}
+            {t.current.why ? (
+              <p className="why-line small muted">{t.current.why}</p>
+            ) : t.current.whyPending ? (
+              <p className="why-line why-loading small muted" role="status">Loading reasoning…</p>
+            ) : null}
             <div className="btn-stack">
               <button className="btn btn-primary" onClick={() => dispatch({ type: "accept", suggestion: t.current!.lead })}>Let's start</button>
               <button className="btn btn-quiet" onClick={() => dispatch({ type: "remindLater" })}>Remind me later</button>

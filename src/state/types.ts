@@ -174,6 +174,8 @@ export interface TodayState {
     skipped?: Suggestion;
     /** "Based on …": ChatGPT's one line under the pick, from the facts the code has (whyLine) */
     why?: string;
+    /** ChatGPT is writing the "Based on" line: "Loading reasoning…" shows until it comes, or doesn't */
+    whyPending?: boolean;
     /** Who picked it: the in-app ranker, or Jev via the backend (live or mocked) */
     source?: "rules" | "jev" | "mock";
     /**

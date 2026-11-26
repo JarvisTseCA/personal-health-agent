@@ -197,6 +197,7 @@ function reduceOne(state: AppState, action: Action): AppState {
     case "accept": return Today.accept(state, action.suggestion);
     case "sync": return Today.sync(state);
     case "addMessage": return { ...state, chat: [...state.chat, action.message] };
+    case "updateMessage": return { ...state, chat: state.chat.map((m) => (m.id === action.id ? { ...m, text: action.text, suggestions: action.suggestions ?? m.suggestions } : m)) };
     case "toast": return { ...state, toast: action.text };
     case "overlay": return { ...state, overlay: action.overlay };
     case "moveEnjoyed": {
@@ -518,6 +519,30 @@ describe("running the app with the backend (memorySession)", () => {
 
     expect(memoryChat()).toEqual(["lost on the way", "this one gets through"]);
     expect(o.last().chat.map((m) => m.text)).toEqual(["lost on the way", "this one gets through"]);
+  });
+
+  it("a reply that arrives a few words at a time is shown as it grows and saved once, when it is whole", async () => {
+    const o = await open(onboarded());
+    backend.calls = [];
+    const sends = () => backend.calls.filter((c): c is Extract<Call, { name: "sendChanges" }> => c.name === "sendChanges");
+
+    // What the Chat screen does: the user's message, an empty reply, the reply growing, the reply finished.
+    await o.step({ type: "addMessage", message: message("Is walking enough?") });
+    expect(sends()).toHaveLength(1);
+    await o.step({ type: "addMessage", message: { id: "reply", role: "agent", text: "" }, unfinished: true });
+    const pieces = ["Walking", "Walking counts", "Walking counts when", "Walking counts when it's", "Walking counts when it's brisk."];
+    for (const text of pieces) {
+      await o.step({ type: "updateMessage", id: "reply", text, unfinished: true });
+      expect(o.last().chat.at(-1)?.text).toBe(text); // on screen as it grows
+    }
+    expect(sends()).toHaveLength(1); // nothing more was sent while it was being written
+    expect(memoryChat()).toEqual(["Is walking enough?"]);
+
+    await o.step({ type: "updateMessage", id: "reply", text: "Walking counts when it's brisk.", suggestions: ["What counts as brisk?"] });
+
+    expect(sends()).toHaveLength(2); // the user's message, then the whole reply
+    expect(memoryChat()).toEqual(["Is walking enough?", "Walking counts when it's brisk."]);
+    expect(backend.calls.some((c) => c.name !== "sendChanges")).toBe(false);
   });
 
   it("closing the toast after a step that didn't go through sends nothing, and the toast stays closed", async () => {

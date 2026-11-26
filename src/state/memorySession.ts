@@ -22,6 +22,9 @@
  * A step that changes only what the screen holds (a toast closing, a sheet opening) is shown
  * and nothing is sent: Memory keeps neither.
  *
+ * A chat reply arrives a few words at a time. Each piece is shown as it comes, and the reply is
+ * saved once, by the step that finishes it.
+ *
  * When the backend doesn't answer:
  *  - a step that was already shown stays on screen, and what it changed goes out with the next
  *    step that tells the backend something and gets through;
@@ -139,6 +142,8 @@ export async function openMemorySession(o: Opening): Promise<{ state: AppState; 
     if (!startOver && numbersKey(prev) === numbersKey(draft)) {
       current = draft;
       o.show(draft);
+      // A reply the agent is still writing: on screen now, saved by the step that finishes it.
+      if ((action.type === "addMessage" || action.type === "updateMessage") && action.unfinished) return;
       // If this doesn't get through, `mem` stays as it was and the next step sends this change too.
       const changes = memoryChanges(await held(), target, monday);
       if (changes.save || changes.remove.length) await sendChanges(changes);

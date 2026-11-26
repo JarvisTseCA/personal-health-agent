@@ -130,8 +130,10 @@ export type Action =
   | { type: "videoExample" }
   | { type: "overlay"; overlay: Overlay }
   | { type: "toast"; text: string | null }
-  | { type: "addMessage"; message: ChatMessage }
-  | { type: "updateMessage"; id: string; text: string; suggestions?: string[] }
+  // `unfinished`: the agent is still writing this message. It is shown as it grows; with the
+  // backend it is saved once, by the update that finishes it (memorySession.ts).
+  | { type: "addMessage"; message: ChatMessage; unfinished?: boolean }
+  | { type: "updateMessage"; id: string; text: string; suggestions?: string[]; unfinished?: boolean }
   | { type: "backendSuggestion"; replaces: Suggestion; result: BackendSuggestion }
   | { type: "backendFailed"; replaces: Suggestion }
   | { type: "suggestionFailed"; replaces: Suggestion }

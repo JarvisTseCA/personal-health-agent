@@ -45,14 +45,15 @@ export function ChatScreen() {
     const userMsg: ChatMessage = { id: newId("u"), role: "user", text: t, at: Date.now() };
     dispatch({ type: "addMessage", message: userMsg });
     const agentId = newId("a");
-    dispatch({ type: "addMessage", message: { id: agentId, role: "agent", text: "" } });
+    // The reply arrives a few words at a time: each piece is shown, and the whole reply is saved once at the end.
+    dispatch({ type: "addMessage", message: { id: agentId, role: "agent", text: "" }, unfinished: true });
 
     const { stream, suggestions } = agent.reply([...before, userMsg], ctx);
     let acc = "";
     try {
       for await (const chunk of stream) {
         acc += chunk;
-        dispatch({ type: "updateMessage", id: agentId, text: acc });
+        dispatch({ type: "updateMessage", id: agentId, text: acc, unfinished: true });
       }
       dispatch({ type: "updateMessage", id: agentId, text: acc, suggestions });
     } catch {

@@ -16,7 +16,7 @@ import { countsTowardGoal, fmt, fmtGoal, intensityOf } from "../lib/met";
 import { DECLINE_LABEL, type DeclineReason, type Suggestion } from "../lib/suggest";
 import { equipmentAt } from "../services/context";
 import { useFitbitSync, useStore } from "../state/store";
-import { CHANGE_TIME_LABEL, CONFIRM_CHOICES, ENERGY_OPTIONS, hasHowTo, keepTimeLabel, PLACE_OPTIONS, REMIND_OPTIONS, SETUP_GOAL_OPTIONS, SETUP_PLAN_DONE } from "../state/today";
+import { CHANGE_TIME_LABEL, CONFIRM_CHOICES, ENERGY_OPTIONS, hasHowTo, keepTimeLabel, MAX_PASSES, PLACE_OPTIONS, REMIND_OPTIONS, SETUP_GOAL_OPTIONS, SETUP_PLAN_DONE } from "../state/today";
 import { TimeOptions } from "../components/TimeOptions";
 import { SLOT_LABEL, SLOT_MINUTES } from "../lib/plan";
 import type { Screen, TodayStep } from "../state/types";
@@ -44,6 +44,9 @@ const OTHER_PLACEHOLDER: Partial<Record<TodayStep, string>> = {
   "confirm-other": "Other: type the activity",
   nudge: "Other: type your answer",
   wrap: "Other: ask anything",
+  own: "e.g. 40 min badminton",
+  "own-minutes": "Other: e.g. 25",
+  "own-confirm": "Something else? e.g. tennis",
 };
 
 const REASONS: DeclineReason[] = ["no-time", "tired", "not-mood", "recent", "no-access", "weather", "hurts"];
@@ -318,8 +321,15 @@ export function TodayScreen({ go, openPrefs }: { go: (s: Screen) => void; openPr
             <div className="btn-stack">
               <button className="btn btn-primary" onClick={() => dispatch({ type: "accept", suggestion: t.current!.lead })}>Let's start</button>
               <button className="btn btn-quiet" onClick={() => dispatch({ type: "remindLater" })}>Remind me later</button>
-              <button className="btn btn-quiet" onClick={() => dispatch({ type: "another" })}>Give me another option</button>
+              <button className="btn btn-quiet" onClick={() => dispatch({ type: "another" })}>{(t.passed ?? 0) >= MAX_PASSES ? "None of these work" : "Give me another option"}</button>
             </div>
+            {t.current.skipped && (
+              <div className="skip-why">
+                <Bubbles label="Why not the last option (optional)">
+                  {REASONS.map((r) => <button key={r} className={`chip chip-small${r === "hurts" ? " chip-care" : ""}`} onClick={() => dispatch({ type: "skipReason", reason: r })}>{DECLINE_LABEL[r]}</button>)}
+                </Bubbles>
+              </div>
+            )}
             <ShowHow />
           </div>
         )}
@@ -342,6 +352,21 @@ export function TodayScreen({ go, openPrefs }: { go: (s: Screen) => void; openPr
           </div>
         )}
 
+        {t.step === "own-minutes" && (
+          <Bubbles label="How many minutes">
+            {[15, 30, 45, 60].map((m) => <button key={m} className="chip" onClick={() => dispatch({ type: "own", answer: { minutes: m } })}>{m} min</button>)}
+          </Bubbles>
+        )}
+        {t.step === "own-confirm" && t.own && (
+          <Bubbles label="Done or planned">
+            <button className="chip chip-strong" onClick={() => dispatch({ type: "own", answer: "did" })}>I did it</button>
+            <button className="chip" onClick={() => dispatch({ type: "own", answer: "plan" })}>It's my plan</button>
+            {t.own.codes.slice(1).map((code) => {
+              const row = state.tableActivities?.[code];
+              return row ? <button key={code} className="chip" onClick={() => dispatch({ type: "own", answer: { code } })}>It's {row.label} ({fmt(row.met)} MET)</button> : null;
+            })}
+          </Bubbles>
+        )}
         {t.step === "reason" && (
           <Bubbles label="Why not today">
             {REASONS.map((r) => <button key={r} className={`chip${r === "hurts" ? " chip-care" : ""}`} onClick={() => dispatch({ type: "reason", reason: r })}>{DECLINE_LABEL[r]}</button>)}

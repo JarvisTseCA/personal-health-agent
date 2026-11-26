@@ -34,6 +34,9 @@ FLAGS = [
     "needs_equipment", "need_friends", "exercise_rec",
 ]
 COLUMNS = ["activity_code", "major_heading", "met_value", "activity_description"] + FLAGS
+# Filled in by activity_tables/update_table.py; used to keep the three picks varied. A CSV without
+# them still loads ('' for every row).
+OPTIONAL = ["family", "type"]
 
 
 class ActivityTableError(ValueError):
@@ -66,7 +69,8 @@ def _row(raw: Dict[str, Any], where: str) -> Tuple[Any, ...]:
             raise ActivityTableError(f"{where}: {column} is {value!r}, expected 0 or 1")
         flags.append(int(value))
 
-    return (code, heading, met, description, *flags)
+    extra = [(raw.get(column) or "").strip() for column in OPTIONAL]
+    return (code, heading, met, description, *flags, *extra)
 
 
 def read_csv(path: Optional[Path] = None) -> List[Tuple[Any, ...]]:
@@ -105,10 +109,11 @@ def load(path: Optional[Path] = None) -> int:
     the table as it was.
     """
     rows = read_csv(path)
-    placeholders = ", ".join("?" * len(COLUMNS))
+    columns = COLUMNS + OPTIONAL
+    placeholders = ", ".join("?" * len(columns))
     with db.session() as conn:
         conn.execute("DELETE FROM activities")
-        conn.executemany(f"INSERT INTO activities ({', '.join(COLUMNS)}) VALUES ({placeholders})", rows)
+        conn.executemany(f"INSERT INTO activities ({', '.join(columns)}) VALUES ({placeholders})", rows)
     return len(rows)
 
 
@@ -204,6 +209,16 @@ def label_of(description: str) -> str:
             break
         kept.append(part)
     return ", ".join(kept)
+
+
+def families_of(codes: Iterable[str]) -> List[str]:
+    """The `family` of each code that is in the table and has one, e.g. ["cycling_indoor"]."""
+    wanted = sorted({str(c).strip().zfill(5) for c in codes if str(c).strip()})
+    if not wanted:
+        return []
+    with db.session() as conn:
+        rows = conn.execute(f"SELECT DISTINCT family FROM activities WHERE activity_code IN ({_marks(wanted)})", wanted)
+        return sorted(r["family"] for r in rows if r["family"])
 
 
 def headings_of(codes: Iterable[str]) -> List[str]:

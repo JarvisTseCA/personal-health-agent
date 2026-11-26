@@ -2,6 +2,7 @@
 import { describe, expect, it } from "vitest";
 import { appDate, goalNote, shortDate } from "../lib/goalNote";
 import { initialState, personaProfile, reducer } from "./store";
+import * as T from "./today";
 import type { AppState } from "./types";
 
 const START = ["10", "10", "10", "10", "10", "10", "10"] as const;
@@ -72,5 +73,37 @@ describe("the note beside the goal", () => {
     expect(goalNote(s)).toMatch(/^Set by you on /);
     s = reducer(s, { type: "acceptGoal", to: 10, reason: "You reached at least 10 MET-hours in each of the last 2 weeks." });
     expect(goalNote(s)).toBe(`Raised by the agent from 8.5 on ${shortDate(appDate(s.todayIndex))}, and you accepted. You reached at least 10 MET-hours in each of the last 2 weeks.`);
+  });
+});
+
+describe("the week's first log-in: goal and plan once a week", () => {
+  const none = [false, false, false, false, false, false, false];
+  function open(todayIndex: number, signIns: boolean[], extra: Partial<AppState> = {}): AppState {
+    const s = initialState("alex");
+    return reducer({ ...s, onboarded: true, profile: personaProfile(s), todayIndex, signIns, ...extra }, { type: "restartDay" });
+  }
+
+  it("asks again at the week's first log-in, on any day, offering to keep the goal", () => {
+    const s = open(2, none);
+    expect(s.weekSetup).toBe(true);
+    expect(s.today.step).toBe("setup-goal");
+    expect(s.today.entries[0].text).toMatch(/^A new week\. .*Your weekly goal is 10 MET-hours: keep it, or pick another\?/);
+    expect(T.setupGoalOptions(s)[0]).toEqual(["Keep 10", 10]);
+  });
+
+  it("keeping the goal leaves who set it as it was; then the plan, then the day", () => {
+    let s = open(0, none);
+    const before = s.goalSet;
+    s = reducer(s, { type: "setupGoal", label: "Keep 10", to: 10 });
+    expect(s.goalSet).toEqual(before);
+    expect(s.today.entries.at(-1)!.text).toMatch(/^Here's your weekly plan\./);
+    s = reducer(s, { type: "setupPlanDone", label: T.SETUP_PLAN_DONE });
+    expect(s.weekPlanned).toBe(true);
+    expect(["time-confirm", "time"]).toContain(s.today.step);
+  });
+
+  it("not on a later log-in that week, nor on a restart of the day once it's set", () => {
+    expect(open(2, [true, ...none.slice(1)]).today.step).not.toBe("setup-goal");
+    expect(open(0, none, { weekPlanned: true }).today.step).not.toBe("setup-goal");
   });
 });

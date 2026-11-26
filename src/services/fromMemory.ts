@@ -176,6 +176,8 @@ export function fromMemory(memory: Memory, numbers: Numbers, base: AppState): Fr
     // Who set this week's goal, when and why: kept for the week it was set in.
     goalSet: sameWeek ? own.goalSet : undefined,
     weekSetup: sameWeek ? own.weekSetup : undefined,
+    // A new week is set up again at its first log-in.
+    weekPlanned: sameWeek ? own.weekPlanned : undefined,
     plan: numbers.this_week.plan as WeekPlan,
     planSource: own.planSource,
     sessions: sessionsOf(monday),

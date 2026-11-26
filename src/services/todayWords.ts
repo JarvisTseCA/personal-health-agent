@@ -7,7 +7,7 @@
  *  2. askToday    a question typed on Today → a reply, through the same checks as the Chat tab
  *                 (askTodayFromMemory on Memory: /api/chat/memory, as the Chat tab does)
  *  3. whyLine     today's pick and the code's facts → one "Based on …" sentence
- *  4. weekRecap   last week's numbers → Monday's two sentences
+ *  4. weekRecap   last week's numbers → two sentences at the week's first log-in
  *
  * Each one gives back null when there's no backend, no OPENAI_API_KEY, a slow or refused answer,
  * or an answer the backend's check turned down. The app then keeps its own words, as before.

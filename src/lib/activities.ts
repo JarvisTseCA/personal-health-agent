@@ -304,14 +304,24 @@ export function equipmentOf(f: ActivityFamily, v: ActivityVariant): string[] {
   return v.equipment ?? f.equipment ?? [];
 }
 
+/**
+ * Asked for an id nobody has registered yet: the activity table answers for its own ids
+ * ("table-02064"), from the copy of the table bundled with the app (tableActivities.ts). Then a
+ * pick saved before a reload, or kept across a code reload in `npm run dev`, still shows.
+ */
+let resolveUnknown: ((id: string) => boolean) | null = null;
+export function onUnknownActivity(resolve: (id: string) => boolean): void {
+  resolveUnknown = resolve;
+}
+
 export function getFamily(id: string): ActivityFamily {
-  const f = familyById.get(id);
+  const f = familyById.get(id) ?? (resolveUnknown?.(id) ? familyById.get(id) : undefined);
   if (!f) throw new Error(`Unknown activity family: ${id}`);
   return f;
 }
 
 export function getVariant(id: string): { family: ActivityFamily; variant: ActivityVariant } {
-  const v = variantById.get(id);
+  const v = variantById.get(id) ?? (resolveUnknown?.(id) ? variantById.get(id) : undefined);
   if (!v) throw new Error(`Unknown activity variant: ${id}`);
   return v;
 }

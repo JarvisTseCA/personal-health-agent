@@ -7,7 +7,8 @@
  * activities up (the card, MET-hours, sessions, Progress, the verifier) keeps working, and the rows
  * are saved with the app state so a reload still knows today's pick and past sessions.
  */
-import { libraryVariantByCode, registerActivities, type ActivityFamily, type ActivityKind } from "./activities";
+import { libraryVariantByCode, onUnknownActivity, registerActivities, type ActivityFamily, type ActivityKind } from "./activities";
+import { tableRow } from "./tableMatch";
 import { categoryOfCode } from "./categories";
 
 export type TablePlace = "gym" | "home" | "outside";
@@ -67,6 +68,15 @@ export function tableFamily(row: TableActivity): ActivityFamily {
     variants: [{ id, label: row.label, code: row.code, met: row.met, description: row.description }],
   };
 }
+
+// An activity-table id nobody registered yet is looked up in the table bundled with the app.
+onUnknownActivity((id) => {
+  if (!isTableId(id)) return false;
+  const row = tableRow(codeOfTableId(id));
+  if (!row) return false;
+  registerTable([row]);
+  return true;
+});
 
 /** Make these rows known to getFamily / getVariant. Safe to call again with the same rows. */
 export function registerTable(rows: Iterable<TableActivity>): void {

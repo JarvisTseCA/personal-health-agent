@@ -49,3 +49,27 @@ describe("first log-in (demo controls)", () => {
     expect(["time-confirm", "time"]).toContain(s.today.step);
   });
 });
+
+describe("No time", () => {
+  function picked(minutes: number): AppState {
+    let s = T.answerTime(alex(), `${minutes} min`, minutes);
+    s = T.answerPlace(s, "Indoors, private", "indoors_private");
+    return T.answerEnergy(s, "Normal", "normal");
+  }
+
+  it("shortens today's time by one step: 30 → 10, 10 → 5, 5 → 0, 0 stays 0", async () => {
+    const { shorterMinutes } = await import("../lib/suggest");
+    expect([45, 30, 20, 10, 5, 0].map(shorterMinutes)).toEqual([30, 10, 10, 5, 0, 0]);
+    let s = T.chooseReason(picked(10), "no-time");
+    expect(s.today.checkIn.minutes).toBe(5);
+    expect(s.today.entries.some((e) => e.text === "Then let's go shorter: 5 min.")).toBe(true);
+    s = T.chooseReason(s, "no-time");
+    expect(s.today.checkIn.minutes).toBe(0);
+    expect(s.today.entries.some((e) => e.text === "Then no workout today; here's something you can do at your desk.")).toBe(true);
+    expect(T.chooseReason(s, "no-time").today.checkIn.minutes).toBe(0);
+  });
+
+  it("30 min goes to 10, not straight to the shortest", () => {
+    expect(T.chooseReason(picked(30), "no-time").today.checkIn.minutes).toBe(10);
+  });
+});

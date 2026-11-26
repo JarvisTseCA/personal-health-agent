@@ -90,6 +90,7 @@ def build_request(
 
     request = TableSuggestRequest(
         user_id=user_id,
+        date=today.isoformat(),
         check_in=check_in,
         # Today's numbers, from the calculator. The app rounds the two weekly ones the same way.
         day_name=numbers["day_name"],

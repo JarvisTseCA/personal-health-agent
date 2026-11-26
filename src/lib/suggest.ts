@@ -353,11 +353,19 @@ export function suggest(input: SuggestInput): SuggestResult {
   return { lead, backups, desk: false };
 }
 
-/** Constraint to apply after a decline reason, and families to rule out today. */
-export function afterDecline(reason: DeclineReason, s: Suggestion, prev?: Constraint): { constraint: Constraint; excludeFamily: boolean; minutes?: number } {
+/** The time steps "No time" moves down: 45 → 30 → 10 → 5 → 0. */
+const SHORTER_STEPS = [45, 30, 10, 5, 0];
+
+/** "No time": one step shorter than the time chosen today (20 min → 10, 10 → 5, 5 → 0). 0 stays 0. */
+export function shorterMinutes(minutes: number): number {
+  return SHORTER_STEPS.find((m) => m < minutes) ?? 0;
+}
+
+/** Constraint to apply after a decline reason, and families to rule out today. `shorter`: today's time goes one step down. */
+export function afterDecline(reason: DeclineReason, s: Suggestion, prev?: Constraint): { constraint: Constraint; excludeFamily: boolean; shorter?: boolean } {
   const c: Constraint = { ...prev };
   switch (reason) {
-    case "no-time": return { constraint: c, excludeFamily: false, minutes: 10 };
+    case "no-time": return { constraint: c, excludeFamily: false, shorter: true };
     case "tired": return { constraint: { ...c, maxMet: Math.min(s.met, c.maxMet ?? Infinity) }, excludeFamily: false };
     case "not-mood": return { constraint: c, excludeFamily: true };
     case "recent": return { constraint: { ...c, notKind: getFamily(s.familyId).kind }, excludeFamily: true };

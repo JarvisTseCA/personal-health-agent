@@ -128,6 +128,11 @@ class TableSuggestRequest(SuggestBase):
     min_met: Optional[float] = 3.0
     # Only activities under this MET, e.g. after "Too tired". limits.no_vigorous already means under 6.
     below_met: Optional[float] = None
+    # The user's date, e.g. "2026-11-23": with the user, it decides the days a new category is tried
+    # (suggest.explore_today). Left out: the day's name decides.
+    date: Optional[str] = None
+    # Tests and demos: true or false decides whether a new category is tried today, in place of the chance.
+    explore: Optional[bool] = None
 
 
 class Pick(BaseModel):

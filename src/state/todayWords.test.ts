@@ -62,7 +62,7 @@ describe("a typed answer ChatGPT has read", () => {
   });
 
   it("goal and plan in the first-time setup", () => {
-    let s = initialState("alex");
+    let s = initialState("fresh");
     s = T.startDay({ ...s, onboarded: true, profile: personaProfile(s), weekSetup: true });
     s = T.applyTyped(s, "let's do 9", { goal: 9 });
     expect(s.goal).toBe(9);

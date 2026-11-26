@@ -69,8 +69,8 @@ the same on every pull request.
 
 `scripts/phase3_walkthrough.py` drives the real app in a browser:
 
-- **Who and where:** five personas (Alex, On a roll, Tough month, Fresh start, and Alex with a
-  health flag) × three places × three energy levels ("Up for a challenge", "Normal", and
+- **Who and where:** seven runs (the five personas from the persona sheet: Maya, Alex, Jordan,
+  Sam and Priya; Fresh start; and Alex with a health flag) × three places × three energy levels ("Up for a challenge", "Normal", and
   "pretty tired" typed in).
 - **Declines:** each decline reason once per persona.
 - **Dislikes:** Running is marked 👎 for everyone.

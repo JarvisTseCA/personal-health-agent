@@ -21,7 +21,7 @@ ARGS.add_argument("--headed", action="store_true", help="show the browser")
 ARGS.add_argument("--chrome", default=None, help="path to a Chrome to use instead of Playwright's Chromium")
 OPTS = ARGS.parse_args()
 URL = OPTS.url
-PERSONAS = [("alex", "Alex", False), ("roll", "On a roll", False), ("tough", "Tough month", False),
+PERSONAS = [("alex", "Alex", False), ("maya", "Maya", False), ("jordan", "Jordan", False), ("sam", "Sam", False), ("priya", "Priya", False),
             ("fresh", "Fresh start", False), ("alex", "Alex, health flag", True)]
 PLACES = [("indoors_private", "Indoors, private"), ("indoors_with_others", "Indoors, with others"), ("outside", "Outside")]
 ENERGIES = [("challenge", "Up for a challenge"), ("normal", "Normal"), ("low", "pretty tired")]

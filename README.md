@@ -256,8 +256,9 @@ below them. Typed answers are read into the same choices (`src/lib/freeText.ts`)
 place is kept as a note the agent remembers (shown in Preferences), and an activity outside the list keeps
 the user's name for it and counts at the bottom of the effort band Fitbit measured.
 
-**Demo controls** (right side on desktop): switch scenario (*Alex*, *On a roll* → goal raise, *Tough month*
-→ goal cut, *Fresh start*), pretend it's a different day, restart today's check-in, simulate a Fitbit
+**Demo controls** (right side on desktop): switch persona (from the team's persona sheet: *Maya* getting started → goal cut,
+*Alex* short windows, *Jordan* two long days → goal raised on Monday, *Sam* rotating shifts, *Priya* trains
+regularly → goal raise; plus *Fresh start*), pretend it's a different day, restart today's check-in, simulate a Fitbit
 sync, **simulate a calendar edit** (the user shortens today's exercise block on their calendar: 45 → 30 →
 10 → 5 min; the check-in restarts and names the calendar as the source), **show the how-to video example** (30 min at the gym → a pick with a video → *Show me how*),
 **tell Chat what the clinician said** (sends a sample message: blood pressure, keep it moderate, add two

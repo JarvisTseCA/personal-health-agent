@@ -601,8 +601,9 @@ Code: `src/state/today.ts`, `src/screens/TodayScreen.tsx`
 time and their goal. Avoid repetition. Use their past feedback. If they have no time, suggest something they
 can do at their desk.
 
-- One pick on screen. The ranker keeps two backups (of a different type where possible) for *Give me
-  another option*, which cycles through them.
+- One pick on screen. The ranker keeps four backups (each of a kind not yet in the set where possible) for
+  *Give me another option*, which shows them in turn. After the fifth option the button reads *None of these
+  work*, and the agent asks for the user's own exercise, which is matched to the activity table.
 - *Remind me later* asks when (in 30 min, in 1 hour, this evening, or a typed time) and brings the same pick
   back then.
 - The ranker considers every activity the user can access and has time for, that their health settings
@@ -865,7 +866,7 @@ The same list is at the end of the *PHA App Workflow* doc.
 - **Rewards** (`src/lib/rewards.ts`): the streak is days in a row the app was opened, ending today; a trophy is earned when a week's MET-hours reach its goal.
 - **VO2 max** (`src/services/context.ts`): Fitbit's monthly estimate in mL/kg/min. Peak METs = VO2 max ÷ 3.5.
 - **Goal rules** (`src/lib/goal.ts`): raise to the lower of the last 2 weeks rounded down to a multiple of 2.5 (if higher); after 3 weeks under 50%, offer half. Only the user changes the goal. `WEEKLY_UPPER_LIMIT` is `null` until the clinical question is answered.
-- **Suggestions** (`src/lib/suggest.ts`): filter (enjoyed, accessible, fits time, safe, equipment where the user is) → score (preference, goal fit, variety, past declines, energy) → one lead and two backups of a different type. Every suggestion passes the checks in `src/lib/verify.ts`.
+- **Suggestions** (`src/lib/suggest.ts`): filter (enjoyed, accessible, fits time, safe, equipment where the user is) → score (preference, goal fit, variety, past declines, energy) → one lead and four backups, each of a different type where possible. Every suggestion passes the checks in `src/lib/verify.ts`.
 
 ## Project layout
 

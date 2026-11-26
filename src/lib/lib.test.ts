@@ -355,7 +355,7 @@ describe("suggestions", () => {
     const r = suggest({ ...base, enjoyed: [], access: {} });
     expect(r.desk).toBeFalsy();
     expect(r.lead).toBeTruthy();
-    expect(r.backups.length).toBe(2);
+    expect(r.backups.length).toBe(4);
     // No liked list, so no "favorite" reason can be claimed.
     expect(r.lead!.reasons.join(" ")).not.toMatch(/favorite/i);
   });
@@ -377,10 +377,15 @@ describe("suggestions", () => {
     expect(r.lead!.reasons).toContain("You like dancing");
   });
 
-  it("gives backups of a different type when it can", () => {
-    const r = suggest(base);
-    expect(r.backups.length).toBe(2);
-    expect(r.backups[0].familyId).not.toBe(r.lead!.familyId);
+  it("gives four backups, each of a kind not yet in the set while one is left", () => {
+    const r = suggest({ ...base, enjoyed: [], access: {} });
+    expect(r.backups.length).toBe(4);
+    const all = [r.lead!, ...r.backups];
+    expect(new Set(all.map((s) => s.familyId)).size).toBe(5);
+    const kinds = all.map((s) => getFamily(s.familyId).kind);
+    // Kinds repeat only once every kind on the list is used.
+    const firstRepeat = kinds.findIndex((k, i) => kinds.indexOf(k) < i);
+    if (firstRepeat >= 0) expect(new Set(kinds.slice(0, firstRepeat)).size).toBe(firstRepeat);
   });
 
   it("avoids yesterday's activity", () => {

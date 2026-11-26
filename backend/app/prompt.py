@@ -173,7 +173,7 @@ def build_duration_request(req: SuggestRequest, picked: List[Option], model: str
 # 1. Which heading? One question; the options are the major_headings that
 #    have a candidate today (Bicycling, Walking, ...).
 # 2. Which activity? One question per heading Jev ranked highest (up to
-#    three), so the pick and the backups are different kinds of activity.
+#    five), so the pick and the four backups are different kinds of activity.
 # 3. How long? One question per activity picked in call 2, as above.
 #
 # Why the heading comes first: one user can have hundreds of candidates, more

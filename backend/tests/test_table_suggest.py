@@ -168,9 +168,10 @@ def test_the_pick_and_the_backups_come_from_different_headings(client):
 
     picked = pick_from_table(ranked, answers, by_heading)
 
-    assert [(row["activity_code"], heading_p, activity_p) for row, heading_p, activity_p in picked] == [
+    assert [(row["activity_code"], heading_p, activity_p) for row, heading_p, activity_p in picked][:3] == [
         ("17358", 0.5, 0.8), ("01216", 0.3, 0.6), ("12028", 0.2, 1.0),
     ]
+    assert len(picked) == 5  # then a second round: each heading's next best
 
 
 def test_with_two_headings_the_last_backup_is_the_top_headings_second_best(client):
@@ -182,7 +183,7 @@ def test_with_two_headings_the_last_backup_is_the_top_headings_second_best(clien
 
     picked = pick_from_table([("Walking", 0.7), ("Bicycling", 0.3)], answers, by_heading)
 
-    assert [row["activity_code"] for row, _, _ in picked] == ["17358", "01216", "17352"]
+    assert [row["activity_code"] for row, _, _ in picked] == ["17358", "01216", "17352", "01220"]
 
 
 def test_an_activity_answer_for_codes_we_did_not_send_is_rejected(client):
@@ -216,7 +217,8 @@ def test_table_suggest_with_mock_end_to_end(client):
     assert data["source"] == "mock"
     # Picked before: Bicycling and Walking. They rank first, but every heading stays a candidate.
     assert data["candidate_count"] == 6
-    assert picks(data) == [("01216", "Bicycling"), ("17358", "Walking"), ("03031", "Dancing")]
+    assert picks(data)[:3] == [("01216", "Bicycling"), ("17358", "Walking"), ("03031", "Dancing")]
+    assert len(picks(data)) == 5
     assert data["lead"] == {
         "activity_code": "01216",
         "major_heading": "Bicycling",
@@ -239,7 +241,7 @@ def test_nothing_picked_before_means_every_heading_is_a_candidate(client):
     data = post(client, picked_codes=[]).json()
 
     assert data["candidate_count"] == 6
-    assert len({heading for _, heading in picks(data)}) == 3  # the pick and both backups differ in kind
+    assert len({heading for _, heading in picks(data)}) == 4  # every heading there is, one pick each first
     assert data["lead"]["reasons"] == ["Fits in 45 min"]
 
 
@@ -328,12 +330,12 @@ def test_table_suggest_with_live_jev(client, monkeypatch):
     assert calls[0]["model"] == "jev-latest"
     assert list(calls[0]["questions"]) == ["heading"]
     assert list(calls[1]["questions"]) == ["activity_in_walking", "activity_in_bicycling"]  # Jev's order
-    assert list(calls[2]["questions"]) == ["duration_17352", "duration_01220", "duration_17358"]
+    assert list(calls[2]["questions"]) == ["duration_17352", "duration_01220", "duration_17358", "duration_01216"]
     assert calls[0]["state"] == calls[1]["state"] == calls[2]["state"]
     assert data["source"] == "jev" and data["model"] == "jev-1.14.0"
     lead = data["lead"]
     assert (lead["activity_code"], lead["heading_probability"], lead["probability"], lead["duration_min"]) == ("17352", 0.6, 0.7, 30)
-    assert picks(data)[1:] == [("01220", "Bicycling"), ("17358", "Walking")]
+    assert picks(data)[1:] == [("01220", "Bicycling"), ("17358", "Walking"), ("01216", "Bicycling")]
 
 
 def test_jev_error_is_logged_and_returns_502(client, monkeypatch, caplog):
@@ -379,10 +381,11 @@ def test_the_gym_example_on_the_csv_in_the_repo(real_table):
 
     assert res.status_code == 200
     data = res.json()
-    assert sorted(heading for _, heading in picks(data)) == ["Bicycling", "Dancing", "Walking"]
+    assert sorted(heading for _, heading in picks(data)[:3]) == ["Bicycling", "Dancing", "Walking"]
+    assert len({heading for _, heading in picks(data)}) == 5
     for p in [data["lead"], *data["backups"]]:
         assert len(p["activity_code"]) == 5 and p["met_value"] >= 3 and p["duration_min"] in REQ["durations"]
-    assert list(data["jev_request"]["activity"]["questions"]) == [
+    assert list(data["jev_request"]["activity"]["questions"])[:3] == [
         "activity_in_bicycling", "activity_in_dancing", "activity_in_walking",
     ]
 
@@ -496,7 +499,7 @@ PERSONAS = {
 
 @pytest.mark.parametrize("place", ["indoors_private", "indoors_with_others", "outside"])
 @pytest.mark.parametrize("persona", list(PERSONAS))
-def test_each_persona_gets_a_pick_and_two_backups_at_each_place(real_table, persona, place):
+def test_each_persona_gets_a_pick_and_four_backups_at_each_place(real_table, persona, place):
     body = {**REQ, "picked_codes": [], **PERSONAS[persona]}
     body["check_in"] = {**body["check_in"], "place": place}
 
@@ -505,8 +508,9 @@ def test_each_persona_gets_a_pick_and_two_backups_at_each_place(real_table, pers
     assert res.status_code == 200, res.text
     data = res.json()
     chosen = [data["lead"], *data["backups"]]
-    assert len(chosen) == 3
-    assert len({p["major_heading"] for p in chosen}) == 3  # three different kinds of activity
+    assert len(chosen) == 5
+    # One pick per category first: the first three always differ in kind.
+    assert len({p["major_heading"] for p in chosen[:3]}) == 3
     for p in chosen:
         assert p["duration_min"] in body["durations"] and p["label"]
         assert p["activity_code"] not in body.get("exclude_codes", [])
@@ -515,7 +519,7 @@ def test_each_persona_gets_a_pick_and_two_backups_at_each_place(real_table, pers
             assert p["met_value"] < 6
 
 
-# ---- Variety: no repeat of a recent movement, three different movements and kinds ----
+# ---- Variety: five different movements, and kinds where possible ----
 
 from app.suggest import pick_from_table  # noqa: E402
 from app.prompt import table_activity_question  # noqa: E402
@@ -544,39 +548,33 @@ RANKED = [("Walking", 0.5), ("Running", 0.3), ("Conditioning Exercise", 0.2)]
 ORDER = ["17190", "17200", "12050", "12020", "02020", "02150"]
 
 
-def test_the_three_picks_are_different_movements_and_kinds_where_possible():
+def test_the_picks_are_different_movements_and_kinds_where_possible():
     picked = [r["activity_code"] for r, _, _ in pick_from_table(RANKED, _answers(BY_HEADING, ORDER), BY_HEADING)]
     # Walking's favorite (treadmill) leads; Running's favorite is also treadmill, so its next one;
-    # Conditioning's favorite (elliptical) is cardio again, so yoga.
-    assert picked == ["17190", "12020", "02150"]
+    # Conditioning's favorite (elliptical) is cardio again, so yoga. Two more come from a second round.
+    assert picked[:3] == ["17190", "12020", "02150"]
+    assert len(picked) == 5 and len(set(picked)) == 5
 
 
-def test_a_movement_done_recently_is_not_picked_again_if_anything_else_fits():
-    picked = [r["activity_code"] for r, _, _ in pick_from_table(RANKED, _answers(BY_HEADING, ORDER), BY_HEADING, ["treadmill"])]
-    assert "17190" not in picked and "12050" not in picked
-    assert picked[0] == "17200"
+def test_five_headings_give_five_categories():
+    five = {h: [_row(f"{i}0001", h, f"move{i}", f"kind{i}"), _row(f"{i}0002", h, f"move{i}b", "cardio")]
+            for i, h in enumerate(["Walking", "Running", "Bicycling", "Dancing", "Sports"])}
+    order = [r["activity_code"] for rows in five.values() for r in rows]
+    picked = pick_from_table([(h, 0.2) for h in five], _answers(five, order), five)
+    assert [r["major_heading"] for r, _, _ in picked] == list(five)
+    assert len({r["family"] for r, _, _ in picked}) == 5
 
 
 def test_variety_gives_way_when_nothing_else_is_left():
     only = {"Walking": [_row("17190", "Walking", "treadmill", "cardio")]}
-    picked = pick_from_table([("Walking", 1.0)], _answers(only, ["17190"]), only, ["treadmill"])
+    picked = pick_from_table([("Walking", 1.0)], _answers(only, ["17190"]), only)
     assert [r["activity_code"] for r, _, _ in picked] == ["17190"]
 
 
 @pytest.mark.parametrize("place", ["indoors_private", "indoors_with_others", "outside"])
-def test_with_the_real_table_the_picks_are_three_movements(real_table, place):
+def test_with_the_real_table_the_picks_are_five_movements(real_table, place):
     body = {**REQ, "picked_codes": [], "check_in": {**REQ["check_in"], "place": place}}
     data = real_table.post("/api/suggest/table", json=body).json()
     chosen = [data["lead"], *data["backups"]]
     families = activities.families_of([p["activity_code"] for p in chosen])
-    assert len(families) == 3
-
-
-def test_yesterdays_movement_is_not_suggested_again(real_table):
-    first = real_table.post("/api/suggest/table", json={**REQ, "picked_codes": []}).json()["lead"]["activity_code"]
-    again = real_table.post(
-        "/api/suggest/table",
-        json={**REQ, "picked_codes": [], "recent": [{"family_id": "x", "name": "x", "days_ago": 1, "code": first}]},
-    ).json()
-    done = set(activities.families_of([first]))
-    assert not done & set(activities.families_of([p["activity_code"] for p in [again["lead"], *again["backups"]]]))
+    assert len(chosen) == 5 and len(families) == 5

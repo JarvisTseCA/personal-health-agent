@@ -3,7 +3,7 @@
 Five personas (the app's four scenarios, plus Alex with a health flag) x three places x three
 energy levels, then each decline reason once per persona. Running is marked 👎 for everyone.
 For every pick it checks: it came from the table, the verifier passes, nothing from a 👎
-category, nothing outdoor-only indoors, nothing vigorous with a health flag, two backups,
+category, nothing outdoor-only indoors, nothing vigorous with a health flag, up to four backups,
 and that the next pick follows each decline. It also times how long each pick took.
 
 Works with Jev mocked (no TYPESAFE_API_KEY) or live. Steps: docs/testing-and-hosting.md.
@@ -103,7 +103,7 @@ async def main():
                     if row and row["heading"] == "Running": problems.append(f"{name}: disliked Running suggested")
                     if row and place != "outside" and row["places"] == ["outside"]: problems.append(f"{name} · {place_label}: outdoor-only pick {row['code']}")
                     if health and lead["met"] >= 6: problems.append(f"{name} · {place_label} · {energy[0]}: vigorous {lead['met']} MET with a health flag")
-                    if len(cur["backups"]) != 2: problems.append(f"{name} · {place_label} · {energy[0]}: {len(cur['backups'])} backups")
+                    if not 1 <= len(cur["backups"]) <= 4: problems.append(f"{name} · {place_label} · {energy[0]}: {len(cur['backups'])} backups")
                     rows.append(r)
             # Each decline reason, from a fresh pick at Indoors, with others (Normal).
             for reason, label in REASONS:

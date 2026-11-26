@@ -16,7 +16,7 @@ import { countsTowardGoal, fmt, fmtGoal, intensityOf } from "../lib/met";
 import { DECLINE_LABEL, type DeclineReason, type Suggestion } from "../lib/suggest";
 import { equipmentAt } from "../services/context";
 import { useFitbitSync, useStore } from "../state/store";
-import { CHANGE_TIME_LABEL, CONFIRM_CHOICES, ENERGY_OPTIONS, hasHowTo, keepTimeLabel, PLACE_OPTIONS, REMIND_OPTIONS, SETUP_GOAL_OPTIONS, SETUP_PLAN_DONE } from "../state/today";
+import { CHANGE_TIME_LABEL, CONFIRM_CHOICES, ENERGY_OPTIONS, hasHowTo, keepTimeLabel, MAX_PASSES, PLACE_OPTIONS, REMIND_OPTIONS, SETUP_GOAL_OPTIONS, SETUP_PLAN_DONE } from "../state/today";
 import { TimeOptions } from "../components/TimeOptions";
 import { SLOT_LABEL, SLOT_MINUTES } from "../lib/plan";
 import type { Screen, TodayStep } from "../state/types";
@@ -318,7 +318,7 @@ export function TodayScreen({ go, openPrefs }: { go: (s: Screen) => void; openPr
             <div className="btn-stack">
               <button className="btn btn-primary" onClick={() => dispatch({ type: "accept", suggestion: t.current!.lead })}>Let's start</button>
               <button className="btn btn-quiet" onClick={() => dispatch({ type: "remindLater" })}>Remind me later</button>
-              <button className="btn btn-quiet" onClick={() => dispatch({ type: "another" })}>Give me another option</button>
+              <button className="btn btn-quiet" onClick={() => dispatch({ type: "another" })}>{(t.passed ?? 0) >= MAX_PASSES ? "None of these work" : "Give me another option"}</button>
             </div>
             {t.current.skipped && (
               <div className="skip-why">

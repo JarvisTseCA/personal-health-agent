@@ -307,24 +307,32 @@ function learnLike(state: AppState, familyId: string): AppState {
   return { ...state, profile: { ...p, enjoyed: [...p.enjoyed, familyId], access: { ...p.access, [familyId]: p.access[familyId] ?? "have" } } };
 }
 
-/**
- * "Give me another option": swap in the next-ranked pick, no questions asked.
- * Cycles through the pick and its backups, so the user never hits a dead end.
- */
+/** Options the user can pass over with "Give me another option" before the agent asks what's in the way (six seen). */
+export const MAX_PASSES = 5;
+
 /**
  * "Give me another option": no question asked. The next option of the set shows (the backups, in
  * turn); once all three have been seen, a fresh set comes, leaving those three out for today.
  * Under the new option the user may say why they passed the last one (skipReason), optionally.
+ * After six options the button reads "None of these work", and pressing it asks what's in the way
+ * (the decline reasons); the count starts again once a reason is given.
  */
 export function anotherOption(state: AppState, typed?: string): AppState {
   const c = state.today.current;
   if (!c) return state;
+  const passed = state.today.passed ?? 0;
+  if (passed >= MAX_PASSES) {
+    const s = push(state, user(typed ?? "None of these work"));
+    return setToday(push(s, agent(`That's ${MAX_PASSES + 1} options. What's getting in the way? I'll adjust from there.`)), {
+      step: "reason", passed: 0, reminder: undefined, current: { ...c, skipped: undefined },
+    });
+  }
   const s = push(state, user(typed ?? "Give me another option"));
   const seen = c.seen ?? 0;
   if (c.backups.length > 0 && seen < c.backups.length) {
     const [next, ...rest] = c.backups;
     return setToday(push(s, agent("How about this instead?")), {
-      step: "suggested", reminder: undefined, howShown: 0,
+      step: "suggested", reminder: undefined, howShown: 0, passed: passed + 1,
       current: { ...c, lead: next, backups: [...rest, c.lead], showBackups: false, seen: seen + 1, skipped: c.lead },
     });
   }
@@ -333,9 +341,11 @@ export function anotherOption(state: AppState, typed?: string): AppState {
   const fresh = offer(setToday(s, { exclude: [...new Set([...s.today.exclude, ...shown])] }), "Here are some different ones.");
   const nc = fresh.today.current;
   if (!nc || nc.desk || shown.includes(nc.lead.familyId)) {
-    return push(setToday(s, { current: { ...c, seen: 0, skipped: undefined } }), agent("Those are all the options that fit your time and place today. Tell me what's in the way and I'll adjust."));
+    return setToday(push(s, agent("Those are all the options that fit your time and place today. What's getting in the way? I'll adjust from there.")), {
+      step: "reason", passed: 0, reminder: undefined, current: { ...c, seen: 0, skipped: undefined },
+    });
   }
-  return setToday(fresh, { current: { ...nc, skipped: c.lead } });
+  return setToday(fresh, { current: { ...nc, skipped: c.lead }, passed: passed + 1 });
 }
 
 /** The optional "why not that one?" after "Give me another option": the same as a decline reason for it. */
@@ -393,7 +403,8 @@ export function chooseReason(state: AppState, reason: DeclineReason, typed?: str
   const cur = state.today.current?.lead;
   if (!cur) return state;
   const noun = getFamily(cur.familyId).noun;
-  let s = push(state, user(typed ?? DECLINE_LABEL[reason]), agent(REASON_REPLY[reason](noun)));
+  // A reason is new information, so "Give me another option" may be used again.
+  let s = push(setToday(state, { passed: 0 }), user(typed ?? DECLINE_LABEL[reason]), agent(REASON_REPLY[reason](noun)));
   s = { ...s, declines: [...s.declines, { id: newId("d"), familyId: cur.familyId, reason, day: s.todayIndex, note: typed, place: s.today.checkIn.place }] };
   if (reason === "other") {
     s = setToday(s, { exclude: [...s.today.exclude, cur.familyId] });

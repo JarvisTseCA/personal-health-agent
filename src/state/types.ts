@@ -147,6 +147,8 @@ export interface TodayState {
   exclude: string[];
   constraint?: Constraint;
   boost: boolean;
+  /** How many options "Give me another option" has passed over since the last reason (capped by MAX_PASSES) */
+  passed?: number;
   current?: {
     lead: Suggestion;
     backups: Suggestion[];

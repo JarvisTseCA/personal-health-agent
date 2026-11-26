@@ -277,6 +277,31 @@ describe("today flow", () => {
     expect(s.today.current!.skipped).toBeUndefined();
   });
 
+  it("'another option' ends after at most six options and asks what's in the way", () => {
+    let s = checkIn(onboarded());
+    let presses = 0;
+    while (s.today.step === "suggested" && presses < 10) { s = T.anotherOption(s); presses++; }
+    expect(presses).toBeLessThanOrEqual(T.MAX_PASSES + 1);
+    expect(s.today.step).toBe("reason");
+    expect(s.today.entries.at(-1)!.text).toMatch(/What's getting in the way\? I'll adjust from there\.$/);
+    s = T.chooseReason(s, "no-time");
+    expect(s.today.step).toBe("suggested");
+    expect(T.anotherOption(s).today.step).toBe("suggested"); // a reason starts the count again
+  });
+
+  it("the sixth option's button asks what's in the way instead of offering a seventh", () => {
+    let s = checkIn(onboarded());
+    s = { ...s, today: { ...s.today, passed: T.MAX_PASSES } };
+    const sixth = s.today.current!.lead;
+    s = T.anotherOption(s);
+    expect(s.today.entries.at(-2)!.text).toBe("None of these work");
+    expect(s.today.entries.at(-1)!.text).toBe("That's 6 options. What's getting in the way? I'll adjust from there.");
+    expect(s.today.step).toBe("reason");
+    s = T.chooseReason(s, "not-mood");
+    expect(s.declines.at(-1)).toMatchObject({ familyId: sixth.familyId, reason: "not-mood" });
+    expect(s.today.passed).toBe(0);
+  });
+
   it("'Remind me later' asks when, sets the reminder, and brings the pick back", () => {
     let s = checkIn(onboarded());
     const pick = s.today.current!.lead;

@@ -53,10 +53,10 @@ const REASONS: DeclineReason[] = ["no-time", "tired", "not-mood", "recent", "no-
 
 function dateLabel(todayIndex: number): string {
   const now = new Date();
-  const monday = new Date(now);
-  monday.setDate(now.getDate() - ((now.getDay() + 6) % 7));
-  const day = new Date(monday);
-  day.setDate(monday.getDate() + todayIndex);
+  const sunday = new Date(now);
+  sunday.setDate(now.getDate() - now.getDay());
+  const day = new Date(sunday);
+  day.setDate(sunday.getDate() + todayIndex);
   return day.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" });
 }
 

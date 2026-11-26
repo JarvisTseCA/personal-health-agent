@@ -2,9 +2,9 @@
  * Telling the backend what happened: the app's state as Memory holds it, and what changed.
  *
  * `toMemory()` lays the whole state out in Memory's seven groups. The app counts days as
- * 0 = Monday … 6 = Sunday inside "this week" and "n weeks ago"; Memory holds real dates. So
- * everything is put on the calendar from one date, this week's Monday: day 2 of this week is
- * that Monday + 2, and the last past week starts 7 days before it.
+ * 0 = Sunday … 6 = Saturday inside "this week" and "n weeks ago"; Memory holds real dates. So
+ * everything is put on the calendar from one date, this week's Sunday: day 2 of this week is
+ * that Sunday + 2, and the last past week starts 7 days before it.
  *
  * `memoryChanges()` compares two of those and gives what to send: the parts to save
  * (POST /api/memory) and the entries to take out (DELETE /api/memory/{kind}/{key}). After
@@ -32,21 +32,21 @@ import {
   type OtherOfApp,
 } from "./memoryTypes";
 
-/** The app's today as a date: this week's Monday + the day it is in the app. */
-export function todayOf(state: Pick<AppState, "todayIndex">, monday: string): string {
-  return addDays(monday, state.todayIndex);
+/** The app's today as a date: this week's Sunday + the day it is in the app. */
+export function todayOf(state: Pick<AppState, "todayIndex">, sunday: string): string {
+  return addDays(sunday, state.todayIndex);
 }
 
-/** The Monday of each past week, oldest first, for a history of `weeks` weeks. */
-function pastMondays(weeks: number, monday: string): string[] {
-  return Array.from({ length: weeks }, (_, i) => addDays(monday, -7 * (weeks - i)));
+/** The Sunday of each past week, oldest first, for a history of `weeks` weeks. */
+function pastSundays(weeks: number, sunday: string): string[] {
+  return Array.from({ length: weeks }, (_, i) => addDays(sunday, -7 * (weeks - i)));
 }
 
-function workoutOf(s: Session, weekMonday: string): MemoryWorkout {
+function workoutOf(s: Session, weekSunday: string): MemoryWorkout {
   const { family, variant } = getVariant(s.variantId);
   return {
     id: s.id,
-    date: addDays(weekMonday, s.dayIndex),
+    date: addDays(weekSunday, s.dayIndex),
     // Only activities from the activity table have a code here, as in the app's own table request.
     activity_code: isTableId(s.variantId) ? codeOfTableId(s.variantId) : null,
     // The family's name ("Walking" for every kind of walk): the Summary page groups by it.
@@ -73,26 +73,26 @@ function chatMessage(m: ChatMessage): MemoryChatMessage {
   };
 }
 
-/** The whole state as Memory's seven groups. `monday` is this week's Monday, "2026-11-23". */
-export function toMemory(state: AppState, monday: string): Memory {
-  const today = todayOf(state, monday);
-  const mondays = pastMondays(state.history.length, monday);
+/** The whole state as Memory's seven groups. `sunday` is this week's Sunday, "2026-11-23". */
+export function toMemory(state: AppState, sunday: string): Memory {
+  const today = todayOf(state, sunday);
+  const sundays = pastSundays(state.history.length, sunday);
   const p = state.profile;
 
-  const weeks: Array<{ monday: string; sessions: Session[] }> = [
-    ...state.history.map((w, i) => ({ monday: mondays[i], sessions: w.sessions })),
-    { monday, sessions: state.sessions },
+  const weeks: Array<{ sunday: string; sessions: Session[] }> = [
+    ...state.history.map((w, i) => ({ sunday: sundays[i], sessions: w.sessions })),
+    { sunday, sessions: state.sessions },
   ];
   const sessions = weeks.flatMap((w) => w.sessions);
 
   const opens = [
-    ...state.history.flatMap((w, i) => (w.signIns ?? []).flatMap((on, d) => (on ? [addDays(mondays[i], d)] : []))),
-    ...(state.signIns ?? []).flatMap((on, d) => (on ? [addDays(monday, d)] : [])),
+    ...state.history.flatMap((w, i) => (w.signIns ?? []).flatMap((on, d) => (on ? [addDays(sundays[i], d)] : []))),
+    ...(state.signIns ?? []).flatMap((on, d) => (on ? [addDays(sunday, d)] : [])),
   ];
 
   const declined: MemorySuggestion[] = state.declines.map((d) => ({
     id: d.id,
-    date: addDays(monday, d.day),
+    date: addDays(sunday, d.day),
     place: d.place ?? null,
     activity_code: isTableId(d.familyId) ? codeOfTableId(d.familyId) : null,
     activity_name: getFamily(d.familyId).name,
@@ -123,7 +123,7 @@ export function toMemory(state: AppState, monday: string): Memory {
     onboarded: state.onboarded,
     personaId: state.personaId,
     todayIndex: state.todayIndex,
-    week: monday,
+    week: sunday,
     profile: { enjoyed: p.enjoyed, access: p.access, usualTime: p.usualTime, fitbitLive: p.fitbitLive },
     planSource: state.planSource,
     recapHandled: state.recapHandled,
@@ -156,13 +156,13 @@ export function toMemory(state: AppState, monday: string): Memory {
       no_vigorous: p.hasHealthCondition,
     },
     goals: [
-      ...state.history.map((w, i) => ({ week_start: mondays[i], goal_met_hours: w.goal, goal_set_by: "default" as const, plan: [...w.plan] })),
-      { week_start: monday, goal_met_hours: state.goal, goal_set_by: state.goalSource, plan: [...state.plan] },
+      ...state.history.map((w, i) => ({ week_start: sundays[i], goal_met_hours: w.goal, goal_set_by: "default" as const, plan: [...w.plan] })),
+      { week_start: sunday, goal_met_hours: state.goal, goal_set_by: state.goalSource, plan: [...state.plan] },
     ],
     daily: {
       check_ins: checkedIn ? [{ date: today, minutes: c.minutes!, place: c.place!, energy: c.energy!, mood: c.mood! }] : [],
       suggestions: [...declined, ...accepted],
-      workouts: weeks.flatMap((w) => w.sessions.map((s) => workoutOf(s, w.monday))),
+      workouts: weeks.flatMap((w) => w.sessions.map((s) => workoutOf(s, w.sunday))),
       app_opens: [...new Set(opens)].sort(),
     },
     health: {
@@ -204,7 +204,7 @@ function gone<T>(prev: T[], next: T[], key: (x: T) => string): T[] {
 
 /**
  * What to tell the backend after a step: `prev` and `next` are toMemory() of the state before
- * and after it, `monday` this week's Monday.
+ * and after it, `sunday` this week's Sunday.
  *
  * Memory is the longer record, so a step in the app never rewrites its past:
  *  - Only this week's goal and plan are sent. A past week keeps the goal it had.
@@ -215,20 +215,20 @@ function gone<T>(prev: T[], next: T[], key: (x: T) => string): T[] {
  * Starting over (another demo persona, Reset, the first sync of a real Fitbit) replaces
  * everything instead; the store does that with replaceMemory().
  */
-export function memoryChanges(prev: Memory, next: Memory, monday: string): MemoryChanges {
+export function memoryChanges(prev: Memory, next: Memory, sunday: string): MemoryChanges {
   const save: MemoryPart = {};
   const remove: MemoryRemoval[] = [];
 
   if (!same(prev.who, next.who)) save.who = next.who;
   if (!same(prev.preferences, next.preferences)) save.preferences = next.preferences;
 
-  const goals = changed(prev.goals, next.goals, (w) => w.week_start).filter((w) => w.week_start >= monday);
+  const goals = changed(prev.goals, next.goals, (w) => w.week_start).filter((w) => w.week_start >= sunday);
   if (goals.length) save.goals = goals;
 
   const daily: Partial<Memory["daily"]> = {};
   const workouts = changed(prev.daily.workouts, next.daily.workouts, (w) => w.id);
   if (workouts.length) daily.workouts = workouts;
-  const dropped = gone(prev.daily.workouts, next.daily.workouts, (w) => w.id).filter((w) => w.date >= monday);
+  const dropped = gone(prev.daily.workouts, next.daily.workouts, (w) => w.id).filter((w) => w.date >= sunday);
   remove.push(...dropped.map((w): MemoryRemoval => ({ kind: "workouts", key: w.id })));
 
   const isDecline = (s: MemorySuggestion) => s.outcome === "declined";

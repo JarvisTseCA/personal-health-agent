@@ -5,7 +5,7 @@ import { initialState, personaProfile } from "../state/store";
 import * as T from "../state/today";
 import type { AppState } from "../state/types";
 
-// Wednesday, Nov 18, 2026 at noon: Monday of this week is Nov 16.
+// Wednesday, Nov 18, 2026 at noon: Sunday of this week is Nov 15.
 const NOW = new Date(2026, 10, 18, 12, 0);
 // The same weekday one week later.
 const NEXT_WEEK = new Date(2026, 10, 25, 12, 0);
@@ -68,31 +68,31 @@ describe("Fitbit import", () => {
       workouts: [
         workout(1, "2026-11-18T07:00:00"), // today, Wednesday
         workout(2, "2026-11-16T18:10:00", "WALKING"), // Monday
-        workout(3, "2026-11-15T09:00:00", "BIKING"), // last Sunday
+        workout(3, "2026-11-14T09:00:00", "BIKING"), // last Saturday
         workout(4, "2026-10-28T09:00:00", "YOGA"), // Wednesday 3 weeks ago
       ],
       vo2: [],
     }, NOW);
-    expect(imp.todayIndex).toBe(2);
-    expect(imp.thisWeek.map((s) => [s.variantId, s.dayIndex, s.confirmed])).toEqual([["walking-moderate", 0, true], ["running-jog", 2, false]]);
-    expect(imp.history.map((w) => w.map((s) => [s.variantId, s.dayIndex]))).toEqual([[["yoga-hatha", 2]], [], [["cycling-easy", 6]]]);
+    expect(imp.todayIndex).toBe(3);
+    expect(imp.thisWeek.map((s) => [s.variantId, s.dayIndex, s.confirmed])).toEqual([["walking-moderate", 1, true], ["running-jog", 3, false]]);
+    expect(imp.history.map((w) => w.map((s) => [s.variantId, s.dayIndex]))).toEqual([[["yoga-hatha", 3]], [], [["cycling-easy", 6]]]);
   });
 
   it("no workouts gives no history and an empty week", () => {
-    expect(importFitbit({ workouts: [], vo2: [] }, NOW)).toEqual({ todayIndex: 2, week: "2026-11-16", thisWeek: [], history: [], vo2: [] });
+    expect(importFitbit({ workouts: [], vo2: [] }, NOW)).toEqual({ todayIndex: 3, week: "2026-11-15", thisWeek: [], history: [], vo2: [] });
   });
 
   it.each([
-    ["Wednesday noon", NOW, "2026-11-16"],
-    ["just after Monday midnight", new Date(2026, 10, 16, 0, 5), "2026-11-16"],
-    ["just before Sunday midnight", new Date(2026, 10, 22, 23, 55), "2026-11-16"],
-    ["the next Monday", new Date(2026, 10, 23, 0, 5), "2026-11-23"],
+    ["Wednesday noon", NOW, "2026-11-15"],
+    ["just after Sunday midnight", new Date(2026, 10, 15, 0, 5), "2026-11-15"],
+    ["just before Saturday midnight", new Date(2026, 10, 21, 23, 55), "2026-11-15"],
+    ["the next Sunday", new Date(2026, 10, 22, 0, 5), "2026-11-22"],
   ])("%s is in the week of %s", (_, now, week) => {
     expect(importFitbit({ workouts: [], vo2: [] }, now).week).toBe(week);
   });
 
-  it("asks for 26 weeks back from this Monday, which is earlier than 6 months of VO2 max", () => {
-    expect(syncSince(NOW)).toBe("2026-05-18");
+  it("asks for 26 weeks back from this Sunday, which is earlier than 6 months of VO2 max", () => {
+    expect(syncSince(NOW)).toBe("2026-05-17");
   });
 
   it("VO2 max is each month's latest reading, carried into months without one", () => {
@@ -124,7 +124,7 @@ describe("Fitbit sync in the Today flow", () => {
     const s0 = accepted();
     const lead = s0.today.accepted!;
     const s = T.syncFitbit(s0, importFitbit({ workouts: [workout(1, "2026-11-18T07:00:00", LEAD_TYPE[lead.familyId])], vo2: [] }, NOW));
-    expect(s.sessions.find((x) => x.id.endsWith("/1"))).toMatchObject({ variantId: lead.variantId, confirmed: true, dayIndex: 2 });
+    expect(s.sessions.find((x) => x.id.endsWith("/1"))).toMatchObject({ variantId: lead.variantId, confirmed: true, dayIndex: 3 });
     expect(s.today.entries.some((e) => e.text === "Fitbit synced: 30 min at 7:00 am, matching your plan, so I logged it.")).toBe(true);
   });
 
@@ -146,7 +146,7 @@ describe("Fitbit sync in the Today flow", () => {
     const manual = { id: "m-1", variantId: "yoga-power", durationMin: 20, dayIndex: 1, source: "manual" as const, confirmed: true };
     const s0 = { ...onboarded(), sessions: [...onboarded().sessions, manual] };
     const s = T.syncFitbit(s0, importFitbit({ workouts: [], vo2: [{ date: "2026-11-02", vo2_max: 44.4, method: "FITBIT_RUN" }] }, NOW));
-    expect(s.sessions).toEqual([{ ...manual, week: "2026-11-16" }]);
+    expect(s.sessions).toEqual([{ ...manual, week: "2026-11-15" }]);
     expect(s.vo2).toEqual([44]);
     expect(s.history).toEqual([]);
     expect(s.today.entries.at(-1)!.text).toBe("Fitbit synced. Nothing new today yet.");
@@ -170,11 +170,11 @@ describe("Fitbit sync in the Today flow", () => {
   });
 
   it("a week later, last week's workout logged by hand moves into history", () => {
-    const manual = { id: "m-1", variantId: "running-jog", durationMin: 40, dayIndex: 2, source: "manual" as const, confirmed: true };
+    const manual = { id: "m-1", variantId: "running-jog", durationMin: 40, dayIndex: 3, source: "manual" as const, confirmed: true };
     let s = T.syncFitbit(onboarded(), importFitbit({ workouts: [], vo2: [] }, NOW));
     s = T.syncFitbit({ ...s, sessions: [...s.sessions, manual] }, importFitbit({ workouts: [], vo2: [] }, NEXT_WEEK));
     expect(s.sessions).toEqual([]);
-    expect(s.history.map((w) => w.sessions)).toEqual([[{ ...manual, week: "2026-11-16" }]]);
+    expect(s.history.map((w) => w.sessions)).toEqual([[{ ...manual, week: "2026-11-15" }]]);
   });
 
   it("a week later, the day starts over even though it's the same weekday", () => {
@@ -184,7 +184,7 @@ describe("Fitbit sync in the Today flow", () => {
     expect(s0.today.step).toBe("confirm");
     expect(s.today.pendingSessionId).toBeUndefined();
     expect(s.today.step).not.toBe("confirm");
-    expect(s.signIns).toEqual([false, false, true, false, false, false, false]);
+    expect(s.signIns).toEqual([false, false, false, true, false, false, false]);
   });
 
   it("the user's correction to a workout survives once its week becomes history", () => {

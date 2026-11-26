@@ -550,7 +550,7 @@ def today_why(req: TodayWhyRequest) -> Dict[str, Any]:
 
 @app.post("/api/today/recap")
 def today_recap(req: TodayRecapRequest) -> Dict[str, Any]:
-    """Monday's two sentences about last week, from its numbers."""
+    """Two sentences about last week, at the week's first log-in, from its numbers."""
     return _today_words("recap", lambda: {"text": today_words.recap(req.facts)})
 
 
@@ -586,7 +586,7 @@ def _day(value: Optional[str]) -> date:
     try:
         return date.fromisoformat(value) if value else date.today()
     except ValueError:
-        raise HTTPException(422, f"date {value!r} is not a date like 2026-11-23") from None
+        raise HTTPException(422, f"date {value!r} is not a date like 2026-11-22") from None
 
 
 def _numbers(user_id: str, day: date) -> Dict[str, Any]:

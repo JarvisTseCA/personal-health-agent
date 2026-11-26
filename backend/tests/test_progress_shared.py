@@ -25,7 +25,7 @@ from app import progress
 EXAMPLES_FILE = Path(__file__).resolve().parents[2] / "shared_examples" / "progress.json"
 EXAMPLES = json.loads(EXAMPLES_FILE.read_text(encoding="utf-8"))["examples"]
 
-MONDAY = date(2026, 11, 23)  # this week's Monday; any Monday will do
+MONDAY = date(2026, 11, 22)  # this week's Monday; any Monday will do
 
 
 def memory_of(example):

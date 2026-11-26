@@ -56,7 +56,7 @@ export interface ClinicianNotes {
   entries: ClinicianNote[];
 }
 
-/** One "not today" the coach remembers. `day` is relative to this week's Monday. */
+/** One "not today" the coach remembers. `day` is relative to this week's Sunday. */
 export interface DeclineRecord {
   id: string;
   familyId: string;
@@ -160,7 +160,7 @@ export interface TodayState {
   boost: boolean;
   /** How many options "Give me another option" has passed over since the last reason (capped by MAX_PASSES) */
   passed?: number;
-  /** Monday's recap of last week: "due" until ChatGPT's two sentences arrive (weekRecap), then "done" */
+  /** The recap of last week at the week's first log-in: "due" until ChatGPT's two sentences arrive (weekRecap), then "done" */
   recap?: "due" | "done";
   /** The exercise the user named themselves: what they typed, its table matches (best first) and minutes */
   own?: { text: string; codes: string[]; minutes?: number };
@@ -221,13 +221,13 @@ export interface AppState {
   vo2: number[];
   declines: DeclineRecord[];
   notes: NoteRecord[];
-  /** Today, as an index into the demo week (0 = Monday) */
+  /** Today, as an index into the demo week (0 = Sunday) */
   todayIndex: number;
   today: TodayState;
   chat: ChatMessage[];
   personaId: string;
   syncCount: number;
-  /** Monday of the real week, "2026-11-16", once a real Fitbit has synced */
+  /** Sunday of the real week, "2026-11-16", once a real Fitbit has synced */
   fitbitWeek?: string;
   /** Fitbit workouts the user said weren't exercise, so a later sync doesn't bring them back */
   removedFitbitIds?: string[];

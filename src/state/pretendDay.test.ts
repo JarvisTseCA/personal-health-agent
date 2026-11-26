@@ -21,7 +21,7 @@ describe("pretend today is another day", () => {
 
   it("back to Wednesday, Monday's and Tuesday's workouts are counted again", () => {
     const wed = alex();
-    const s = reducer(reducer(wed, { type: "setToday", index: 0 }), { type: "setToday", index: 2 });
+    const s = reducer(reducer(wed, { type: "setToday", index: 0 }), { type: "setToday", index: 3 });
     expect(s.sessions.map((x) => x.dayIndex)).toEqual(wed.sessions.map((x) => x.dayIndex));
     expect(buildAgentContext(s).week.done).toBeCloseTo(buildAgentContext(wed).week.done);
   });

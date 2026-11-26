@@ -34,7 +34,7 @@
  *    of it before it stopped answering, so before the next step the app reads Memory again and
  *    takes back whatever is there that the screen doesn't show.
  */
-import { mondayOf, type Memory, type Numbers, type OtherOfApp } from "../services/memoryTypes";
+import { sundayOf, type Memory, type Numbers, type OtherOfApp } from "../services/memoryTypes";
 import { readMemory, readNumbers, replaceMemory, saveMemory, sendChanges } from "../services/memoryClient";
 import { fromMemory } from "../services/fromMemory";
 import { numbersAhead, numbersKey, showNumbers } from "../services/numbers";
@@ -77,8 +77,8 @@ function onlyTheScreenChanged(prev: AppState, next: AppState): boolean {
 
 /** Open the app from Memory. Throws when the backend can't be used; the store then runs without it. */
 export async function openMemorySession(o: Opening): Promise<{ state: AppState; session: MemorySession }> {
-  const monday = mondayOf(new Date());
-  const memory = await readMemory(monday); // this week and the 26 before it; Memory keeps the rest
+  const sunday = sundayOf(new Date());
+  const memory = await readMemory(sunday); // this week and the 26 before it; Memory keeps the rest
   const own = (memory.other as OtherOfApp).app;
   /** The Chat conversation is still under "other", from before it had a group of its own in Memory. */
   const chatUnderOther = (memory.other as OtherOfApp).chat !== undefined;
@@ -87,7 +87,7 @@ export async function openMemorySession(o: Opening): Promise<{ state: AppState; 
   let numbers: Numbers | null = null;
   if (own?.version === 1) {
     // Opening the app today counts toward the streak: tell the backend, and get today's numbers back.
-    const date = todayOf(own, monday);
+    const date = todayOf(own, sunday);
     numbers = await saveMemory({ daily: { app_opens: [date] } }, date);
     if (numbers) {
       if (!memory.daily.app_opens.includes(date)) memory.daily.app_opens = [...memory.daily.app_opens, date].sort();
@@ -103,7 +103,7 @@ export async function openMemorySession(o: Opening): Promise<{ state: AppState; 
     // The first time with Memory: bring over what the app has.
     state = (await o.saved()) ?? o.initial();
     registerTable(Object.values(state.tableActivities ?? {})); // an earlier save can hold picks from the activity table
-    numbers = await replaceMemory(toMemory(state, monday), todayOf(state, monday));
+    numbers = await replaceMemory(toMemory(state, sunday), todayOf(state, sunday));
     if (!numbers) throw new Error("The backend has no weekly goal and plan to work the numbers out from.");
     showNumbers(state, numbers);
     // The greeting was written before the backend's numbers were in: write it again with them.
@@ -115,8 +115,8 @@ export async function openMemorySession(o: Opening): Promise<{ state: AppState; 
 
   let current = state;
   /** What Memory holds, as far as the app knows. null: a step failed part-way, so it has to be read again. */
-  let mem: Memory | null = toMemory(state, monday);
-  // The app's own part as it is now (a fresh greeting, this week's Monday). A conversation still under
+  let mem: Memory | null = toMemory(state, sunday);
+  // The app's own part as it is now (a fresh greeting, this week's Sunday). A conversation still under
   // "other" moves to Memory's chat group here: saved there first, then taken out of "other".
   await saveMemory(chatUnderOther ? { chat: mem.chat, other: mem.other } : { other: mem.other });
   if (chatUnderOther) await sendChanges({ save: null, remove: [{ kind: "other", key: "chat" }] });
@@ -124,11 +124,11 @@ export async function openMemorySession(o: Opening): Promise<{ state: AppState; 
   /** What Memory holds, read again from the backend when the app can't be sure any more. */
   const held = async (): Promise<Memory> => {
     if (mem) return mem;
-    const numbers = await readNumbers(todayOf(current, monday));
-    const there = numbers && fromMemory(await readMemory(monday), numbers, o.initial());
+    const numbers = await readNumbers(todayOf(current, sunday));
+    const there = numbers && fromMemory(await readMemory(sunday), numbers, o.initial());
     if (!there) throw new Error("Memory can't be read back.");
     // Laid out the way the app lays its own state out, so the two can be compared entry by entry.
-    return toMemory(there.state, monday);
+    return toMemory(there.state, sunday);
   };
 
   const step = async (action: Action) => {
@@ -142,7 +142,7 @@ export async function openMemorySession(o: Opening): Promise<{ state: AppState; 
       o.show(draft);
       return;
     }
-    const target = toMemory(draft, monday);
+    const target = toMemory(draft, sunday);
     // Another demo persona, Reset, or the first sync of a real Fitbit: Memory starts over with the new content.
     const startOver = prev.personaId !== draft.personaId || action.type === "reset" || (!prev.fitbitWeek && !!draft.fitbitWeek);
 
@@ -152,16 +152,16 @@ export async function openMemorySession(o: Opening): Promise<{ state: AppState; 
       // A reply the agent is still writing: on screen now, saved by the step that finishes it.
       if ((action.type === "addMessage" || action.type === "updateMessage") && action.unfinished) return;
       // If this doesn't get through, `mem` stays as it was and the next step sends this change too.
-      const changes = memoryChanges(await held(), target, monday);
+      const changes = memoryChanges(await held(), target, sunday);
       if (changes.save || changes.remove.length) await sendChanges(changes);
       mem = target;
       return;
     }
 
-    const date = todayOf(draft, monday);
+    const date = todayOf(draft, sunday);
     let after: Numbers | null;
     try {
-      after = startOver ? await replaceMemory(target, date) : await sendChanges(memoryChanges(await held(), target, monday), date);
+      after = startOver ? await replaceMemory(target, date) : await sendChanges(memoryChanges(await held(), target, sunday), date);
       if (!after) throw new Error("The backend has no weekly goal and plan to work the numbers out from.");
     } catch (e) {
       mem = null; // part of it may have been stored: read Memory again before the next step
@@ -174,8 +174,8 @@ export async function openMemorySession(o: Opening): Promise<{ state: AppState; 
     current = done;
     o.show(done);
     // What the step says differently now that it had the new numbers (a sentence, a trophy line).
-    const said = toMemory(done, monday);
-    const rest = memoryChanges(target, said, monday);
+    const said = toMemory(done, sunday);
+    const rest = memoryChanges(target, said, sunday);
     if (rest.save || rest.remove.length) await sendChanges(rest);
     mem = said;
   };
@@ -190,7 +190,7 @@ export async function openMemorySession(o: Opening): Promise<{ state: AppState; 
       });
     },
     settled: () => queue,
-    today: (s) => todayOf(s, monday),
+    today: (s) => todayOf(s, sunday),
   };
   return { state, session };
 }

@@ -119,9 +119,9 @@ describe("streaks and trophies", () => {
 });
 
 describe("the streak follows the record of opens", () => {
-  // Alex on the demo's Wednesday (todayIndex 2), with the history and this week's opens set by hand
+  // Alex on the third day of the week (todayIndex 2), with the history and this week's opens set by hand
   const T = true, F = false;
-  const alex = () => { const st = initialState("alex"); return { ...st, onboarded: true, profile: personaProfile(st) }; };
+  const alex = () => { const st = initialState("alex"); return { ...st, todayIndex: 2, onboarded: true, profile: personaProfile(st) }; };
   const withOpens = (history: Array<boolean[] | undefined>, thisWeek: boolean[]) => {
     const st = alex();
     return { ...st, history: history.map((signIns, i) => ({ ...st.history[i], signIns })), signIns: thisWeek };
@@ -129,7 +129,7 @@ describe("the streak follows the record of opens", () => {
   const ALL = [T, T, T, T, T, T, T];
 
   it("counts today only once it is on record", () => {
-    // Opened Mon and Tue, not yet today (Wed). Earlier: a full week, then a week with one missed day.
+    // Opened the first two days, not yet today (the third). Earlier: a full week, then a week with one missed day.
     const st = withOpens([ALL, [T, T, T, F, T, T, T]], [T, T, F, F, F, F, F]);
     const ctx = ownContext(st);
     expect(ctx.signIns[st.todayIndex]).toBe(false);
@@ -144,7 +144,7 @@ describe("the streak follows the record of opens", () => {
     expect(opened.signIns).toEqual([T, T, T, F, F, F, F]);
     const ctx = ownContext(opened);
     expect(ctx.signIns[opened.todayIndex]).toBe(true);
-    expect(ctx.streak).toEqual({ current: 6, best: 10 }); // 3 days before the miss, then Mon to Wed
+    expect(ctx.streak).toEqual({ current: 6, best: 10 }); // 3 days before the miss, then the first three days
   });
 
   it("gives a history week with no record of opens no opened days, but its workouts still count", () => {
@@ -168,7 +168,7 @@ describe("the streak follows the record of opens", () => {
   });
 
   it("ignores opens on days after today", () => {
-    const st = withOpens([], ALL); // Wed is today; Thu to Sun are on record too
+    const st = withOpens([], ALL); // the third day is today; the rest of the week is on record too
     const ctx = ownContext(st);
     expect(ctx.signIns).toEqual([T, T, T, F, F, F, F]);
     expect(ctx.streak).toEqual({ current: 3, best: 3 });

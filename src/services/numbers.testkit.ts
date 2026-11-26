@@ -14,13 +14,13 @@ import { toMemory } from "./toMemory";
 
 const two = (n: number) => String(n).padStart(2, "0");
 
-/** What GET /api/numbers would give for this state, with this week starting on `monday`. */
-export function numbersLike(state: AppState, monday: string): Numbers {
+/** What GET /api/numbers would give for this state, with this week starting on `sunday`. */
+export function numbersLike(state: AppState, sunday: string): Numbers {
   const ctx = ownContext(state);
   const sum = ownSummary(ctx);
-  const memory = toMemory(state, monday);
+  const memory = toMemory(state, sunday);
   const nameOf = new Map(memory.daily.workouts.map((w) => [w.id, w]));
-  const starts = ctx.past.map((_, i) => addDays(monday, -7 * (ctx.past.length - i)));
+  const starts = ctx.past.map((_, i) => addDays(sunday, -7 * (ctx.past.length - i)));
 
   const weekOf = (start: string, goal: number, plan: readonly string[], totals: PastWeek["totals"], opens: boolean[], trophy: boolean): NumbersWeek => ({
     week_start: start, goal_met_hours: goal, plan: [...plan],
@@ -34,7 +34,7 @@ export function numbersLike(state: AppState, monday: string): Numbers {
 
   const past = ctx.past.map((w, i) => weekOf(starts[i], w.goal, w.plan, w.totals, w.signIns, w.trophy));
   const months = groupWeeks(ctx.past.map((w) => ({ start: w.start, label: w.label, done: w.totals.done, goal: w.goal, active: w.totals.activeByDay, signIns: w.signIns })), weekStart(0));
-  const today = addDays(monday, state.todayIndex);
+  const today = addDays(sunday, state.todayIndex);
   const month = today.slice(0, 7);
   const vo2 = state.vo2 ?? [];
 
@@ -43,7 +43,7 @@ export function numbersLike(state: AppState, monday: string): Numbers {
     today_index: state.todayIndex,
     day: { name: DAY_NAMES_LONG[state.todayIndex], target_met_hours: ctx.todayTarget, done_met_hours: ctx.todayDone, needed_met_hours: ctx.todayNeeded, reached: reachedToday(ctx) },
     this_week: {
-      ...weekOf(monday, ctx.goal, state.plan, ctx.week, ctx.signIns, ctx.trophy),
+      ...weekOf(sunday, ctx.goal, state.plan, ctx.week, ctx.signIns, ctx.trophy),
       active_days: ctx.activeDays, left_met_hours: ctx.left, targets: ctx.targets, unplanned_met_hours: ctx.unplanned,
     },
     streak: ctx.streak,
@@ -60,7 +60,7 @@ export function numbersLike(state: AppState, monday: string): Numbers {
       weeks: sum.weeks, avg_met_hours: sum.avgMetHours, avg_brisk_min: sum.avgBriskMin, pct_of_guideline: sum.pctOfGuideline,
       goal_min: sum.goalMin, goal_weeks: sum.goalWeeks, avg_active_days: sum.avgActiveDays,
       chart: sum.chart.map((c, i, all) => ({
-        week_start: c.current ? monday : starts[starts.length - (all.length - 1 - i)], current: c.current,
+        week_start: c.current ? sunday : starts[starts.length - (all.length - 1 - i)], current: c.current,
         met_hours: c.metHours, brisk_min: c.briskMin, goal_met_hours: c.goal, goal_min: c.goalMin, reached: c.reached,
       })),
       calendar: sum.calendar.map((c, i, all) => ({ week_start: starts[starts.length - (all.length - i)], days: c.days })),

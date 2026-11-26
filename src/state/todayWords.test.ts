@@ -66,9 +66,9 @@ describe("a typed answer ChatGPT has read", () => {
     s = T.startDay({ ...s, onboarded: true, profile: personaProfile(s), weekSetup: true });
     s = T.applyTyped(s, "let's do 9", { goal: 9 });
     expect(s.goal).toBe(9);
-    s = T.applyTyped(s, "Thursday off and 45 on Saturday", { plan: { 3: "off", 5: "45" } });
-    expect(s.plan[3]).toBe("off");
-    expect(s.plan[5]).toBe("45");
+    s = T.applyTyped(s, "Thursday off and 45 on Saturday", { plan: { 4: "off", 6: "45" } });
+    expect(s.plan[4]).toBe("off");
+    expect(s.plan[6]).toBe("45");
     s = T.applyTyped(s, "that's it", { done: true });
     expect(s.weekSetup).toBeUndefined();
   });

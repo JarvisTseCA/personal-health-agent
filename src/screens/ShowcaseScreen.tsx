@@ -70,7 +70,7 @@ function buildSchedules(families: ActivityFamily[]): Schedule[] {
   ];
 }
 
-/** Which days of the week had a session, Monday to Sunday. */
+/** Which days of the week had a session, Sunday to Saturday. */
 function activeDays(blocks: Block[]): boolean[] {
   return DAY_NAMES.map((_, i) => blocks.some((b) => b.dayIndex === i));
 }

@@ -55,7 +55,7 @@ def build_request(
     numbers = calculator.today_numbers(week["goal_met_hours"], week["plan"], mem["daily"]["workouts"], today)
 
     place = check_in.place
-    since = calculator.monday_of(today) - timedelta(days=7)  # this week and last week
+    since = calculator.sunday_of(today) - timedelta(days=7)  # this week and last week
 
     def recently(entry: Dict[str, Any]) -> bool:
         return since <= date.fromisoformat(entry["date"]) <= today
@@ -133,10 +133,10 @@ def week_for(goals: List[Dict[str, Any]], today: date) -> Dict[str, Any]:
     A week nothing was saved for carries on with the latest earlier goal and plan,
     the way the app keeps both from one week to the next.
     """
-    monday = calculator.monday_of(today).isoformat()
+    sunday = calculator.sunday_of(today).isoformat()
     goal = plan = None
     for week in goals:
-        if week["week_start"] > monday:
+        if week["week_start"] > sunday:
             break
         goal = week["goal_met_hours"] if week["goal_met_hours"] is not None else goal
         plan = week["plan"] if week["plan"] is not None else plan

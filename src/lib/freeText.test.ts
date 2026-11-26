@@ -46,10 +46,10 @@ describe("free text", () => {
   });
 
   it("reads plan changes", () => {
-    expect(parsePlanChanges("Thursday off, Saturday long")).toEqual({ 3: "off", 5: "45" });
-    expect(parsePlanChanges("Mon 5 min, Tue 30 min; Fri desk only")).toEqual({ 0: "5", 1: "30", 4: "0" });
-    expect(parsePlanChanges("weekends 45+ min")).toEqual({ 5: "45", 6: "45" });
-    expect(parsePlanChanges("weekends are busy")).toEqual({ 5: "off", 6: "off" });
+    expect(parsePlanChanges("Thursday off, Saturday long")).toEqual({ 4: "off", 6: "45" });
+    expect(parsePlanChanges("Mon 5 min, Tue 30 min; Fri desk only")).toEqual({ 1: "5", 2: "30", 5: "0" });
+    expect(parsePlanChanges("weekends 45+ min")).toEqual({ 0: "45", 6: "45" });
+    expect(parsePlanChanges("weekends are busy")).toEqual({ 0: "off", 6: "off" });
     expect(parsePlanChanges("more time later")).toEqual({});
   });
 });

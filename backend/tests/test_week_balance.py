@@ -85,10 +85,10 @@ def test_the_new_category_goes_second_and_takes_the_last_place_when_needed():
 
 
 def test_about_one_check_in_in_five_explores_and_the_same_day_gives_the_same_answer():
-    reqs = [TableSuggestRequest(**REQ, user_id=f"u{i}", date="2026-11-23") for i in range(1000)]
+    reqs = [TableSuggestRequest(**REQ, user_id=f"u{i}", date="2026-11-22") for i in range(1000)]
     share = sum(explore_today(r) for r in reqs) / len(reqs)
     assert abs(share - EXPLORE_CHANCE) < 0.05
-    assert explore_today(reqs[7]) == explore_today(TableSuggestRequest(**REQ, user_id="u7", date="2026-11-23"))
+    assert explore_today(reqs[7]) == explore_today(TableSuggestRequest(**REQ, user_id="u7", date="2026-11-22"))
 
 
 def test_on_an_exploring_day_the_second_option_is_new_and_says_so(real_table):

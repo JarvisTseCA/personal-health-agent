@@ -21,7 +21,7 @@ import { contextFromNumbers, numbersFor } from "./numbers";
 
 export interface PastWeek {
   label: string;
-  /** That week's Monday */
+  /** That week's Sunday */
   start: Date;
   /** That week's plan, for showing planned days off */
   plan: WeekPlan;
@@ -77,14 +77,14 @@ export interface AgentContext {
   state: AppState;
 }
 
-/** Monday of the current week, shifted back by `weeksAgo`. */
+/** Sunday of the current week, shifted back by `weeksAgo`. */
 export function weekStart(weeksAgo: number, now = new Date()): Date {
-  const monday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  monday.setDate(monday.getDate() - ((monday.getDay() + 6) % 7) - 7 * weeksAgo);
-  return monday;
+  const sunday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  sunday.setDate(sunday.getDate() - sunday.getDay() - 7 * weeksAgo);
+  return sunday;
 }
 
-/** Monday of the current week, shifted by `weeksAgo`, as "Oct 12". */
+/** Sunday of the current week, shifted by `weeksAgo`, as "Oct 12". */
 export function weekLabel(weeksAgo: number): string {
   return weekStart(weeksAgo).toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }

@@ -15,25 +15,25 @@ ALEX = {
         "no_vigorous": False,
     },
     "goals": [
-        {"week_start": "2026-11-23", "goal_met_hours": 7.5, "goal_set_by": "default",
+        {"week_start": "2026-11-22", "goal_met_hours": 7.5, "goal_set_by": "default",
          "plan": ["30", "off", "30", "10", "off", "45", "10"]},
     ],
     "daily": {
         "check_ins": [
-            {"date": "2026-11-23", "minutes": 30, "place": "indoors_with_others", "energy": "normal", "mood": "surprise"},
+            {"date": "2026-11-22", "minutes": 30, "place": "indoors_with_others", "energy": "normal", "mood": "surprise"},
         ],
         "suggestions": [
-            {"id": "s1", "date": "2026-11-23", "place": "indoors_with_others", "activity_code": "01216",
+            {"id": "s1", "date": "2026-11-22", "place": "indoors_with_others", "activity_code": "01216",
              "activity_name": "Bicycling, stationary, 60 watts", "outcome": "accepted", "reason": None, "note": None},
-            {"id": "s2", "date": "2026-11-23", "place": "indoors_with_others", "activity_code": "03030",
+            {"id": "s2", "date": "2026-11-22", "place": "indoors_with_others", "activity_code": "03030",
              "activity_name": "Ballroom dancing, fast", "outcome": "declined", "reason": "tired", "note": "long day"},
         ],
         "workouts": [
-            {"id": "w1", "date": "2026-11-23", "activity_code": "01216", "activity_name": "Bicycling, stationary, 60 watts",
+            {"id": "w1", "date": "2026-11-22", "activity_code": "01216", "activity_name": "Bicycling, stationary, 60 watts",
              "met": 5.0, "duration_min": 30, "source": "fitbit", "confirmed": False, "band": "fairly",
              "start_time": "2026-11-23T18:05:00"},
         ],
-        "app_opens": ["2026-11-22", "2026-11-23"],
+        "app_opens": ["2026-11-21", "2026-11-22"],
     },
     "health": {
         "vo2_max": [{"month": "2026-10", "ml_kg_min": 37.9, "source": "fitbit"}, {"month": "2026-11", "ml_kg_min": 38.2, "source": "fitbit"}],
@@ -142,30 +142,30 @@ def test_each_place_keeps_its_own_equipment():
 def test_a_week_is_found_by_its_monday():
     memory.save("alex", ALEX)
     memory.save("alex", {"goals": [
-        {"week_start": "2026-11-23", "goal_met_hours": 9, "goal_set_by": "recap"},  # the goal changes, the plan stays
-        {"week_start": "2026-11-16", "goal_met_hours": 7.5, "plan": ["10"] * 7},  # an earlier week
+        {"week_start": "2026-11-22", "goal_met_hours": 9, "goal_set_by": "recap"},  # the goal changes, the plan stays
+        {"week_start": "2026-11-15", "goal_met_hours": 7.5, "plan": ["10"] * 7},  # an earlier week
     ]})
     assert memory.read("alex")["goals"] == [
-        {"week_start": "2026-11-16", "goal_met_hours": 7.5, "goal_set_by": None, "plan": ["10"] * 7},
-        {"week_start": "2026-11-23", "goal_met_hours": 9, "goal_set_by": "recap", "plan": ["30", "off", "30", "10", "off", "45", "10"]},
+        {"week_start": "2026-11-15", "goal_met_hours": 7.5, "goal_set_by": None, "plan": ["10"] * 7},
+        {"week_start": "2026-11-22", "goal_met_hours": 9, "goal_set_by": "recap", "plan": ["30", "off", "30", "10", "off", "45", "10"]},
     ]
 
 
 def test_a_goal_the_user_set_is_kept_as_theirs():
     memory.save("alex", ALEX)
-    memory.save("alex", {"goals": [{"week_start": "2026-11-23", "goal_met_hours": 12, "goal_set_by": "user"}]})
+    memory.save("alex", {"goals": [{"week_start": "2026-11-22", "goal_met_hours": 12, "goal_set_by": "user"}]})
     assert memory.read("alex")["goals"][0]["goal_set_by"] == "user"
 
 
 def test_a_second_check_in_on_the_same_day_replaces_the_first():
     memory.save("alex", ALEX)
     memory.save("alex", {"daily": {"check_ins": [
-        {"date": "2026-11-23", "minutes": 10, "place": "outside", "energy": "low", "mood": "surprise"},
-        {"date": "2026-11-24", "minutes": 45, "place": "indoors_private", "energy": "challenge", "mood": "cycling"},
+        {"date": "2026-11-22", "minutes": 10, "place": "outside", "energy": "low", "mood": "surprise"},
+        {"date": "2026-11-23", "minutes": 45, "place": "indoors_private", "energy": "challenge", "mood": "cycling"},
     ]}})
     assert memory.read("alex")["daily"]["check_ins"] == [
-        {"date": "2026-11-23", "minutes": 10, "place": "outside", "energy": "low", "mood": "surprise"},
-        {"date": "2026-11-24", "minutes": 45, "place": "indoors_private", "energy": "challenge", "mood": "cycling"},
+        {"date": "2026-11-22", "minutes": 10, "place": "outside", "energy": "low", "mood": "surprise"},
+        {"date": "2026-11-23", "minutes": 45, "place": "indoors_private", "energy": "challenge", "mood": "cycling"},
     ]
 
 
@@ -178,18 +178,18 @@ def test_a_workout_sent_again_is_updated_not_added_twice():
 
 
 def test_a_workout_needs_little_and_gets_an_id():
-    memory.save("alex", {"daily": {"workouts": [{"date": "2026-11-23", "activity_name": "Walking", "met": 3.5, "duration_min": 20}]}})
+    memory.save("alex", {"daily": {"workouts": [{"date": "2026-11-22", "activity_name": "Walking", "met": 3.5, "duration_min": 20}]}})
     (workout,) = memory.read("alex")["daily"]["workouts"]
     assert workout["id"]
     assert {**workout, "id": None} == {
-        "id": None, "date": "2026-11-23", "activity_code": None, "activity_name": "Walking", "met": 3.5,
+        "id": None, "date": "2026-11-22", "activity_code": None, "activity_name": "Walking", "met": 3.5,
         "duration_min": 20, "source": "manual", "confirmed": True, "band": None, "start_time": None,
     }
 
 
 def test_a_code_gets_its_leading_zero_back():
     memory.save("alex", {"daily": {"suggestions": [
-        {"date": "2026-11-23", "activity_code": 1216, "activity_name": "Bicycling, stationary", "outcome": "accepted"},
+        {"date": "2026-11-22", "activity_code": 1216, "activity_name": "Bicycling, stationary", "outcome": "accepted"},
     ]}})
     assert memory.read("alex")["daily"]["suggestions"][0]["activity_code"] == "01216"
 
@@ -205,9 +205,9 @@ def test_a_vo2_max_reading_is_found_by_its_month():
 
 def test_a_day_the_app_was_opened_is_kept_once_and_days_come_back_oldest_first():
     memory.save("alex", ALEX)  # opened on the 22nd and the 23rd
-    memory.save("alex", {"daily": {"app_opens": ["2026-11-25", "2026-11-23", "2026-11-20"]}})
+    memory.save("alex", {"daily": {"app_opens": ["2026-11-24", "2026-11-22", "2026-11-19"]}})
     daily = memory.read("alex")["daily"]
-    assert daily["app_opens"] == ["2026-11-20", "2026-11-22", "2026-11-23", "2026-11-25"]
+    assert daily["app_opens"] == ["2026-11-19", "2026-11-21", "2026-11-22", "2026-11-24"]
     assert daily["check_ins"] == ALEX["daily"]["check_ins"]  # not sent: stay
 
 
@@ -312,7 +312,7 @@ def test_deleting_a_workout_takes_its_heart_rate_too():
 
 def test_a_check_in_is_deleted_by_its_date():
     memory.save("alex", ALEX)
-    assert memory.delete("alex", "check_ins", "2026-11-23") is True
+    assert memory.delete("alex", "check_ins", "2026-11-22") is True
     assert memory.read("alex")["daily"]["check_ins"] == []
 
 
@@ -378,17 +378,17 @@ MISTAKES = [
     (changed("preferences", lambda p: p["equipment"].update(home="Dumbbells")), "preferences.equipment.home should be a list"),
     (changed("goals", lambda g: g[0].update(plan=["30"] * 6)), "goals[0].plan should be 7 days"),
     (changed("goals", lambda g: g[0].update(plan=["20"] * 7)), "goals[0].plan should be 7 days"),
-    (changed("goals", lambda g: g[0].update(week_start="2026-11-24")), "goals[0].week_start 2026-11-24 is not a Monday"),
+    (changed("goals", lambda g: g[0].update(week_start="2026-11-23")), "goals[0].week_start 2026-11-23 is not a Sunday"),
     (changed("goals", lambda g: g[0].update(goal_met_hours=0)), "goals[0].goal_met_hours is 0, expected a number above 0"),
     (changed("goals", lambda g: g[0].update(goal_set_by="coach")), "goals[0].goal_set_by is 'coach'"),
-    (changed("daily", lambda d: d["check_ins"][0].update(date="Monday")), "daily.check_ins[0]: 'Monday' is not a date like 2026-11-23"),
+    (changed("daily", lambda d: d["check_ins"][0].update(date="Monday")), "daily.check_ins[0]: 'Monday' is not a date like 2026-11-22"),
     (changed("daily", lambda d: d["suggestions"][1].update(outcome="skipped")), "daily.suggestions[1].outcome is 'skipped'"),
     (changed("daily", lambda d: d["suggestions"][0].pop("activity_name")), "daily.suggestions[0]: activity_name is required"),
     (changed("daily", lambda d: d["workouts"][0].update(met=0)), "daily.workouts[0].met is 0, expected a number above 0"),
     (changed("daily", lambda d: d["workouts"][0].update(source="strava")), "daily.workouts[0].source is 'strava'"),
     (changed("daily", lambda d: d.update(workouts={"id": "w1"})), "daily.workouts should be a list"),
-    (changed("daily", lambda d: d["app_opens"].append("yesterday")), "daily.app_opens[2]: 'yesterday' is not a date like 2026-11-23"),
-    (changed("daily", lambda d: d.update(app_opens="2026-11-23")), "daily.app_opens should be a list"),
+    (changed("daily", lambda d: d["app_opens"].append("yesterday")), "daily.app_opens[2]: 'yesterday' is not a date like 2026-11-22"),
+    (changed("daily", lambda d: d.update(app_opens="2026-11-22")), "daily.app_opens should be a list"),
     (changed("health", lambda h: h["vo2_max"][0].update(month="November")), "health.vo2_max[0]: 'November' is not a month like 2026-11"),
     (changed("health", lambda h: h["heart_rates"][0].pop("avg_bpm")), "health.heart_rates[0]: avg_bpm is required"),
     (changed("chat", lambda c: c[0].update(role="assistant")), "chat[0].role is 'assistant', expected user or agent"),

@@ -16,12 +16,12 @@ Where each part comes from:
 `for_user()` gives them in one piece:
 
     {
-      "today": "2026-11-25", "today_index": 2,                    # 0 = Monday
+      "today": "2026-11-25", "today_index": 3,                    # 0 = Sunday
       "day": {"name": "Wednesday", "target_met_hours": 2.0, "done_met_hours": 0.5,
               "needed_met_hours": 1.5, "reached": False},
-      "this_week": {"week_start": "2026-11-23", "goal_met_hours": 7.5, "plan": [...],
+      "this_week": {"week_start": "2026-11-22", "goal_met_hours": 7.5, "plan": [...],
                     "done_met_hours": 3.0, "left_met_hours": 4.5, "unplanned_met_hours": 0.0,
-                    "done_by_day": [...], "targets": [...],       # 7 days, Monday first
+                    "done_by_day": [...], "targets": [...],       # 7 days, Sunday first
                     "active_days": [...], "app_opens": [...], "trophy": False, "minutes": 60,
                     "top_activity": {...}, "workouts": [...]},    # each workout with what it counts for
       "streak": {"current": 3, "best": 12},
@@ -78,14 +78,14 @@ def for_user(user_id: str, today: date) -> Dict[str, Any]:
 def recent(mem: Dict[str, Any], today: date) -> Dict[str, Any]:
     """Memory as the app is given it: this week and the progress.RECENT_WEEKS before it. `mem` is what memory.read() gave.
 
-    What is dated before that first Monday is left out of "goals" and "daily". A heart rate goes
+    What is dated before that first Sunday is left out of "goals" and "daily". A heart rate goes
     with its workout, when "daily" is read along with "health"; "health" read on its own keeps them all.
     The latest goal and plan saved before it stay: the weeks after ran on them.
     "who", "preferences", VO2 max and "other" have no week to go by, so they are as Memory has them.
     "chat" is given whole as well: the conversation has no limit yet on how far back the app shows it.
     Nothing is deleted: Memory itself still holds all of it.
     """
-    first = (calculator.monday_of(today) - timedelta(weeks=progress.RECENT_WEEKS)).isoformat()
+    first = (calculator.sunday_of(today) - timedelta(weeks=progress.RECENT_WEEKS)).isoformat()
     out = dict(mem)
     if "goals" in mem:
         earlier = [week for week in mem["goals"] if week["week_start"] < first]

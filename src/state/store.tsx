@@ -55,7 +55,7 @@ function personaState(personaId: string): Pick<AppState, "personaId" | "sessions
     plan: p.plan,
     planSource: ALL_FROM_PLAN,
     goal: p.goal,
-    // Demo: a goal the agent raised on Monday of this week, with its reason, shown beside the goal.
+    // Demo: a goal the agent raised on Sunday of this week, with its reason, shown beside the goal.
     goalSource: p.goalRaise ? "recap" : "default",
     goalSet: p.goalRaise ? { by: "agent", on: appDate(0), from: p.goalRaise.from, reason: p.goalRaise.reason } : undefined,
     signIns: p.signInsThisWeek,
@@ -70,7 +70,7 @@ export function initialState(personaId = "alex"): AppState {
     profile: DEFAULT_PROFILE,
     clinician: DEFAULT_CLINICIAN,
     ...personaState(personaId),
-    todayIndex: 2, // Wednesday: a stable mid-week for demos
+    todayIndex: 3, // Wednesday: a stable mid-week for demos
     today: { dayKey: "", step: "time", checkIn: {}, entries: [], exclude: [], boost: false, nudged: false },
     chat: [],
     syncCount: 0,

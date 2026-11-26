@@ -106,7 +106,7 @@ def test_the_plan_uses_the_same_minutes_as_the_app():
 
 # --- From what Memory holds --------------------------------------------------------------------
 
-MONDAY, WEDNESDAY = date(2026, 11, 23), date(2026, 11, 25)
+MONDAY, WEDNESDAY = date(2026, 11, 22), date(2026, 11, 24)
 
 
 def workout(day, met, minutes, **more):
@@ -116,11 +116,11 @@ def workout(day, met, minutes, **more):
 
 
 WEEK = [
-    workout("2026-11-23", 5.0, 30),                                              # Monday: 2.5
-    workout("2026-11-23", 2.0, 20),                                              # Monday, light: 0
-    workout("2026-11-24", 6.8, 30, source="fitbit", confirmed=False, band="very"),  # Tuesday, unconfirmed: 6.0 × 0.5 = 3.0
-    workout("2026-11-22", 8.0, 60),                                              # last Sunday: another week
-    workout("2026-11-26", 8.0, 60),                                              # Thursday: after "today"
+    workout("2026-11-22", 5.0, 30),                                              # Monday: 2.5
+    workout("2026-11-22", 2.0, 20),                                              # Monday, light: 0
+    workout("2026-11-23", 6.8, 30, source="fitbit", confirmed=False, band="very"),  # Tuesday, unconfirmed: 6.0 × 0.5 = 3.0
+    workout("2026-11-21", 8.0, 60),                                              # last Sunday: another week
+    workout("2026-11-25", 8.0, 60),                                              # Thursday: after "today"
 ]
 
 
@@ -131,7 +131,7 @@ def test_done_by_day_counts_this_week_up_to_today():
 
 def test_todays_numbers_on_a_monday_with_nothing_done():
     n = today_numbers(7.5, PLAN, [], MONDAY)
-    assert n["day_name"] == "Monday"
+    assert n["day_name"] == "Sunday"
     assert n["weekly_goal_met_hours"] == 7.5
     assert n["done_this_week_met_hours"] == 0
     assert close(n["left_this_week_met_hours"], 7.5)
@@ -142,7 +142,7 @@ def test_todays_numbers_on_a_monday_with_nothing_done():
 def test_todays_numbers_midweek():
     # 5.5 done by Tuesday night, 2.0 left; Wednesday has 30 of the 75 minutes still planned (Wed 30, Sat 45).
     n = today_numbers(7.5, PLAN, WEEK, WEDNESDAY)
-    assert n["day_name"] == "Wednesday"
+    assert n["day_name"] == "Tuesday"
     assert close(n["done_this_week_met_hours"], 5.5)
     assert close(n["left_this_week_met_hours"], 2.0)
     assert close(n["target_met_hours"], 2.0 * 30 / 75)  # 0.8
@@ -151,7 +151,7 @@ def test_todays_numbers_midweek():
 
 
 def test_a_workout_today_lowers_what_is_needed_but_not_the_target():
-    n = today_numbers(7.5, PLAN, WEEK + [workout("2026-11-25", 3.0, 10)], WEDNESDAY)  # 0.5 done today
+    n = today_numbers(7.5, PLAN, WEEK + [workout("2026-11-24", 3.0, 10)], WEDNESDAY)  # 0.5 done today
     assert close(n["target_met_hours"], 0.8)
     assert close(n["done_today_met_hours"], 0.5)
     assert close(n["needed_met_hours"], 0.3)
@@ -159,8 +159,8 @@ def test_a_workout_today_lowers_what_is_needed_but_not_the_target():
 
 
 def test_nothing_is_needed_on_a_day_off_or_once_the_goal_is_reached():
-    assert today_numbers(7.5, PLAN, [], date(2026, 11, 24))["needed_met_hours"] == 0  # Tuesday is off
-    done = [workout("2026-11-23", 6.0, 90)]  # 9.0 on Monday: over the goal
+    assert today_numbers(7.5, PLAN, [], date(2026, 11, 23))["needed_met_hours"] == 0  # Tuesday is off
+    done = [workout("2026-11-22", 6.0, 90)]  # 9.0 on Monday: over the goal
     n = today_numbers(7.5, PLAN, done, WEDNESDAY)
     assert n["left_this_week_met_hours"] == 0
     assert n["needed_met_hours"] == 0

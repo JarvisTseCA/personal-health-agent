@@ -1,6 +1,6 @@
 /**
  * Past weeks rolled up into months for the month view on Progress. A week
- * belongs to the month its Thursday falls in, so a week is never split and
+ * belongs to the month its middle day (Wednesday) falls in, so a week is never split and
  * each month gets the weeks that are mostly in it.
  */
 import { streakOf, trophyEarned } from "./rewards";
@@ -10,9 +10,9 @@ export interface WeekIn {
   label: string;
   done: number;
   goal: number;
-  /** Days with any activity, Monday to Sunday */
+  /** Days with any activity, Sunday to Saturday */
   active: boolean[];
-  /** Days the user opened the app, Monday to Sunday */
+  /** Days the user opened the app, Sunday to Saturday */
   signIns: boolean[];
   /** Planned days off ("off"), for the calendar */
   plan?: readonly string[];
@@ -20,10 +20,10 @@ export interface WeekIn {
   trophy?: boolean;
 }
 
-/** The month (0–11) a week counts in: the month its Thursday falls in. */
+/** The month (0–11) a week counts in: the month its middle day (Wednesday) falls in. */
 export function weekMonth(start: Date): { year: number; month: number } {
-  const th = thursday(start);
-  return { year: th.getFullYear(), month: th.getMonth() };
+  const mid = middleDay(start);
+  return { year: mid.getFullYear(), month: mid.getMonth() };
 }
 
 export interface Period {
@@ -46,7 +46,7 @@ export interface Period {
   partial: boolean;
 }
 
-export function thursday(d: Date): Date {
+export function middleDay(d: Date): Date {
   const t = new Date(d);
   t.setDate(t.getDate() + 3);
   return t;
@@ -57,7 +57,7 @@ function keyOf(start: Date): { key: string; year: number; month: number; label: 
   return { key: `${year}-${month}`, year, month, label: new Date(year, month, 1).toLocaleDateString(undefined, { month: "long", year: "numeric" }) };
 }
 
-/** Newest period first. `currentWeek` is this week's Monday, to mark the period still in progress. */
+/** Newest period first. `currentWeek` is this week's Sunday, to mark the period still in progress. */
 export function groupWeeks(weeks: WeekIn[], currentWeek: Date): Period[] {
   const out = new Map<string, Period>();
   for (const w of weeks) {

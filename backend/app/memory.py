@@ -36,8 +36,8 @@ same shape:
         "no_vigorous": False,
       },
       "goals": [
-        {"week_start": "2026-11-23", "goal_met_hours": 7.5, "goal_set_by": "default",
-         "plan": ["30", "off", "30", "10", "off", "45", "10"]},   # Monday to Sunday
+        {"week_start": "2026-11-22", "goal_met_hours": 7.5, "goal_set_by": "default",
+         "plan": ["30", "off", "30", "10", "off", "45", "10"]},   # Sunday to Saturday
       ],
       "daily": {
         "check_ins": [{"date": "2026-11-23", "minutes": 30, "place": "indoors_with_others",
@@ -101,7 +101,7 @@ from typing import Any, Dict, Iterable, Iterator, List, Optional
 from . import db
 
 GROUPS = ("who", "preferences", "goals", "daily", "health", "chat", "other")
-DAYS = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")
+DAYS = ("sun", "mon", "tue", "wed", "thu", "fri", "sat")  # a plan's 7 days, in order
 SLOTS = ("off", "0", "5", "10", "30", "45")  # minutes planned for a day; DaySlot in src/lib/plan.ts
 EQUIPMENT_PLACES = ("home", "gym")
 CHAT_ROLES = ("user", "agent")  # who said it; ChatMessage in src/state/types.ts
@@ -141,7 +141,7 @@ CREATE TABLE IF NOT EXISTS memory_preferences_equipment (
 -- goals
 CREATE TABLE IF NOT EXISTS memory_goals (
     user_id        TEXT NOT NULL,
-    week_start     TEXT NOT NULL,                      -- the week's Monday, "2026-11-23"
+    week_start     TEXT NOT NULL,                      -- the week's Sunday, "2026-11-23"
     goal_met_hours REAL,
     goal_set_by    TEXT,                               -- default | recap | user
     mon TEXT, tue TEXT, wed TEXT, thu TEXT, fri TEXT, sat TEXT, sun TEXT,  -- off | 0 | 5 | 10 | 30 | 45
@@ -354,7 +354,7 @@ def _save_goals(conn: sqlite3.Connection, user_id: str, weeks: Any) -> None:
     for i, week in enumerate(_list(weeks, "goals")):
         what = f"goals[{i}]"
         part = _fields(week, ("week_start", "goal_met_hours", "goal_set_by", "plan"), ("week_start",), what)
-        row: Dict[str, Any] = {"user_id": user_id, "week_start": _monday(part["week_start"], what), "updated_at": _now()}
+        row: Dict[str, Any] = {"user_id": user_id, "week_start": _sunday(part["week_start"], what), "updated_at": _now()}
 
         if "goal_met_hours" in part:
             row["goal_met_hours"] = _above_zero(part["goal_met_hours"], f"{what}.goal_met_hours")
@@ -365,7 +365,7 @@ def _save_goals(conn: sqlite3.Connection, user_id: str, weeks: Any) -> None:
         if "plan" in part:
             plan = part["plan"]
             if not isinstance(plan, list) or len(plan) != 7 or any(slot not in SLOTS for slot in plan):
-                raise MemoryDataError(f"{what}.plan should be 7 days, Monday to Sunday, each one of: {', '.join(SLOTS)}")
+                raise MemoryDataError(f"{what}.plan should be 7 days, Sunday to Saturday, each one of: {', '.join(SLOTS)}")
             row.update(zip(DAYS, plan))
 
         _upsert(conn, "memory_goals", ("user_id", "week_start"), row)
@@ -640,7 +640,7 @@ def _date(value: Any, what: str) -> str:
     try:
         return date.fromisoformat(value).isoformat()
     except (TypeError, ValueError):
-        raise MemoryDataError(f"{what}: {value!r} is not a date like 2026-11-23") from None
+        raise MemoryDataError(f"{what}: {value!r} is not a date like 2026-11-22") from None
 
 
 def _time(value: Any, what: str) -> Optional[str]:
@@ -654,10 +654,10 @@ def _time(value: Any, what: str) -> Optional[str]:
     return value
 
 
-def _monday(value: Any, what: str) -> str:
+def _sunday(value: Any, what: str) -> str:
     day = _date(value, f"{what}.week_start")
-    if date.fromisoformat(day).weekday() != 0:
-        raise MemoryDataError(f"{what}.week_start {day} is not a Monday")
+    if date.fromisoformat(day).weekday() != 6:
+        raise MemoryDataError(f"{what}.week_start {day} is not a Sunday")
     return day
 
 

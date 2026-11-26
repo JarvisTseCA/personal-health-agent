@@ -909,9 +909,16 @@ export function whyFacts(state: AppState): { activity: string; facts: string[] }
   return { activity: isTableId(c.lead.variantId) ? family.name : variant.label, facts };
 }
 
-export function setWhy(state: AppState, key: string, line: string): AppState {
+/** ChatGPT's line for the pick it was asked about; null when none came (the loading line goes). */
+export function setWhy(state: AppState, key: string, line: string | null): AppState {
   const c = state.today.current;
-  return c && whyKey(state) === key ? setToday(state, { current: { ...c, why: line } }) : state;
+  return c && whyKey(state) === key ? setToday(state, { current: { ...c, why: line ?? undefined, whyPending: false } }) : state;
+}
+
+/** The "Based on" line has been asked for: "Loading reasoning…" shows under the pick meanwhile. */
+export function whyPending(state: AppState, key: string): AppState {
+  const c = state.today.current;
+  return c && whyKey(state) === key && !c.why ? setToday(state, { current: { ...c, whyPending: true } }) : state;
 }
 
 /** Last week's numbers for Monday's recap. Only these numbers may appear in ChatGPT's two sentences. */

@@ -100,6 +100,18 @@ describe("the 'Based on' line", () => {
     expect(T.whyFacts(after)).toBeNull(); // asked once
   });
 
+  it("shows 'Loading reasoning…' while it's written, and the loading goes when it comes or doesn't", () => {
+    const s = picked();
+    const key = T.whyKey(s)!;
+    const waiting = T.whyPending(s, key);
+    expect(waiting.today.current!.whyPending).toBe(true);
+    const done = T.setWhy(waiting, key, "Based on your normal energy.");
+    expect(done.today.current).toMatchObject({ why: "Based on your normal energy.", whyPending: false });
+    const none = T.setWhy(waiting, key, null);
+    expect(none.today.current!.why).toBeUndefined();
+    expect(none.today.current!.whyPending).toBe(false);
+  });
+
   it("is dropped if the user has moved on to another option", () => {
     const s = picked();
     const key = T.whyKey(s)!;
